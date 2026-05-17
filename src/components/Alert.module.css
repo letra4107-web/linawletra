@@ -1,0 +1,37 @@
+.alert {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  border-radius: 1.5rem;
+  border: 1px solid transparent;
+  line-height: 1.5;
+}
+
+.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.success {
+  background: #dcfce7;
+  color: #14532d;
+  border-color: #bbf7d0;
+}
+
+.info {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.icon {
+  font-size: 1.25rem;
+  margin-top: 0.15rem;
+}
+
+.message {
+  margin: 0;
+  font-size: 0.98rem;
+}
