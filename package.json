@@ -1,8 +1,4 @@
 {
-<<<<<<< HEAD
-  "dependencies": {
-    "@supabase/supabase-js": "^2.105.4"
-=======
   "name": "linawletra-client",
   "version": "0.1.0",
   "private": true,
@@ -45,6 +41,7 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.35",
     "react-scripts": "5.0.1"
->>>>>>> 98cbb6e (Initial commit: prepare for Vercel deployment (ignore node_modules, build, .env))
+  }
+}
   }
 }
