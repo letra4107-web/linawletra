@@ -1,0 +1,246 @@
+import axios from 'axios';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5000/api';
+
+const axiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000, // 10 seconds timeout for API requests
+});
+
+// Add Supabase Auth token to requests
+axiosInstance.interceptors.request.use(async (config) => {
+  try {
+    const { supabase } = await import('../config/supabase');
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (session?.access_token && !error) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+  }
+  return config;
+});
+
+// Response interceptor for error handling
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    console.error('API Error:', error);
+    const config = error.config || {};
+    const maxRetries = 2;
+    const retryableMethods = ['get', 'head', 'options'];
+    // Only retry safe idempotent requests on network failures or server errors (500+).
+    // Do not retry POST sign-up requests or 400/429 client errors.
+    const shouldRetry = (!error.response && error.request) || (error.response && error.response.status >= 500);
+
+    const authRetrySkipPatterns = ['/auth', '/signup', '/login', 'auth/v1'];
+    const isAuthEndpoint = config && config.url && authRetrySkipPatterns.some((pattern) => config.url.includes(pattern));
+
+    if (
+      config &&
+      retryableMethods.includes(config.method?.toLowerCase()) &&
+      shouldRetry &&
+      (config.__retryCount || 0) < maxRetries &&
+      !isAuthEndpoint
+    ) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      const delay = 250 * Math.pow(2, config.__retryCount - 1);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return axiosInstance(config);
+    }
+
+    if (error.response) {
+      // Server responded with error status
+      const { status, data } = error.response;
+
+      const createError = (message, statusCode) => {
+        const err = new Error(message);
+        err.status = statusCode;
+        err.response = error.response;
+        err.data = data;
+        return err;
+      };
+
+      if (status === 429) {
+        throw createError('Signup temporarily blocked due to too many attempts. Please wait 15–30 minutes or use a different email/IP.', 429);
+      }
+
+      if (status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+
+        window.location.href = '/login';
+        throw createError('Session expired. Please log in again.', 401);
+      }
+
+      if (status === 403) {
+        throw createError(data?.message || 'Access denied.', 403);
+      }
+
+      if (status === 404) {
+        throw createError('Resource not found.', 404);
+      }
+
+      if (status === 422) {
+        // Validation errors
+        const validationErrors = data.errors || data.message || 'Validation failed';
+        throw createError(validationErrors, 422);
+      }
+
+      if (status >= 500) {
+        throw createError(data?.message || data?.error || 'Server error. Please try again later.', status);
+      }
+
+      throw createError(data.message || data.error || `Request failed with status ${status}`, status);
+    } else if (error.code === 'ECONNABORTED' || (error.message && error.message.toLowerCase().includes('timeout'))) {
+      throw new Error('Server took too long to respond. Please refresh or try again later.');
+    } else if (error.request) {
+      // Network error
+      throw new Error('Network error. Please check your connection and try again.');
+    } else {
+      // Other error
+      throw new Error(error.message || 'An unexpected error occurred');
+    }
+  }
+);
+
+// Auth Service
+export const authService = {
+  register: (data) => axiosInstance.post('/auth/register', data),
+  verifyEmail: (data) => axiosInstance.post('/auth/verify-email', data),
+  sendEmailVerificationCode: (data) => axiosInstance.post('/auth/send-email-verification-code', data),
+  sendStudentEnrollmentEmail: (data) => axiosInstance.post('/auth/send-student-enrollment-email', data),
+  resendVerificationCode: (email) => axiosInstance.post('/auth/resend-verification-code', { email }),
+  login: (data) => axiosInstance.post('/auth/login', data),
+  sendLoginOTP: (email) => axiosInstance.post('/auth/send-login-otp', { email }),
+  verifyLoginOTP: (data) => axiosInstance.post('/auth/verify-login-otp', data),
+  createProfile: (data) => axiosInstance.post('/auth/create-profile', data),
+  resendLoginOTP: (email) => axiosInstance.post('/auth/resend-login-otp', { email }),
+  forgotPassword: (email) => axiosInstance.post('/auth/forgot-password', { email }),
+  verifyResetCode: (data) => axiosInstance.post('/auth/verify-reset-code', data),
+  resetPassword: (data) => axiosInstance.post('/auth/reset-password', data),
+  getAdminOverview: () => axiosInstance.get('/admin/overview'),
+  getAssignedStudents: () => axiosInstance.get('/students/all'),
+};
+
+// Dashboard Service
+export const dashboardService = {
+  getStats: () => axiosInstance.get('/dashboard/stats'),
+};
+
+// Assessment Service
+export const assessmentService = {
+  createAssessment: (data) => axiosInstance.post('/assessments', data),
+  submitAssessment: (data) => axiosInstance.post('/assessments', data),
+  getAssessments: () => axiosInstance.get('/assessments'),
+  getAssessmentByStudent: (studentId) => axiosInstance.get(`/assessments/student/${studentId}`),
+  updateAssessmentScores: (id, data) => axiosInstance.put(`/assessments/${id}`, data),
+};
+
+// Student Service
+export const studentService = {
+  createStudent: (data) => axiosInstance.post('/students', data),
+  getStudents: async () => {
+    const res = await axiosInstance.get('/students');
+    return {
+      ...res,
+      data: res.data?.data?.students ?? res.data?.students ?? res.data,
+    };
+  },
+  getAllStudents: async () => {
+    const res = await axiosInstance.get('/students');
+    return {
+      ...res,
+      data: res.data?.data?.students ?? res.data?.students ?? res.data,
+    };
+  },
+  getStudent: (id) => axiosInstance.get(`/students/${id}`),
+  getStudentDashboard: (id) => axiosInstance.get(`/students/${id}/dashboard`),
+  updateStudent: (id, data) => axiosInstance.put(`/students/${id}`, data),
+  deleteStudent: (id) => axiosInstance.delete(`/students/${id}`),
+  verifyChildPin: (id, pin) => axiosInstance.post(`/students/${id}/verify-pin`, { pin }),
+  getPracticeLevel: (id) => axiosInstance.get(`/students/${id}/practice-level`),
+  setPracticeLevel: (id, data) => axiosInstance.post(`/students/${id}/practice-level`, data),
+};
+
+// Lesson Service
+export const lessonService = {
+  getLessons: (params) => axiosInstance.get('/lessons', { params }),
+  getAllLessons: () => axiosInstance.get('/lessons'),
+  getLesson: (id) => axiosInstance.get(`/lessons/${id}`),
+  createLesson: (data) => axiosInstance.post('/lessons', data, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  updateLesson: (id, data) => axiosInstance.put(`/lessons/${id}`, data),
+  deleteLesson: (id) => axiosInstance.delete(`/lessons/${id}`),
+};
+
+// Progress Service
+export const progressService = {
+  createOrGetProgress: (data) => axiosInstance.post('/progress', data),
+  updateProgress: (id, data) => axiosInstance.put(`/progress/${id}`, data),
+  getProgressByStudent: (studentId) => axiosInstance.get(`/progress/student/${studentId}`),
+  getDashboardData: (studentId) => axiosInstance.get(`/progress/dashboard/${studentId}`),
+  getProgressReports: () => axiosInstance.get('/progress/reports'),
+};
+
+// Schedule Service
+export const scheduleService = {
+  createSchedule: (data) => axiosInstance.post('/schedules', data),
+  getSchedulesByStudent: (studentId) => axiosInstance.get(`/schedules/student/${studentId}`),
+  getSchedulesByParent: () => axiosInstance.get('/schedules/parent/list'),
+  getSchedulesByTeacher: () => axiosInstance.get('/schedules/teacher/list'),
+  updateSchedule: (id, data) => axiosInstance.put(`/schedules/${id}`, data),
+  deleteSchedule: (id) => axiosInstance.delete(`/schedules/${id}`),
+};
+
+// Admin Service
+export const adminService = {
+  getOverview: () => axiosInstance.get('/admin/overview'),
+  getAnalytics: () => axiosInstance.get('/admin/analytics'),
+  getUsers: (params) => axiosInstance.get('/admin/users', { params }),
+  getTeachers: (params) => axiosInstance.get('/admin/teachers', { params }),
+  createTeacher: (data) => axiosInstance.post('/admin/teachers/create', data),
+  updateUser: (id, data) => axiosInstance.put(`/admin/users/${id}`, data),
+  deleteUser: (id) => axiosInstance.delete(`/admin/users/${id}`),
+  getPendingUsers: () => axiosInstance.get('/admin/pending-users'),
+  updatePendingUser: (id, data) => axiosInstance.put(`/admin/pending-users/${id}`, data),
+  getReports: () => axiosInstance.get('/admin/reports'),
+  getFeedback: () => axiosInstance.get('/admin/feedback'),
+  updateFeedback: (id, data) => axiosInstance.put(`/admin/feedback/${id}`, data),
+  getHealth: () => axiosInstance.get('/admin/health'),
+  deleteFeedback: (id) => axiosInstance.delete(`/admin/feedback/${id}`),
+  getSettings: () => axiosInstance.get('/admin/settings'),
+  updateSettings: (data) => axiosInstance.put('/admin/settings', data),
+  getContent: (params) => axiosInstance.get('/admin/content', { params }),
+  getNotifications: (params) => axiosInstance.get('/admin/notifications', { params }),
+  getLogs: (params) => axiosInstance.get('/admin/logs', { params }),
+};
+
+// User Service
+export const userService = {
+  deleteUser: (userId) => axiosInstance.delete(`/users/${userId}`),
+  getAllTeachers: () => axiosInstance.get('/users/teachers'),
+  getAllUsers: () => axiosInstance.get('/users'),
+  getUser: (id) => axiosInstance.get(`/users/${id}`),
+  updateUser: (id, data) => axiosInstance.put(`/users/${id}`, data),
+  getProfile: () => axiosInstance.get('/users/profile'),
+  updateProfile: (data) => axiosInstance.put('/users/profile', data),
+  syncClaims: () => axiosInstance.get('/users/sync-claims'),
+};
+
+// Speech Service
+export const speechService = {
+  speechToText: (audioFile) => {
+    const formData = new FormData();
+    formData.append('audio', audioFile);
+    return axiosInstance.post('/speech/stt', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  textToSpeech: (text) => axiosInstance.post('/speech/tts', { text }, {
+    responseType: 'blob' // For audio data
+  }),
+};
+
+export default axiosInstance;

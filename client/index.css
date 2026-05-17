@@ -1,0 +1,94 @@
+/* Dyslexia-friendly global stylesheet */
+
+:root {
+  --primary-green: #4ade80;
+  --primary-blue: #3b82f6;
+  --primary-hover: #22c55e;
+  --light-bg: #FDFAF5;
+  --text-color: #1A1D23;
+  --secondary-text: #4B4F56;
+  --border-color: #E7E2DA;
+  --success-color: #10B981;
+  --warning-color: #F59E0B;
+  --warning-light: #FFFBEB;
+  --error-color: #EF4444;
+  --card-bg: #FFFFFF;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --border-radius: 12px;
+  --padding: 16px;
+  --gap: 16px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+}
+
+body {
+  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  background-color: var(--light-bg);
+  color: var(--text-color);
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  margin-bottom: 1rem;
+  color: var(--text-color);
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.75rem; }
+h4 { font-size: 1.5rem; }
+h5 { font-size: 1.25rem; }
+h6 { font-size: 1.1rem; }
+
+p {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+}
+
+button {
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+input, textarea, select {
+  padding: 0.875rem;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  background-color: var(--card-bg);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary-green);
+  background-color: #F8FBF9;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.1);
+}
+
+.card {
+  background-color: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
