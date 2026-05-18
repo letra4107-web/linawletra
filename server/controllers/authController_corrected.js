@@ -1,3 +1,15 @@
+// --- TEST ENDPOINT: Send verification email to any address (for debugging) ---
+exports.testSendVerification = async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false, message: 'Email required.' });
+  try {
+    const code = generateVerificationCode();
+    await sendVerificationEmail(email, code);
+    return res.json({ success: true, message: 'Verification email sent.', email, code });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to send verification email.', error: err.message });
+  }
+};
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');

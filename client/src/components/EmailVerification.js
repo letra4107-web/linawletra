@@ -28,6 +28,7 @@ export default function EmailVerification() {
   const [success, setSuccess] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(0);
+  const [devVerificationCode, setDevVerificationCode] = useState(location.state?.devVerificationCode || '');
 
   const email = useMemo(
     () =>
@@ -124,9 +125,15 @@ export default function EmailVerification() {
       try {
         setLoading(true);
         if (isLoginFlow) {
-          await authService.resendVerificationCode(email.toLowerCase());
+          const resp = await authService.resendVerificationCode(email.toLowerCase());
+          if (resp?.data?.devVerificationCode) {
+            setDevVerificationCode(resp.data.devVerificationCode);
+          }
         } else {
-          await authService.resendVerificationCode(email.toLowerCase());
+          const resp = await authService.resendVerificationCode(email.toLowerCase());
+          if (resp?.data?.devVerificationCode) {
+            setDevVerificationCode(resp.data.devVerificationCode);
+          }
         }
         console.log('[EmailVerification] ✓ OTP auto-sent successfully');
         setEmailSent(true);
@@ -323,6 +330,9 @@ export default function EmailVerification() {
       } else {
         // Resend registration verification code
         const resp = await authService.resendVerificationCode(email.toLowerCase());
+        if (resp?.data?.devVerificationCode) {
+          setDevVerificationCode(resp.data.devVerificationCode);
+        }
         // If backend returned cooldownRemaining, use it (seconds)
         if (resp?.data?.cooldownRemaining) {
           setResendCountdown(Number(resp.data.cooldownRemaining));
@@ -426,10 +436,24 @@ export default function EmailVerification() {
               </div>
             )}
 
+            {loading && (
+              <div className={verificationStyles.alert}>
+                <FiRefreshCw className={verificationStyles.spinning} />
+                <span>Processing... Please wait.</span>
+              </div>
+            )}
+
             {emailSent && (
               <div className={verificationStyles.alert}>
                 <FiCheckCircle className={verificationStyles.alertIcon} />
                 <span>A new verification code has been sent. Please check your inbox.</span>
+              </div>
+            )}
+
+            {devVerificationCode && (
+              <div className={verificationStyles.alert}>
+                <FiLock className={verificationStyles.alertIcon} />
+                <span>Development verification code: <strong>{devVerificationCode}</strong></span>
               </div>
             )}
 

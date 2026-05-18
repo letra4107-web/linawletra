@@ -1,15 +1,18 @@
-
 import express from 'express';
 import { body } from 'express-validator';
-import {
+import * as validation from '../middleware/validation.js';
+const {
   validateRegister,
   validateLogin,
   validateStudentEnrollmentEmail,
   validateForgotPasswordRequest,
   validateResetPassword,
   handleValidationErrors,
-} from '../middleware/validation.js';
-import {
+} = validation;
+
+import authController from '../controllers/authController.js';
+
+const {
   register,
   createProfile,
   sendStudentEnrollmentDetails,
@@ -23,22 +26,29 @@ import {
   forgotPassword,
   resetPassword,
   verifyResetCode,
-} from '../controllers/authController.js';
+} = authController;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const router = express.Router();
 
 
-// Minimal /register route for clear error/success response
-router.post('/register', async (req, res, next) => {
-  try {
-    const { email, password, firstName, lastName } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Missing email or password" });
-    // registration logic placeholder
-    return res.status(201).json({ message: "User registered" });
-  } catch (err) {
-    next(err);
-  }
-});
+// Register parent account and send the signup verification code.
+router.post('/register', validateRegister, handleValidationErrors, register);
 
 // Create user profile after Supabase signUp
 router.post(

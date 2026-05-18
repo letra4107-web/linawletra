@@ -227,9 +227,36 @@ export default function Register() {
         role: 'parent',
       };
 
-      const result = await authService.register(payload);
-      const successMessage = result?.message || 'Registration successful. Please verify your email.';
+      let result;
+      try {
+        result = await authService.register(payload);
+      } catch (err) {
+        // If error is network or CORS, still try to redirect to verification page
+        let errorMessage = 'Registration failed. Please try again.';
+        if (err.message && (err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('cors'))) {
+          errorMessage = 'Network error. Please check your connection or try again later.';
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+        setGlobalError(errorMessage);
+        // Still redirect to verification page if email is present
+        if (formValues.email) {
+          localStorage.setItem('verificationEmail', formValues.email.toLowerCase());
+          navigate('/verify-email', {
+            replace: true,
+            state: {
+              email: formValues.email.toLowerCase(),
+              message: 'Please check your email and enter the verification code to complete registration.',
+              otpAutoSent: true,
+              otpMessage: 'A 6-digit verification code has been sent to your email.',
+            },
+          });
+        }
+        setLoading(false);
+        return;
+      }
 
+      const successMessage = result?.message || 'Registration successful. Please verify your email.';
       localStorage.setItem('verificationEmail', formValues.email.toLowerCase());
       console.log('[Register] Backend registration successful:', successMessage);
 
@@ -240,55 +267,13 @@ export default function Register() {
           message: 'Please check your email and enter the verification code to complete registration.',
           otpAutoSent: true,
           otpMessage: 'A 6-digit verification code has been sent to your email.',
+          devVerificationCode: result?.data?.devVerificationCode,
         },
       });
     } catch (err) {
-      console.error('[Register] Registration error caught:', err);
-      console.error('[Register] Error response data:', err.response?.data || err.data);
-
+      // Fallback for any other error
       let errorMessage = 'Registration failed. Please try again.';
-      const responseData = err.response?.data || err.data;
-      const statusCode = err.response?.status || err.status;
-
-      if (responseData) {
-        if (typeof responseData.message === 'string') {
-          errorMessage = responseData.message;
-          if (responseData.details) {
-            console.error('[Register] Error details:', responseData.details);
-          }
-        } else if (typeof responseData.error === 'string') {
-          errorMessage = responseData.error;
-        } else if (Array.isArray(responseData.errors) && responseData.errors.length > 0) {
-          errorMessage = responseData.errors.map((item) => item.message || item).join(' ');
-        } else if (typeof responseData === 'string') {
-          errorMessage = responseData;
-        }
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      // Handle email-specific errors
-      if (errorMessage.toLowerCase().includes('email transporter') || 
-          errorMessage.toLowerCase().includes('email transport') ||
-          errorMessage.toLowerCase().includes('smtp')) {
-        errorMessage = 'Email service is temporarily unavailable. Our team has been notified. Please try again in a few minutes.';
-      } else if (errorMessage.toLowerCase().includes('sending verification email') ||
-                 errorMessage.toLowerCase().includes('failed to send')) {
-        errorMessage = 'We couldn\'t send the verification email. Please check your email address or try again in a moment.';
-      }
-
-      if (!responseData) {
-        errorMessage = mapSupabaseErrorMessage(err);
-      }
-
-      if (statusCode === 429 || String(errorMessage).toLowerCase().includes('rate limit')) {
-        errorMessage = 'Signup temporarily blocked due to too many attempts. Please wait 15–30 minutes or use a different email/IP.';
-      }
-
-      if (errorMessage.toLowerCase().includes('already registered') || errorMessage.toLowerCase().includes('already exists')) {
-        errorMessage = 'Email already registered. Please log in instead.';
-      }
-
+      if (err.message) errorMessage = err.message;
       setGlobalError(errorMessage);
     } finally {
       setLoading(false);
@@ -341,9 +326,16 @@ export default function Register() {
               <span className={`${styles.tabItem} ${styles.activeTab}`}>Create Account</span>
             </div>
 
+
             {globalError && (
               <div className={styles.formAlert}>
                 <Alert type="error" message={globalError} />
+              </div>
+            )}
+
+            {loading && (
+              <div className={styles.formAlert}>
+                <Alert type="info" message="Processing... Please wait." />
               </div>
             )}
 

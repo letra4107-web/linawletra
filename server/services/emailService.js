@@ -4,9 +4,10 @@
  * Uses secure configuration from config.js
  */
 
-const crypto = require('crypto');
-const nodemailer = require('nodemailer');
-const config = require('../config');
+import crypto from 'crypto';
+import nodemailer from 'nodemailer';
+import config from '../config.js';
+
 
 // Transporter creation (safer defaults for Gmail + fewer socket issues)
 // NOTE: We intentionally do NOT use SMTP pooling here; pooled/stale sockets are a common
@@ -88,12 +89,25 @@ const sendMailWithRetry = async (mailOptions, { type, email, retries = 2 } = {})
   }
 };
 
-transporter = createTransporter();
+// Improved logging for transporter config
+const logEmailConfig = () => {
+  console.log('--- Email Transporter Configuration ---');
+  console.log('Service:', config.email.service);
+  console.log('Host:', config.email.host);
+  console.log('Port:', config.email.port);
+  console.log('User:', config.email.user);
+  console.log('From:', config.email.from);
+  console.log('Enabled:', config.email.enabled);
+  console.log('---------------------------------------');
+};
 
+transporter = createTransporter();
+logEmailConfig();
 if (config.email.enabled) {
   transporter.verify((error, success) => {
     if (error) {
-      console.error('✗ Email transporter verification failed:', error);
+      console.error('✗ Email transporter verification failed:', error.message);
+      if (error.response) console.error('SMTP Response:', error.response);
       console.error('\n📧 GMAIL SMTP AUTHENTICATION TROUBLESHOOTING:');
       console.error('   1. Go to: https://myaccount.google.com/security');
       console.error('   2. Enable 2-Step Verification');
@@ -102,43 +116,13 @@ if (config.email.enabled) {
       console.error('   5. Copy the 16-character App Password');
       console.error('   6. Paste into server/.env as EMAIL_PASS (no spaces needed)');
       console.error('   7. Restart the server\n');
-
-      if (error.code === 'EAUTH' || (error.response && error.response.includes('535'))) {
-        console.error('   Error Code: EAUTH (535-5.7.8 - Invalid login)');
-        console.error('   Cause: Gmail rejected the credentials');
-        console.error('   ✓ Confirm 2-Step Verification is enabled');
-        console.error('   ✓ Confirm EMAIL_PASS is a Gmail App Password (not your Gmail password)');
-        console.error('   ✓ Confirm no extra spaces in EMAIL_PASS');
-        console.error('   ✓ Confirm EMAIL_USER matches the Gmail account');
-      }
-
-      // Helpful hint for TLS problems (self-signed certs / corporate proxies)
-      if (error.message && error.message.toLowerCase().includes('self signed')) {
-        console.error('\n   TLS Error: self-signed certificate detected.');
-        console.error('   If you are in development behind a proxy, set EMAIL_TLS_REJECT_UNAUTHORIZED=false in your .env and restart the server.');
-        console.error('   WARNING: Do not disable TLS validation in production.');
-      }
-
-      if (error.response) {
-        console.error('   SMTP Response:', error.response);
-      }
-
-      return;
-    }
-
-    if (success) {
+    } else {
       console.log(`✓ Email transporter ready using ${config.email.user}`);
       console.log('✓ SMTP connection verified - OTP emails will work');
     }
   });
 } else {
-  console.warn('⚠ Email transporter disabled.');
-  console.warn('   EMAIL_PASS is missing or invalid.');
-  console.warn('   To enable OTP delivery:');
-  console.warn('   1. Visit https://myaccount.google.com/apppasswords');
-  console.warn('   2. Generate an App Password (Mail, Other device)');
-  console.warn('   3. Set EMAIL_PASS in server/.env');
-  console.warn('   4. Restart the server\n');
+  console.warn('✗ Email sending is DISABLED. Set EMAIL_USER and EMAIL_PASS to enable.');
 }
 
 // Generate 6-digit verification code
@@ -428,7 +412,7 @@ const verifyCodeExpiration = (expiresAt) => {
   return expiresAt > now;
 };
 
-module.exports = {
+export {
   generateVerificationCode,
   generateResetToken,
   hashCode,
@@ -439,4 +423,5 @@ module.exports = {
   verifyCodeExpiration,
   transporter,
 };
+
 

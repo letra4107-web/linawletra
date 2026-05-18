@@ -4,8 +4,12 @@
  * All authentication and database operations now use Supabase
  */
 
-const path = require('path');
-const dotenv = require('dotenv');
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 [
   path.resolve(__dirname, '.env'),
@@ -15,6 +19,7 @@ const dotenv = require('dotenv');
 ].forEach((envPath) => {
   dotenv.config({ path: envPath, override: false });
 });
+
 
 // Validate required environment variables
 const validateConfig = () => {
@@ -46,11 +51,22 @@ const validateConfig = () => {
   }
 
   if (!hasRealEmailPassword) {
-    console.warn('⚠ Gmail App Password is missing, too short, or still using a placeholder. OTP emails from linawletra@gmail.com will not send until EMAIL_PASS is set correctly.');
+    console.error('❌ EMAIL_PASS is missing, too short, or not a valid Gmail App Password.');
+    console.error('   You must generate a 16-character Gmail App Password at https://myaccount.google.com/apppasswords');
+    console.error('   and set EMAIL_PASS in your .env file.');
+    console.error('   The backend will now exit to prevent silent email failures.');
+    process.exit(1);
   }
 };
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || '';
+const normalizeSupabaseUrl = (url) => {
+  return String(url || '')
+    .trim()
+    .replace(/\/rest\/v1\/?$/i, '')
+    .replace(/\/+$/, '');
+};
+
+const supabaseUrl = normalizeSupabaseUrl(process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || '');
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || '';
 
 // Config object - simplified for Firebase/Supabase
@@ -146,4 +162,5 @@ config.getPasswordResetExpiry = () => {
 // Validate on load
 validateConfig();
 
-module.exports = config;
+export default config;
+

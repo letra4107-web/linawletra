@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { supabase } = require('../config/supabase');
+const { supabase } = require('../config/supabase.js');
 
 class UserQuery {
   constructor(query = {}) {

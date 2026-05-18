@@ -1,6 +1,31 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5000/api';
+const getApiBaseUrl = () => {
+  const configuredUrl = process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5002/api';
+
+  if (typeof window === 'undefined') {
+    return configuredUrl;
+  }
+
+  try {
+    const apiUrl = new URL(configuredUrl);
+    const pageHost = window.location.hostname;
+    const apiHostIsLocal = apiUrl.hostname === 'localhost' || apiUrl.hostname === '127.0.0.1';
+    const pageHostIsLocal = pageHost === 'localhost' || pageHost === '127.0.0.1';
+
+    if (apiHostIsLocal && !pageHostIsLocal) {
+      apiUrl.hostname = pageHost;
+      apiUrl.protocol = window.location.protocol;
+      return apiUrl.toString().replace(/\/$/, '');
+    }
+  } catch (error) {
+    console.warn('Invalid API base URL:', configuredUrl, error);
+  }
+
+  return configuredUrl;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -14,6 +39,11 @@ axiosInstance.interceptors.request.use(async (config) => {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (session?.access_token && !error) {
       config.headers.Authorization = `Bearer ${session.access_token}`;
+    } else {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
   } catch (error) {
     console.error('Error getting auth token:', error);
@@ -66,11 +96,14 @@ axiosInstance.interceptors.response.use(
       }
 
       if (status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        if (!isAuthEndpoint) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+          throw createError('Session expired. Please log in again.', 401);
+        }
 
-        window.location.href = '/login';
-        throw createError('Session expired. Please log in again.', 401);
+        throw createError(data?.message || data?.error || 'Invalid email or password', 401);
       }
 
       if (status === 403) {
@@ -112,7 +145,10 @@ export const authService = {
   sendStudentEnrollmentEmail: (data) => axiosInstance.post('/auth/send-student-enrollment-email', data),
   resendVerificationCode: (email) => axiosInstance.post('/auth/resend-verification-code', { email }),
   login: (data) => axiosInstance.post('/auth/login', data),
-  sendLoginOTP: (email) => axiosInstance.post('/auth/send-login-otp', { email }),
+  sendLoginOTP: (data) => {
+    const payload = typeof data === 'string' ? { email: data } : data;
+    return axiosInstance.post('/auth/send-login-otp', payload);
+  },
   verifyLoginOTP: (data) => axiosInstance.post('/auth/verify-login-otp', data),
   createProfile: (data) => axiosInstance.post('/auth/create-profile', data),
   resendLoginOTP: (email) => axiosInstance.post('/auth/resend-login-otp', { email }),

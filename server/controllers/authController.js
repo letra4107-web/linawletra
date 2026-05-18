@@ -1,20 +1,74 @@
-const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-const { validationResult } = require('express-validator');
-const config = require('../config');
-const { supabase } = require('../config/supabase');
-const bcrypt = require('bcryptjs');
-const {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import jwt from 'jsonwebtoken';
+import { validationResult } from 'express-validator';
+import config from '../config.js';
+
+import { supabase } from '../config/supabase.js';
+import bcrypt from 'bcryptjs';
+
+import {
   generateVerificationCode,
   hashCode,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendStudentEnrollmentEmail,
   verifyCodeExpiration,
-} = require('../services/emailService');
+} from '../services/emailService.js';
+
+import {
+  isMissingSupabaseTableError,
+  findLocalUserByEmail,
+  upsertLocalUser,
+  deleteLocalUser,
+  markLocalUserVerified,
+  createLocalVerificationCode,
+  getLatestLocalVerificationCode,
+  incrementLocalVerificationAttempts,
+  deleteLocalVerificationCode,
+} from '../services/localAuthStore.js';
+
+
+const findAuthUserByEmail = async (email) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) {
+      console.warn('[Auth] Could not list Supabase Auth users:', error.message);
+      return null;
+    }
+
+    const found = data?.users?.find((user) => String(user.email || '').toLowerCase() === normalizedEmail);
+    if (found) return found;
+    if (!data?.users || data.users.length < 1000) return null;
+  }
+
+  return null;
+};
+
+const devVerificationCodePayload = (code) => {
+  if (config.isProduction) return {};
+  return { devVerificationCode: code };
+};
+
 
 // Register - Creates Supabase Auth user + profile with id set to auth user id
-exports.register = async (req, res) => {
+export const register = async (req, res) => {
   try {
     console.log('[Register API] Request received at:', new Date().toISOString());
     console.log('[Register API] Request body:', {
@@ -30,7 +84,7 @@ exports.register = async (req, res) => {
       return res.status(400).json({
         success: false,
         errors: errors.array().map(err => ({
-          field: err.param,
+          field: err.path || err.param,
           message: err.msg,
         })),
       });
@@ -41,19 +95,123 @@ exports.register = async (req, res) => {
 
     console.log('[Register API] Checking if user already exists:', normalizedEmail);
     
-    // Check if user profile already exists
-    const { data: existingUser, error: checkError } = await supabase
+    // Check if user profile already exists. If the Supabase table has not
+    // been created yet, fall back to a local backend profile store.
+    let usingLocalProfileStore = false;
+    let existingUser = null;
+    const { data: existingDbUser, error: checkError } = await supabase
       .from('users')
-      .select('id, email')
+      .select('id, email, email_verified')
       .eq('email', normalizedEmail)
       .single();
 
     if (checkError && checkError.code !== 'PGRST116') {
-      console.error('[Register API] Error checking existing user:', checkError);
-      throw checkError;
+      if (isMissingSupabaseTableError(checkError)) {
+        usingLocalProfileStore = true;
+        existingUser = findLocalUserByEmail(normalizedEmail);
+        console.warn('[Register API] public.users table missing; using local profile store.');
+      } else {
+        console.error('[Register API] Error checking existing user:', checkError);
+        throw checkError;
+      }
+    } else {
+      existingUser = existingDbUser;
     }
 
     if (existingUser) {
+      if (!existingUser.email_verified) {
+        console.log('[Register API] Existing unverified account found; sending a fresh verification code:', normalizedEmail);
+
+        const existingAuthUser = await findAuthUserByEmail(normalizedEmail);
+        if (existingAuthUser) {
+          await supabase.auth.admin.updateUserById(existingAuthUser.id, {
+            password,
+            user_metadata: {
+              role: existingUser.role || role || 'parent',
+              displayName: existingUser.display_name,
+              firstName: existingUser.first_name,
+              lastName: existingUser.last_name,
+              middleInitial: existingUser.middle_initial || null,
+              emailVerified: false,
+            },
+          });
+        } else {
+          const { data: { user: recreatedAuthUser } = {}, error: recreateError } = await supabase.auth.admin.createUser({
+            email: normalizedEmail,
+            password,
+            user_metadata: {
+              role: existingUser.role || role || 'parent',
+              displayName: existingUser.display_name,
+              firstName: existingUser.first_name,
+              lastName: existingUser.last_name,
+              middleInitial: existingUser.middle_initial || null,
+              emailVerified: false,
+            },
+            email_confirm: false,
+          });
+
+          if (recreateError || !recreatedAuthUser) {
+            console.error('[Register API] Failed to recreate missing auth user for unverified profile:', recreateError);
+            return res.status(500).json({
+              success: false,
+              message: 'Could not prepare this account for verification. Please try again.',
+            });
+          }
+        }
+
+        const verificationCode = generateVerificationCode();
+        const expiresAt = new Date(Date.now() + config.emailVerification.expiresInMinutes * 60 * 1000);
+        const resendAvailableAt = new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000);
+
+        let codeStoredLocally = usingLocalProfileStore;
+        if (codeStoredLocally) {
+          createLocalVerificationCode({
+            userId: existingUser.id,
+            email: normalizedEmail,
+            code: verificationCode,
+            expiresAt,
+            resendAvailableAt,
+          });
+        } else {
+          const { error: codeError } = await supabase
+            .from('email_verification_codes')
+            .insert({
+              user_id: existingUser.id,
+              email: normalizedEmail,
+              code: verificationCode,
+              expires_at: expiresAt,
+              resend_available_at: resendAvailableAt,
+              attempts: 0,
+            });
+
+          if (codeError) {
+            if (isMissingSupabaseTableError(codeError)) {
+              codeStoredLocally = true;
+              createLocalVerificationCode({
+                userId: existingUser.id,
+                email: normalizedEmail,
+                code: verificationCode,
+                expiresAt,
+                resendAvailableAt,
+              });
+            } else {
+              throw codeError;
+            }
+          }
+        }
+
+        await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
+
+        return res.status(200).json({
+          success: true,
+          message: 'Account already started. We sent a new verification code to your email.',
+          email: normalizedEmail,
+          userId: existingUser.id,
+          requiresEmailVerification: true,
+          ...devVerificationCodePayload(verificationCode),
+        });
+      }
+
       console.log('[Register API] User already exists:', normalizedEmail);
       return res.status(409).json({
         success: false,
@@ -87,11 +245,16 @@ exports.register = async (req, res) => {
 
     // Use admin.createUser instead of signUp to prevent Supabase auto-email
     // We handle email sending via backend SMTP (Nodemailer + Gmail)
-    const { data: { user: authUser }, error: authError } = await supabase.auth.admin.createUser({
+    let { data: { user: authUser } = {}, error: authError } = await supabase.auth.admin.createUser({
       email: normalizedEmail,
       password: password,
       user_metadata: {
         role: userRole,
+        displayName: fullName,
+        firstName,
+        lastName,
+        middleInitial: middleInitial || null,
+        emailVerified: false,
       },
       email_confirm: false, // User must verify via backend OTP email
     });
@@ -103,12 +266,45 @@ exports.register = async (req, res) => {
         authError?.code === 'auth/email-already-in-use' ||
         authError?.code === 'email_exists';
 
+      if (duplicateMessage && !existingUser) {
+        const orphanAuthUser = await findAuthUserByEmail(normalizedEmail);
+        if (orphanAuthUser && !orphanAuthUser.email_confirmed_at) {
+          console.warn('[Register API] Removing orphaned unverified Supabase Auth user, then retrying signup:', orphanAuthUser.id);
+          await supabase.auth.admin.deleteUser(orphanAuthUser.id);
+
+          const retryResult = await supabase.auth.admin.createUser({
+            email: normalizedEmail,
+            password,
+            user_metadata: {
+              role: userRole,
+              displayName: fullName,
+              firstName,
+              lastName,
+              middleInitial: middleInitial || null,
+              emailVerified: false,
+            },
+            email_confirm: false,
+          });
+
+          authUser = retryResult.data?.user || null;
+          authError = retryResult.error;
+
+          if (!authError && authUser) {
+            console.log('[Register API] Recreated orphaned auth user:', authUser.id);
+          }
+        }
+      }
+
+      if (!authError && authUser) {
+        // Continue with profile/code creation below after successful orphan cleanup retry.
+      } else {
       return res.status(duplicateMessage ? 409 : 400).json({
         success: false,
         message: duplicateMessage
           ? 'This email is already registered. Please log in instead.'
           : authError?.message || 'Failed to create auth account',
       });
+      }
     }
 
     console.log('[Register API] Auth user created:', { id: authUser.id, email: normalizedEmail, idType: typeof authUser.id });
@@ -116,27 +312,43 @@ exports.register = async (req, res) => {
     // Step 2: Create user profile with id set to auth user id
     console.log('[Register API] Creating user profile with id:', authUser.id);
 
-    const { data: userProfile, error: insertError } = await supabase
-      .from('users')
-      .insert({
-        uid: authUser.id,
-        id: authUser.id,
-        email: normalizedEmail,
-        display_name: fullName,
-        first_name: firstName,
-        last_name: lastName,
-        middle_initial: middleInitial || null,
-        role: userRole,
-        email_verified: false,
-        verified_at: null,
-        account_status: 'active',
-        is_active: true,
-        profile_image: null,
-      })
-      .select()
-      .single();
+    const profilePayload = {
+      uid: authUser.id,
+      id: authUser.id,
+      email: normalizedEmail,
+      display_name: fullName,
+      first_name: firstName,
+      last_name: lastName,
+      middle_initial: middleInitial || null,
+      role: userRole,
+      email_verified: false,
+      verified_at: null,
+      account_status: 'active',
+      is_active: true,
+      profile_image: null,
+    };
+
+    let userProfile = null;
+    let insertError = null;
+
+    if (usingLocalProfileStore) {
+      userProfile = upsertLocalUser(profilePayload);
+    } else {
+      const insertResult = await supabase
+        .from('users')
+        .insert(profilePayload)
+        .select()
+        .single();
+      userProfile = insertResult.data;
+      insertError = insertResult.error;
+    }
 
     if (insertError) {
+      if (isMissingSupabaseTableError(insertError)) {
+        usingLocalProfileStore = true;
+        console.warn('[Register API] public.users table missing during insert; using local profile store.');
+        userProfile = upsertLocalUser(profilePayload);
+      } else {
       console.error('[Register API] Failed to create user profile:', {
         message: insertError.message,
         code: insertError.code,
@@ -207,6 +419,7 @@ exports.register = async (req, res) => {
         success: false,
         message: insertError.message || 'Failed to create user profile',
       });
+      }
     }
 
     if (!userProfile) {
@@ -231,21 +444,54 @@ exports.register = async (req, res) => {
 
     console.log('[Register API] Storing verification code for:', normalizedEmail);
 
-    // Store verification code in email_verification_codes table
-    const { error: codeError } = await supabase
-      .from('email_verification_codes')
-      .insert({
-        user_id: userProfile.id,
+    // Store verification code in Supabase when available, otherwise in the
+    // same local fallback store as the profile.
+    let codeError = null;
+    if (usingLocalProfileStore) {
+      createLocalVerificationCode({
+        userId: userProfile.id,
         email: normalizedEmail,
         code: verificationCode,
-        expires_at: expiresAt,
-        resend_available_at: resendAvailableAt,
-        attempts: 0,
+        expiresAt,
+        resendAvailableAt,
       });
+    } else {
+      const codeResult = await supabase
+        .from('email_verification_codes')
+        .insert({
+          user_id: userProfile.id,
+          email: normalizedEmail,
+          code: verificationCode,
+          expires_at: expiresAt,
+          resend_available_at: resendAvailableAt,
+          attempts: 0,
+        });
+      codeError = codeResult.error;
+    }
 
     if (codeError) {
+      if (isMissingSupabaseTableError(codeError)) {
+        usingLocalProfileStore = true;
+        console.warn('[Register API] public.email_verification_codes table missing; storing code locally.');
+        createLocalVerificationCode({
+          userId: userProfile.id,
+          email: normalizedEmail,
+          code: verificationCode,
+          expiresAt,
+          resendAvailableAt,
+        });
+      } else {
       console.error('[Register API] Failed to store verification code:', codeError);
-      // Don't fail registration if code storage fails, but log it
+      console.error('[Register API] Cleaning up created user because verification code storage failed');
+      await supabase.from('email_verification_codes').delete().eq('user_id', authUser.id);
+      await supabase.from('users').delete().eq('id', authUser.id);
+      deleteLocalUser(authUser.id);
+      await supabase.auth.admin.deleteUser(authUser.id);
+      return res.status(500).json({
+        success: false,
+        message: 'Registration failed because we could not create a verification code. Please try again later.',
+      });
+      }
     }
 
     // Send verification email with OTP before returning success
@@ -258,6 +504,7 @@ exports.register = async (req, res) => {
       console.error('[Register API] ❌ Cleaning up created user because email delivery failed');
       await supabase.from('email_verification_codes').delete().eq('user_id', authUser.id);
       await supabase.from('users').delete().eq('id', authUser.id);
+      deleteLocalUser(authUser.id);
       await supabase.auth.admin.deleteUser(authUser.id);
       return res.status(500).json({
         success: false,
@@ -272,6 +519,7 @@ exports.register = async (req, res) => {
       email: normalizedEmail,
       userId: userProfile.id,
       requiresEmailVerification: true,
+      ...devVerificationCodePayload(verificationCode),
     });
   } catch (error) {
     console.error('[Register API] ❌ Unexpected registration error:', {
@@ -286,7 +534,7 @@ exports.register = async (req, res) => {
 };
 
 // Create user profile after Supabase signUp
-exports.createProfile = async (req, res) => {
+export const createProfile = async (req, res) => {
   try {
     console.log('[Create Profile API] Request received at:', new Date().toISOString());
     console.log('[Create Profile API] Request headers:', req.headers);
@@ -299,7 +547,7 @@ exports.createProfile = async (req, res) => {
       return res.status(400).json({
         success: false,
         errors: errors.array().map(err => ({
-          field: err.param,
+          field: err.path || err.param,
           message: err.msg,
         })),
       });
@@ -453,7 +701,7 @@ exports.createProfile = async (req, res) => {
 };
 
 // Send email verification code for Supabase signup flow
-exports.sendEmailVerificationCode = async (req, res) => {
+export const sendEmailVerificationCode = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -463,10 +711,11 @@ exports.sendEmailVerificationCode = async (req, res) => {
       });
     }
 
-    const { email, code, type = 'signup' } = req.body;
+    const { email, type = 'signup' } = req.body;
     console.log(`[Email Verification] Sending ${type} code to: ${email}`);
 
     const normalizedEmail = email.toLowerCase();
+    const verificationCode = generateVerificationCode();
     const expiresAt = new Date(Date.now() + config.emailVerification.expiresInMinutes * 60 * 1000);
 
     const { data: existingUser, error: findError } = await supabase
@@ -493,7 +742,7 @@ exports.sendEmailVerificationCode = async (req, res) => {
       .insert({
         user_id: existingUser.id,
         email: normalizedEmail,
-        code: code,
+        code: verificationCode,
         expires_at: expiresAt,
         resend_available_at: new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000),
         attempts: 0,
@@ -504,20 +753,30 @@ exports.sendEmailVerificationCode = async (req, res) => {
       throw codeError;
     }
 
-    // Send verification email asynchronously (don't wait for it)
-    setImmediate(async () => {
-      try {
-        await sendVerificationEmail(normalizedEmail, code, null, type);
-        console.log(`[Email Verification] ✓ ${type} email sent`);
-      } catch (emailError) {
-        console.warn(`[Email Verification] ⚠ Failed to send ${type} email:`, emailError.message);
-      }
-    });
+    try {
+      await sendVerificationEmail(normalizedEmail, verificationCode, null, type);
+      console.log(`[Email Verification] Verification email sent`);
+    } catch (emailError) {
+      await supabase
+        .from('email_verification_codes')
+        .delete()
+        .eq('user_id', existingUser.id)
+        .eq('email', normalizedEmail)
+        .eq('code', verificationCode);
 
-    res.json({
+      console.error(`[Email Verification] Failed to send ${type} email:`, emailError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification email. Please try again later.',
+      });
+    }
+
+    return res.json({
       success: true,
       message: 'Verification code sent successfully.',
+      ...devVerificationCodePayload(verificationCode),
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -527,7 +786,7 @@ exports.sendEmailVerificationCode = async (req, res) => {
 };
 
 // Send newly generated student credentials to the parent email address
-exports.sendStudentEnrollmentDetails = async (req, res) => {
+export const sendStudentEnrollmentDetails = async (req, res) => {
   try {
     const { parentEmail, childName, childUsername, childPassword, gradeLevel, readingLevel } = req.body;
     const learnerProfile = [
@@ -563,7 +822,7 @@ exports.sendStudentEnrollmentDetails = async (req, res) => {
 };
 
 // Verify Email
-exports.verifyEmail = async (req, res) => {
+export const verifyEmail = async (req, res) => {
   try {
     console.log('[Verify Email] Request body:', req.body);
     
@@ -574,7 +833,7 @@ exports.verifyEmail = async (req, res) => {
         success: false,
         message: 'Validation failed',
         errors: errors.array().map(err => ({
-          field: err.param,
+          field: err.path || err.param,
           message: err.msg,
         })),
       });
@@ -593,15 +852,33 @@ exports.verifyEmail = async (req, res) => {
 
     console.log('[Verify Email] Verifying code for:', normalizedEmail);
 
-    // Get user
-    const { data: user, error: userError } = await supabase
+    // Get user from Supabase profile table, or local fallback store when the
+    // profile table has not been created in this Supabase project yet.
+    let usingLocalProfileStore = false;
+    let user = null;
+    const { data: dbUser, error: userError } = await supabase
       .from('users')
       .select('id, email, display_name, first_name, last_name, role, email_verified')
       .eq('email', normalizedEmail)
       .single();
 
-    if (userError || !user) {
-      console.error('[Verify Email] User not found:', userError);
+    if (userError || !dbUser) {
+      if (isMissingSupabaseTableError(userError)) {
+        usingLocalProfileStore = true;
+        user = findLocalUserByEmail(normalizedEmail);
+        console.warn('[Verify Email] public.users table missing; using local profile store.');
+      } else {
+        console.error('[Verify Email] User not found:', userError);
+        return res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+      }
+    } else {
+      user = dbUser;
+    }
+
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
@@ -617,17 +894,38 @@ exports.verifyEmail = async (req, res) => {
     }
 
     // Get latest verification code record
-    const { data: codeRecord, error: codeError } = await supabase
-      .from('email_verification_codes')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('email', normalizedEmail)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    let codeRecord = null;
+    let codeError = null;
+    if (usingLocalProfileStore) {
+      codeRecord = getLatestLocalVerificationCode({ userId: user.id, email: normalizedEmail });
+    } else {
+      const codeResult = await supabase
+        .from('email_verification_codes')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('email', normalizedEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      codeRecord = codeResult.data;
+      codeError = codeResult.error;
+    }
 
     if (codeError) {
-      console.error('[Verify Email] No verification code found:', codeError);
+      if (isMissingSupabaseTableError(codeError)) {
+        usingLocalProfileStore = true;
+        codeRecord = getLatestLocalVerificationCode({ userId: user.id, email: normalizedEmail });
+        console.warn('[Verify Email] public.email_verification_codes table missing; using local code store.');
+      } else {
+        console.error('[Verify Email] No verification code found:', codeError);
+        return res.status(404).json({
+          success: false,
+          message: 'Verification code not found or has expired',
+        });
+      }
+    }
+
+    if (!codeRecord) {
       return res.status(404).json({
         success: false,
         message: 'Verification code not found or has expired',
@@ -647,10 +945,14 @@ exports.verifyEmail = async (req, res) => {
     if (codeRecord.code !== providedCode) {
       console.warn('[Verify Email] Invalid verification code provided');
       // Increment attempts
-      await supabase
-        .from('email_verification_codes')
-        .update({ attempts: (codeRecord.attempts || 0) + 1 })
-        .eq('id', codeRecord.id);
+      if (usingLocalProfileStore) {
+        incrementLocalVerificationAttempts(codeRecord.id);
+      } else {
+        await supabase
+          .from('email_verification_codes')
+          .update({ attempts: (codeRecord.attempts || 0) + 1 })
+          .eq('id', codeRecord.id);
+      }
       
       return res.status(400).json({
         success: false,
@@ -660,17 +962,28 @@ exports.verifyEmail = async (req, res) => {
 
     // Mark email as verified in database
     console.log('[Verify Email] Marking email verified for:', normalizedEmail);
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        email_verified: true,
-        verified_at: new Date().toISOString(),
-      })
-      .eq('id', user.id);
+    let updateError = null;
+    if (usingLocalProfileStore) {
+      user = markLocalUserVerified(user.id) || user;
+    } else {
+      const updateResult = await supabase
+        .from('users')
+        .update({
+          email_verified: true,
+          verified_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+      updateError = updateResult.error;
+    }
 
     if (updateError) {
-      console.error('[Verify Email] Failed to update user:', updateError);
-      throw updateError;
+      if (isMissingSupabaseTableError(updateError)) {
+        usingLocalProfileStore = true;
+        user = markLocalUserVerified(user.id) || user;
+      } else {
+        console.error('[Verify Email] Failed to update user:', updateError);
+        throw updateError;
+      }
     }
 
     // Also update Supabase Auth to mark email as confirmed
@@ -690,31 +1003,20 @@ exports.verifyEmail = async (req, res) => {
     }
 
     // Delete used verification code
-    await supabase
-      .from('email_verification_codes')
-      .delete()
-      .eq('id', codeRecord.id);
+    if (usingLocalProfileStore) {
+      deleteLocalVerificationCode(codeRecord.id);
+    } else {
+      await supabase
+        .from('email_verification_codes')
+        .delete()
+        .eq('id', codeRecord.id);
+    }
 
     console.log('[Verify Email] ✓ Email verified successfully');
-    // Generate a Supabase access token for the user so frontend can use it
-    try {
-      const { data: { session } = {}, error: sessionError } = await supabase.auth.admin.generateAccessTokenForUser(
-        user.id
-      );
-
-      if (sessionError || !session?.access_token) {
-        console.warn('[Verify Email] Failed to generate access token:', sessionError);
-        // Return success without token (frontend will redirect to login)
-        return res.json({
-          success: true,
-          message: 'Email verified successfully',
-        });
-      }
-
-      const token = session.access_token;
-
-      // Prepare user payload to return to frontend
-      const userPayload = {
+    return res.json({
+      success: true,
+      message: 'Email verified successfully',
+      user: {
         id: user.id,
         uid: user.id,
         email: user.email,
@@ -723,18 +1025,8 @@ exports.verifyEmail = async (req, res) => {
         lastName: user.last_name || null,
         role: user.role || null,
         emailVerified: true,
-      };
-
-      return res.json({
-        success: true,
-        message: 'Email verified successfully',
-        token,
-        user: userPayload,
-      });
-    } catch (tokenErr) {
-      console.error('[Verify Email] Token generation error:', tokenErr);
-      return res.json({ success: true, message: 'Email verified successfully' });
-    }
+      },
+    });
   } catch (error) {
     console.error('[Verify Email] Unexpected error:', error);
     res.status(500).json({
@@ -746,7 +1038,7 @@ exports.verifyEmail = async (req, res) => {
 
 // Resend Verification Code
 // Resend Verification Code
-exports.resendVerificationCode = async (req, res) => {
+export const resendVerificationCode = async (req, res) => {
   try {
     console.log('[Resend Verification] Request body:', req.body);
     
@@ -757,7 +1049,7 @@ exports.resendVerificationCode = async (req, res) => {
         success: false,
         message: 'Validation failed',
         errors: errors.array().map(err => ({
-          field: err.param,
+          field: err.path || err.param,
           message: err.msg,
         })),
       });
@@ -768,14 +1060,31 @@ exports.resendVerificationCode = async (req, res) => {
     console.log('[Resend Verification] Processing for:', normalizedEmail);
 
     // Get user
-    const { data: user, error: userError } = await supabase
+    let usingLocalProfileStore = false;
+    let user = null;
+    const { data: dbUser, error: userError } = await supabase
       .from('users')
       .select('id, email_verified')
       .eq('email', normalizedEmail)
       .single();
 
-    if (userError || !user) {
-      console.error('[Resend Verification] User not found:', userError);
+    if (userError || !dbUser) {
+      if (isMissingSupabaseTableError(userError)) {
+        usingLocalProfileStore = true;
+        user = findLocalUserByEmail(normalizedEmail);
+        console.warn('[Resend Verification] public.users table missing; using local profile store.');
+      } else {
+        console.error('[Resend Verification] User not found:', userError);
+        return res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+      }
+    } else {
+      user = dbUser;
+    }
+
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
@@ -798,14 +1107,27 @@ exports.resendVerificationCode = async (req, res) => {
     console.log('[Resend Verification] Checking last code for rate limit:', user.id);
 
     // Check last code for resend cooldown
-    const { data: lastCode, error: lastCodeError } = await supabase
-      .from('email_verification_codes')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('email', normalizedEmail)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    let lastCode = null;
+    let lastCodeError = null;
+    if (usingLocalProfileStore) {
+      lastCode = getLatestLocalVerificationCode({ userId: user.id, email: normalizedEmail });
+    } else {
+      const lastCodeResult = await supabase
+        .from('email_verification_codes')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('email', normalizedEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      lastCode = lastCodeResult.data;
+      lastCodeError = lastCodeResult.error;
+    }
+
+    if (isMissingSupabaseTableError(lastCodeError)) {
+      usingLocalProfileStore = true;
+      lastCode = getLatestLocalVerificationCode({ userId: user.id, email: normalizedEmail });
+    }
 
     if (!lastCodeError && lastCode && lastCode.resend_available_at) {
       const resendAt = new Date(lastCode.resend_available_at).getTime();
@@ -824,20 +1146,42 @@ exports.resendVerificationCode = async (req, res) => {
     console.log('[Resend Verification] Storing new code for:', user.id);
     
     // Store new code in email_verification_codes table
-    const { error: storeError } = await supabase
-      .from('email_verification_codes')
-      .insert({
-        user_id: user.id,
+    let storeError = null;
+    if (usingLocalProfileStore) {
+      createLocalVerificationCode({
+        userId: user.id,
         email: normalizedEmail,
         code: verificationCode,
-        expires_at: expiresAt,
-        resend_available_at: resendAvailableAt,
-        attempts: 0,
+        expiresAt,
+        resendAvailableAt,
       });
+    } else {
+      const storeResult = await supabase
+        .from('email_verification_codes')
+        .insert({
+          user_id: user.id,
+          email: normalizedEmail,
+          code: verificationCode,
+          expires_at: expiresAt,
+          resend_available_at: resendAvailableAt,
+          attempts: 0,
+        });
+      storeError = storeResult.error;
+    }
 
     if (storeError) {
-      console.error('[Resend Verification] Failed to store code:', storeError);
-      throw storeError;
+      if (isMissingSupabaseTableError(storeError)) {
+        createLocalVerificationCode({
+          userId: user.id,
+          email: normalizedEmail,
+          code: verificationCode,
+          expiresAt,
+          resendAvailableAt,
+        });
+      } else {
+        console.error('[Resend Verification] Failed to store code:', storeError);
+        throw storeError;
+      }
     }
 
     console.log('[Resend Verification] Sending email to:', normalizedEmail);
@@ -855,6 +1199,7 @@ exports.resendVerificationCode = async (req, res) => {
     res.json({
       success: true,
       message: 'Verification code sent to your email. Please check your inbox and spam folder.',
+      ...devVerificationCodePayload(verificationCode),
     });
   } catch (error) {
     console.error('[Resend Verification] Error:', error.message, error.stack);
@@ -867,7 +1212,7 @@ exports.resendVerificationCode = async (req, res) => {
 };
 
 // Login - Authenticate with Supabase Auth and return profile data
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   try {
     console.log('[Login] Request received');
     console.log('   Body:', req.body);
@@ -901,18 +1246,36 @@ exports.login = async (req, res) => {
 
     console.log('[Login] Auth successful, fetching profile for user id:', authData.user.id);
 
-    const { data: userData, error: userError } = await supabase
+    let userData = null;
+    const { data: dbUserData, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('id', authData.user.id)
       .single();
 
-    if (userError || !userData) {
-      console.error('[Login] User profile not found for auth user id:', authData.user.id, userError?.message || 'no profile');
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch user profile',
-      });
+    if (userError || !dbUserData) {
+      if (isMissingSupabaseTableError(userError)) {
+        console.warn('[Login] public.users table missing; using local profile/auth metadata.');
+        userData = findLocalUserByEmail(normalizedEmail) || {
+          id: authData.user.id,
+          email: authData.user.email,
+          display_name: authData.user.user_metadata?.displayName,
+          first_name: authData.user.user_metadata?.firstName,
+          last_name: authData.user.user_metadata?.lastName,
+          role: authData.user.user_metadata?.role || 'parent',
+          email_verified: Boolean(authData.user.email_confirmed_at || authData.user.user_metadata?.emailVerified),
+          account_status: 'active',
+          is_active: true,
+        };
+      } else {
+        console.error('[Login] User profile not found for auth user id:', authData.user.id, userError?.message || 'no profile');
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to fetch user profile',
+        });
+      }
+    } else {
+      userData = dbUserData;
     }
 
     const accountStatus = userData.account_status || 'active';
@@ -966,7 +1329,7 @@ exports.login = async (req, res) => {
 };
 
 // Send OTP for Login (2FA)
-exports.sendLoginOTP = async (req, res) => {
+export const sendLoginOTP = async (req, res) => {
   try {
     console.log('[Send Login OTP] Request received');
     console.log('   Body:', req.body);
@@ -985,19 +1348,59 @@ exports.sendLoginOTP = async (req, res) => {
 
     console.log('[Send Login OTP] Processing for:', normalizedEmail);
 
-    // Get user from database (case-insensitive email lookup)
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .ilike('email', normalizedEmail)
-      .single();
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required',
+      });
+    }
 
-    if (userError || !userData) {
-      console.log('[Send Login OTP] User not found:', normalizedEmail);
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (authError || !authData?.user) {
+      console.error('[Send Login OTP] Supabase authentication failed:', authError?.message || authError);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
       });
+    }
+
+    // Get user from database, or local fallback store when public.users is not present.
+    let usingLocalProfileStore = false;
+    let userData = null;
+    const { data: dbUserData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single();
+
+    if (userError || !dbUserData) {
+      if (isMissingSupabaseTableError(userError)) {
+        usingLocalProfileStore = true;
+        userData = findLocalUserByEmail(normalizedEmail) || {
+          id: authData.user.id,
+          email: authData.user.email,
+          display_name: authData.user.user_metadata?.displayName,
+          first_name: authData.user.user_metadata?.firstName,
+          last_name: authData.user.user_metadata?.lastName,
+          role: authData.user.user_metadata?.role || 'parent',
+          email_verified: Boolean(authData.user.email_confirmed_at || authData.user.user_metadata?.emailVerified),
+          account_status: 'active',
+          is_active: true,
+        };
+        console.warn('[Send Login OTP] public.users table missing; using local/auth profile data.');
+      } else {
+        console.log('[Send Login OTP] User not found:', normalizedEmail);
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password',
+        });
+      }
+    } else {
+      userData = dbUserData;
     }
 
     if (userData.role === 'admin') {
@@ -1034,20 +1437,42 @@ exports.sendLoginOTP = async (req, res) => {
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Store OTP in email_verification_codes table for login
-    const { error: storeError } = await supabase
-      .from('email_verification_codes')
-      .insert({
-        user_id: userData.id,
+    let storeError = null;
+    if (usingLocalProfileStore) {
+      createLocalVerificationCode({
+        userId: userData.id,
         email: normalizedEmail,
         code: otpCode,
-        expires_at: otpExpires,
-        resend_available_at: new Date(Date.now() + 60 * 1000), // 1 minute cooldown
-        attempts: 0,
+        expiresAt: otpExpires,
+        resendAvailableAt: new Date(Date.now() + 60 * 1000),
       });
+    } else {
+      const storeResult = await supabase
+        .from('email_verification_codes')
+        .insert({
+          user_id: userData.id,
+          email: normalizedEmail,
+          code: otpCode,
+          expires_at: otpExpires,
+          resend_available_at: new Date(Date.now() + 60 * 1000), // 1 minute cooldown
+          attempts: 0,
+        });
+      storeError = storeResult.error;
+    }
 
     if (storeError) {
-      console.error('[Send Login OTP] Failed to store OTP:', storeError);
-      throw storeError;
+      if (isMissingSupabaseTableError(storeError)) {
+        createLocalVerificationCode({
+          userId: userData.id,
+          email: normalizedEmail,
+          code: otpCode,
+          expiresAt: otpExpires,
+          resendAvailableAt: new Date(Date.now() + 60 * 1000),
+        });
+      } else {
+        console.error('[Send Login OTP] Failed to store OTP:', storeError);
+        throw storeError;
+      }
     }
 
     console.log('[Send Login OTP] Generated OTP for:', normalizedEmail);
@@ -1068,6 +1493,7 @@ exports.sendLoginOTP = async (req, res) => {
       success: true,
       message: 'OTP sent to your email',
       emailSent: true,
+      ...devVerificationCodePayload(otpCode),
     });
   } catch (error) {
     console.error('[Send Login OTP] Error:', error.message, error.stack);
@@ -1079,7 +1505,7 @@ exports.sendLoginOTP = async (req, res) => {
 };
 
 // Verify Login OTP
-exports.verifyLoginOTP = async (req, res) => {
+export const verifyLoginOTP = async (req, res) => {
   try {
     console.log('[Verify Login OTP] Request received');
     console.log('   Body:', req.body);
@@ -1099,14 +1525,31 @@ exports.verifyLoginOTP = async (req, res) => {
     console.log('[Verify Login OTP] Verifying OTP for:', normalizedEmail);
 
     // Get user
-    const { data: userData, error: userError } = await supabase
+    let usingLocalProfileStore = false;
+    let userData = null;
+    const { data: dbUserData, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('email', normalizedEmail)
       .single();
 
-    if (userError || !userData) {
-      console.error('[Verify Login OTP] User not found:', userError);
+    if (userError || !dbUserData) {
+      if (isMissingSupabaseTableError(userError)) {
+        usingLocalProfileStore = true;
+        userData = findLocalUserByEmail(normalizedEmail);
+        console.warn('[Verify Login OTP] public.users table missing; using local profile store.');
+      } else {
+        console.error('[Verify Login OTP] User not found:', userError);
+        return res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+      }
+    } else {
+      userData = dbUserData;
+    }
+
+    if (!userData) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
@@ -1122,21 +1565,36 @@ exports.verifyLoginOTP = async (req, res) => {
     }
 
     // Get latest OTP record
-    const { data: otpRecord, error: otpError } = await supabase
-      .from('email_verification_codes')
-      .select('*')
-      .eq('user_id', userData.id)
-      .eq('email', normalizedEmail)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    let otpRecord = null;
+    let otpError = null;
+    if (usingLocalProfileStore) {
+      otpRecord = getLatestLocalVerificationCode({ userId: userData.id, email: normalizedEmail });
+    } else {
+      const otpResult = await supabase
+        .from('email_verification_codes')
+        .select('*')
+        .eq('user_id', userData.id)
+        .eq('email', normalizedEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      otpRecord = otpResult.data;
+      otpError = otpResult.error;
+    }
 
     if (otpError || !otpRecord) {
-      console.error('[Verify Login OTP] No OTP found:', otpError);
-      return res.status(404).json({
-        success: false,
-        message: 'OTP not found or has expired',
-      });
+      if (isMissingSupabaseTableError(otpError)) {
+        usingLocalProfileStore = true;
+        otpRecord = getLatestLocalVerificationCode({ userId: userData.id, email: normalizedEmail });
+      }
+
+      if (!otpRecord) {
+        console.error('[Verify Login OTP] No OTP found:', otpError);
+        return res.status(404).json({
+          success: false,
+          message: 'OTP not found or has expired',
+        });
+      }
     }
 
     // Check expiration
@@ -1162,10 +1620,14 @@ exports.verifyLoginOTP = async (req, res) => {
       console.warn('[Verify Login OTP] Invalid OTP provided');
 
       // Increment attempts
-      await supabase
-        .from('email_verification_codes')
-        .update({ attempts: (otpRecord.attempts || 0) + 1 })
-        .eq('id', otpRecord.id);
+      if (usingLocalProfileStore) {
+        incrementLocalVerificationAttempts(otpRecord.id);
+      } else {
+        await supabase
+          .from('email_verification_codes')
+          .update({ attempts: (otpRecord.attempts || 0) + 1 })
+          .eq('id', otpRecord.id);
+      }
 
       return res.status(400).json({
         success: false,
@@ -1177,10 +1639,14 @@ exports.verifyLoginOTP = async (req, res) => {
     console.log('[Verify Login OTP] ✓ OTP verified for:', normalizedEmail);
 
     // Delete used OTP
-    await supabase
-      .from('email_verification_codes')
-      .delete()
-      .eq('id', otpRecord.id);
+    if (usingLocalProfileStore) {
+      deleteLocalVerificationCode(otpRecord.id);
+    } else {
+      await supabase
+        .from('email_verification_codes')
+        .delete()
+        .eq('id', otpRecord.id);
+    }
 
     // Issue a Supabase-compatible session token so `server/middleware/auth.js` can validate it.
     // We mint a short-lived custom JWT signed by the Supabase secret.
@@ -1228,7 +1694,7 @@ exports.verifyLoginOTP = async (req, res) => {
 };
 
 // Resend Login OTP (for existing login attempts)
-exports.resendLoginOTP = async (req, res) => {
+export const resendLoginOTP = async (req, res) => {
   try {
     console.log('[Resend Login OTP] Request received');
     console.log('   Body:', req.body);
@@ -1248,14 +1714,31 @@ exports.resendLoginOTP = async (req, res) => {
     console.log('[Resend Login OTP] Processing for:', normalizedEmail);
 
     // Get user from database
-    const { data: userData, error: userError } = await supabase
+    let usingLocalProfileStore = false;
+    let userData = null;
+    const { data: dbUserData, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('email', normalizedEmail)
       .single();
 
-    if (userError || !userData) {
-      console.log('[Resend Login OTP] User not found:', normalizedEmail);
+    if (userError || !dbUserData) {
+      if (isMissingSupabaseTableError(userError)) {
+        usingLocalProfileStore = true;
+        userData = findLocalUserByEmail(normalizedEmail);
+        console.warn('[Resend Login OTP] public.users table missing; using local profile store.');
+      } else {
+        console.log('[Resend Login OTP] User not found:', normalizedEmail);
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email',
+        });
+      }
+    } else {
+      userData = dbUserData;
+    }
+
+    if (!userData) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email',
@@ -1273,14 +1756,27 @@ exports.resendLoginOTP = async (req, res) => {
     }
 
     // Check for existing OTP and rate limiting
-    const { data: existingOtp, error: otpError } = await supabase
-      .from('email_verification_codes')
-      .select('*')
-      .eq('user_id', userData.id)
-      .eq('email', normalizedEmail)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    let existingOtp = null;
+    let otpError = null;
+    if (usingLocalProfileStore) {
+      existingOtp = getLatestLocalVerificationCode({ userId: userData.id, email: normalizedEmail });
+    } else {
+      const otpResult = await supabase
+        .from('email_verification_codes')
+        .select('*')
+        .eq('user_id', userData.id)
+        .eq('email', normalizedEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      existingOtp = otpResult.data;
+      otpError = otpResult.error;
+    }
+
+    if (isMissingSupabaseTableError(otpError)) {
+      usingLocalProfileStore = true;
+      existingOtp = getLatestLocalVerificationCode({ userId: userData.id, email: normalizedEmail });
+    }
 
     if (existingOtp && !otpError) {
       // Check rate limit (60 seconds cooldown)
@@ -1299,10 +1795,14 @@ exports.resendLoginOTP = async (req, res) => {
       }
 
       // Delete old OTP
-      await supabase
-        .from('email_verification_codes')
-        .delete()
-        .eq('id', existingOtp.id);
+      if (usingLocalProfileStore) {
+        deleteLocalVerificationCode(existingOtp.id);
+      } else {
+        await supabase
+          .from('email_verification_codes')
+          .delete()
+          .eq('id', existingOtp.id);
+      }
     }
 
     // Generate new OTP code
@@ -1310,20 +1810,42 @@ exports.resendLoginOTP = async (req, res) => {
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Store new OTP in email_verification_codes table
-    const { error: storeError } = await supabase
-      .from('email_verification_codes')
-      .insert({
-        user_id: userData.id,
+    let storeError = null;
+    if (usingLocalProfileStore) {
+      createLocalVerificationCode({
+        userId: userData.id,
         email: normalizedEmail,
         code: otpCode,
-        expires_at: otpExpires,
-        resend_available_at: new Date(Date.now() + 60 * 1000), // 1 minute cooldown
-        attempts: 0,
+        expiresAt: otpExpires,
+        resendAvailableAt: new Date(Date.now() + 60 * 1000),
       });
+    } else {
+      const storeResult = await supabase
+        .from('email_verification_codes')
+        .insert({
+          user_id: userData.id,
+          email: normalizedEmail,
+          code: otpCode,
+          expires_at: otpExpires,
+          resend_available_at: new Date(Date.now() + 60 * 1000), // 1 minute cooldown
+          attempts: 0,
+        });
+      storeError = storeResult.error;
+    }
 
     if (storeError) {
-      console.error('[Resend Login OTP] Failed to store OTP:', storeError);
-      throw storeError;
+      if (isMissingSupabaseTableError(storeError)) {
+        createLocalVerificationCode({
+          userId: userData.id,
+          email: normalizedEmail,
+          code: otpCode,
+          expiresAt: otpExpires,
+          resendAvailableAt: new Date(Date.now() + 60 * 1000),
+        });
+      } else {
+        console.error('[Resend Login OTP] Failed to store OTP:', storeError);
+        throw storeError;
+      }
     }
 
     console.log('[Resend Login OTP] Generated new OTP for:', normalizedEmail);
@@ -1343,6 +1865,7 @@ exports.resendLoginOTP = async (req, res) => {
       success: true,
       message: 'OTP sent successfully',
       emailSent: true,
+      ...devVerificationCodePayload(otpCode),
     });
   } catch (error) {
     console.error('[Resend Login OTP] Error:', error.message, error.stack);
@@ -1354,7 +1877,7 @@ exports.resendLoginOTP = async (req, res) => {
 };
 
 // Forgot Password - Request Reset Code
-exports.forgotPassword = async (req, res) => {
+export const forgotPassword = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1404,7 +1927,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 // Reset Password - Verify Code and Set New Password
-exports.resetPassword = async (req, res) => {
+export const resetPassword = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1460,7 +1983,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 // Verify Reset Code Only
-exports.verifyResetCode = async (req, res) => {
+export const verifyResetCode = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1508,3 +2031,28 @@ exports.verifyResetCode = async (req, res) => {
     });
   }
 };
+
+export default {
+  register,
+  createProfile,
+  sendStudentEnrollmentDetails,
+  sendEmailVerificationCode,
+  verifyEmail,
+  resendVerificationCode,
+  login,
+  sendLoginOTP,
+  verifyLoginOTP,
+  resendLoginOTP,
+  forgotPassword,
+  resetPassword,
+  verifyResetCode,
+};
+
+
+
+
+
+
+
+
+

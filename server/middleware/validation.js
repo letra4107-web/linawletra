@@ -3,15 +3,16 @@
  * Uses express-validator for robust server-side validation
  */
 
-const { body, validationResult, query, param } = require('express-validator');
-const validator = require('validator');
+import { body, validationResult, query, param } from 'express-validator';
+import validator from 'validator';
+
 
 // Middleware to handle validation result
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const errorArray = errors.array().map((err) => ({
-      field: err.param,
+      field: err.path || err.param,
       message: err.msg,
     }));
     console.error('❌ Validation error on', req.path);
@@ -59,14 +60,7 @@ const validateRegister = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail()
-    .custom(async (email) => {
-      const User = require('../models/User');
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        throw new Error('Email already registered');
-      }
-    }),
+    .normalizeEmail(),
   
   body('password')
     .notEmpty().withMessage('Password is required')
@@ -331,7 +325,7 @@ const validateStudentEnrollment = [
     .isIn(['male', 'female', 'other']).withMessage('Invalid gender selection'),
 ];
 
-module.exports = {
+export {
   handleValidationErrors,
   validateRegister,
   validateLogin,
@@ -350,3 +344,4 @@ module.exports = {
   validateStudentEnrollment,
   sanitizeInput,
 };
+

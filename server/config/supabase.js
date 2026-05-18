@@ -1,15 +1,28 @@
-const path = require('path');
-const dotenv = require('dotenv');
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 [path.resolve(__dirname, '../.env'), path.resolve(__dirname, '.env'), path.resolve(__dirname, '../.env.local'), path.resolve(__dirname, '.env.local')].forEach((envPath) => {
   dotenv.config({ path: envPath, override: false });
 });
 
-const { createClient } = require('@supabase/supabase-js');
+const normalizeSupabaseUrl = (url) => {
+  return String(url || '')
+    .trim()
+    .replace(/\/rest\/v1\/?$/i, '')
+    .replace(/\/+$/, '');
+};
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || 'https://uwuiinbbrhnwswmtlskp.supabase.co';
+const supabaseUrl = normalizeSupabaseUrl(
+  process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || 'https://uwuiinbbrhnwswmtlskp.supabase.co'
+);
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+
 
 // ============================================================================
 // IMPORTANT: Service Role Key Configuration
@@ -92,8 +105,5 @@ const getSupabaseAnonClient = () => {
 // Default export uses service role for backend
 const supabase = getSupabaseServiceClient();
 
-module.exports = { 
-  supabase,
-  getSupabaseServiceClient,
-  getSupabaseAnonClient,
-};
+export { supabase, getSupabaseServiceClient, getSupabaseAnonClient };
+

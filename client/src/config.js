@@ -4,7 +4,28 @@
  */
 
 const getApiBaseUrl = () => {
-  return process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5000/api';
+  const configuredUrl = process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5002/api';
+
+  if (typeof window === 'undefined') {
+    return configuredUrl;
+  }
+
+  try {
+    const apiUrl = new URL(configuredUrl);
+    const pageHost = window.location.hostname;
+    const apiHostIsLocal = apiUrl.hostname === 'localhost' || apiUrl.hostname === '127.0.0.1';
+    const pageHostIsLocal = pageHost === 'localhost' || pageHost === '127.0.0.1';
+
+    if (apiHostIsLocal && !pageHostIsLocal) {
+      apiUrl.hostname = pageHost;
+      apiUrl.protocol = window.location.protocol;
+      return apiUrl.toString().replace(/\/$/, '');
+    }
+  } catch (error) {
+    console.warn('Invalid API base URL:', configuredUrl, error);
+  }
+
+  return configuredUrl;
 };
 
 const config = {
