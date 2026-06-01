@@ -1,31 +1,6 @@
 import axios from 'axios';
 
-const getApiBaseUrl = () => {
-  const configuredUrl = process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5002/api';
-
-  if (typeof window === 'undefined') {
-    return configuredUrl;
-  }
-
-  try {
-    const apiUrl = new URL(configuredUrl);
-    const pageHost = window.location.hostname;
-    const apiHostIsLocal = apiUrl.hostname === 'localhost' || apiUrl.hostname === '127.0.0.1';
-    const pageHostIsLocal = pageHost === 'localhost' || pageHost === '127.0.0.1';
-
-    if (apiHostIsLocal && !pageHostIsLocal) {
-      apiUrl.hostname = pageHost;
-      apiUrl.protocol = window.location.protocol;
-      return apiUrl.toString().replace(/\/$/, '');
-    }
-  } catch (error) {
-    console.warn('Invalid API base URL:', configuredUrl, error);
-  }
-
-  return configuredUrl;
-};
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:5002/api';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -40,13 +15,17 @@ axiosInstance.interceptors.request.use(async (config) => {
     if (session?.access_token && !error) {
       config.headers.Authorization = `Bearer ${session.access_token}`;
     } else {
-      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      const storedToken = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (storedToken) {
+        config.headers.Authorization = `Bearer ${storedToken}`;
       }
     }
   } catch (error) {
     console.error('Error getting auth token:', error);
+    const storedToken = localStorage.getItem('authToken') || localStorage.getItem('token');
+    if (storedToken) {
+      config.headers.Authorization = `Bearer ${storedToken}`;
+    }
   }
   return config;
 });
@@ -82,6 +61,8 @@ axiosInstance.interceptors.response.use(
     if (error.response) {
       // Server responded with error status
       const { status, data } = error.response;
+      const authEndpointPatterns = ['/auth', '/signup', '/login', 'auth/v1'];
+      const isAuthEndpoint = config.url && authEndpointPatterns.some((pattern) => config.url.includes(pattern));
 
       const createError = (message, statusCode) => {
         const err = new Error(message);
@@ -98,12 +79,14 @@ axiosInstance.interceptors.response.use(
       if (status === 401) {
         if (!isAuthEndpoint) {
           localStorage.removeItem('token');
+          localStorage.removeItem('authToken');
           localStorage.removeItem('user');
+
           window.location.href = '/login';
           throw createError('Session expired. Please log in again.', 401);
         }
 
-        throw createError(data?.message || data?.error || 'Invalid email or password', 401);
+        throw createError(data?.message || 'Invalid email or password.', 401);
       }
 
       if (status === 403) {
@@ -145,10 +128,7 @@ export const authService = {
   sendStudentEnrollmentEmail: (data) => axiosInstance.post('/auth/send-student-enrollment-email', data),
   resendVerificationCode: (email) => axiosInstance.post('/auth/resend-verification-code', { email }),
   login: (data) => axiosInstance.post('/auth/login', data),
-  sendLoginOTP: (data) => {
-    const payload = typeof data === 'string' ? { email: data } : data;
-    return axiosInstance.post('/auth/send-login-otp', payload);
-  },
+  sendLoginOTP: (data) => axiosInstance.post('/auth/send-login-otp', typeof data === 'string' ? { email: data } : data),
   verifyLoginOTP: (data) => axiosInstance.post('/auth/verify-login-otp', data),
   createProfile: (data) => axiosInstance.post('/auth/create-profile', data),
   resendLoginOTP: (email) => axiosInstance.post('/auth/resend-login-otp', { email }),
@@ -184,7 +164,7 @@ export const studentService = {
     };
   },
   getAllStudents: async () => {
-    const res = await axiosInstance.get('/students');
+    const res = await axiosInstance.get('/students/all');
     return {
       ...res,
       data: res.data?.data?.students ?? res.data?.students ?? res.data,
@@ -204,9 +184,7 @@ export const lessonService = {
   getLessons: (params) => axiosInstance.get('/lessons', { params }),
   getAllLessons: () => axiosInstance.get('/lessons'),
   getLesson: (id) => axiosInstance.get(`/lessons/${id}`),
-  createLesson: (data) => axiosInstance.post('/lessons', data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
+  createLesson: (data) => axiosInstance.post('/lessons', data),
   updateLesson: (id, data) => axiosInstance.put(`/lessons/${id}`, data),
   deleteLesson: (id) => axiosInstance.delete(`/lessons/${id}`),
 };
@@ -274,9 +252,25 @@ export const speechService = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
-  textToSpeech: (text) => axiosInstance.post('/speech/tts', { text }, {
+  textToSpeech: (text, options = {}) => axiosInstance.post('/speech/tts', { text, ...options }, {
     responseType: 'blob' // For audio data
   }),
+};
+
+// Reading Assistant Service
+export const readingService = {
+  previewMaterial: (formData) => axiosInstance.post('/reading/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  }),
+  uploadMaterial: (formData) => axiosInstance.post('/reading/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  }),
+  getMaterials: () => axiosInstance.get('/reading/materials'),
+  getMaterial: (id) => axiosInstance.get(`/reading/materials/${id}`),
+  saveAttempt: (data) => axiosInstance.post('/reading/attempts', data),
+  getAnalytics: () => axiosInstance.get('/reading/analytics'),
 };
 
 export default axiosInstance;

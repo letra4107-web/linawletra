@@ -5,6 +5,7 @@ const {
   updateAssessmentScores,
   getAssessmentByStudent,
   getAssessmentsByParent,
+  getAssessments,
 } = require('../controllers/assessmentController');
 
 const router = express.Router();
@@ -18,7 +19,7 @@ router.put('/:assessmentId', authMiddleware, updateAssessmentScores);
 // Get assessment by student
 router.get('/student/:studentId', authMiddleware, getAssessmentByStudent);
 
-// Get all assessments for parent
-router.get('/', authMiddleware, roleMiddleware('parent'), getAssessmentsByParent);
+// Get assessments visible to the signed-in user
+router.get('/', authMiddleware, roleMiddleware('parent', 'teacher', 'admin'), getAssessments);
 
 module.exports = router;

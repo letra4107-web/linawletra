@@ -1,5 +1,6 @@
 const Assessment = require('../models/Assessment');
 const Student = require('../models/Student');
+const { supabase } = require('../config/supabase');
 
 async function assertParentOwnsStudent(req, studentId) {
   if (req.user?.role !== 'parent') return true;
@@ -7,6 +8,42 @@ async function assertParentOwnsStudent(req, studentId) {
   if (!student) return false;
   return student.parentId?.toString() === req.user.id;
 }
+
+const sortByCreatedDate = (items = []) =>
+  [...items].sort((a, b) => new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0));
+
+const attachStudentNames = async (assessments = []) => {
+  const studentIds = [...new Set((assessments || []).map((item) => item.studentId || item.student_id).filter(Boolean))];
+  if (!studentIds.length) return assessments;
+
+  const { data: students } = await supabase
+    .from('students')
+    .select('id,user_id,grade_level,reading_level')
+    .in('id', studentIds);
+
+  const userIds = [...new Set((students || []).map((student) => student.user_id).filter(Boolean))];
+  const { data: users } = userIds.length
+    ? await supabase.from('users').select('id,name,email,metadata').in('id', userIds)
+    : { data: [] };
+
+  const usersById = new Map((users || []).map((user) => [user.id, user]));
+  const studentsById = new Map((students || []).map((student) => [student.id, student]));
+
+  return assessments.map((assessment) => {
+    const studentId = assessment.studentId || assessment.student_id;
+    const student = studentsById.get(studentId);
+    const user = student ? usersById.get(student.user_id) : null;
+    return {
+      ...assessment,
+      studentName: user?.name || user?.metadata?.displayName || user?.email || 'Student',
+      grade: student?.grade_level || assessment.grade || '',
+      tier: assessment.tier || student?.reading_level || 'Tier 1',
+      date: assessment.completedAt || assessment.createdAt || assessment.created_at,
+      score: assessment.overallScore ?? assessment.overall_score ?? assessment.score,
+      status: assessment.completedAt || assessment.completed_at ? 'Completed' : 'Pending',
+    };
+  });
+};
 
 // Create assessment
 exports.createAssessment = async (req, res) => {
@@ -115,7 +152,8 @@ exports.getAssessmentByStudent = async (req, res) => {
       return res.status(403).json({ message: 'You do not have permission to access this student assessment' });
     }
 
-    const assessment = await Assessment.findOne({ studentId }).sort({ createdAt: -1 });
+    const assessments = sortByCreatedDate(await Assessment.find({ studentId }));
+    const assessment = assessments[0];
 
     if (!assessment) {
       return res.status(404).json({ message: 'Assessment not found' });
@@ -131,8 +169,25 @@ exports.getAssessmentByStudent = async (req, res) => {
 exports.getAssessmentsByParent = async (req, res) => {
   try {
     const parentId = req.user.id;
-    const assessments = await Assessment.find({ parentId }).populate('studentId', 'name');
+    const assessments = await attachStudentNames(sortByCreatedDate(await Assessment.find({ parentId })));
     res.json(assessments);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getAssessments = async (req, res) => {
+  try {
+    let assessments = [];
+
+    if (req.user.role === 'parent') {
+      assessments = await Assessment.find({ parentId: req.user.id });
+    } else {
+      assessments = await Assessment.find({});
+    }
+
+    assessments = await attachStudentNames(sortByCreatedDate(assessments));
+    res.json({ assessments });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

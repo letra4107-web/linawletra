@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FiArrowRight, FiBookOpen, FiMail, FiUser, FiLock } from 'react-icons/fi';
+import { FiArrowLeft, FiArrowRight, FiBookOpen, FiMail, FiUser, FiLock } from 'react-icons/fi';
 // Use backend auth service for registration
 import { authService } from '../services/api';
 import {
@@ -313,6 +313,10 @@ export default function Register() {
         </aside>
 
         <main className={styles.formColumn}>
+          <button type="button" className={styles.backHomeButton} onClick={() => navigate('/')}>
+            <FiArrowLeft aria-hidden="true" />
+            Back to Home
+          </button>
           <div className={styles.pageBrand}>
             <img src="/logo.png" alt="LinawLetra logo" className={styles.brandLogo} />
             <span className={styles.brandName}>LinawLetra</span>

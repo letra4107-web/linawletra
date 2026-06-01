@@ -5,6 +5,7 @@ const {
   updateProgress,
   getProgressByStudent,
   getDashboardData,
+  getProgressReports,
 } = require('../controllers/progressController');
 
 const router = express.Router();
@@ -17,6 +18,9 @@ router.put('/:progressId', authMiddleware, updateProgress);
 
 // Get progress by student
 router.get('/student/:studentId', authMiddleware, getProgressByStudent);
+
+// Get teacher/admin progress reports
+router.get('/reports', authMiddleware, getProgressReports);
 
 // Get dashboard data
 router.get('/dashboard/:studentId', authMiddleware, getDashboardData);

@@ -33,12 +33,22 @@ import LessonComponent from './components/LessonComponent';
 import AssessmentsPage from './pages/AssessmentsPage';
 import MyStudentsPage from './pages/MyStudentsPage';
 import LearningPathsPage from './pages/LearningPathsPage';
-import TeacherLessonsPage from './pages/TeacherLessonsPage';
 import TeacherSchedulesPage from './pages/TeacherSchedulesPage';
 import TeacherProgressPage from './pages/TeacherProgressPage';
-import TeacherActivitiesPage from './pages/TeacherActivitiesPage';
 import TeacherSettingsPage from './pages/TeacherSettingsPage';
+import TeacherReadingMaterials from './pages/TeacherReadingMaterials';
+import StudentReadingAssistant from './pages/StudentReadingAssistant';
 import './index.css';
+
+const isSystemGeneratedStudentEmail = (email = '') => {
+  const normalizedEmail = String(email).toLowerCase();
+  return normalizedEmail.endsWith('@linaw.local') || normalizedEmail.endsWith('@student.linawletra.ph');
+};
+
+const needsEmailVerification = (user) =>
+  !user?.emailVerified &&
+  user?.role !== 'student' &&
+  !isSystemGeneratedStudentEmail(user?.email);
 
 function PrivateRoute({ children, allowedRoles = [] }) {
   const { user, loading } = useContext(AuthContext);
@@ -47,7 +57,7 @@ function PrivateRoute({ children, allowedRoles = [] }) {
 
   if (!user) return <Navigate to="/login" />;
 
-  const requiresEmailVerification = !user.emailVerified;
+  const requiresEmailVerification = needsEmailVerification(user);
 
   if (requiresEmailVerification) {
     return (
@@ -74,7 +84,7 @@ function RoleBasedRedirect() {
 
   if (!user) return <Navigate to="/login" />;
 
-  if (!user.emailVerified) {
+  if (needsEmailVerification(user)) {
     return (
       <Navigate
         to="/verify-email"
@@ -150,20 +160,26 @@ function AppRoutes() {
         <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
         <Route path="/students" element={<PrivateRoute allowedRoles={['parent', 'admin']}><StudentManagement /></PrivateRoute>} />
         <Route path="/assessment/:assessmentId" element={<PrivateRoute allowedRoles={['student', 'teacher', 'parent']}><AssessmentComponent /></PrivateRoute>} />
+        <Route path="/lessons/:lessonId" element={<PrivateRoute allowedRoles={['teacher', 'admin']}><LessonComponent /></PrivateRoute>} />
         <Route path="/lesson/:lessonId/:studentId" element={<PrivateRoute allowedRoles={['student', 'teacher', 'parent']}><LessonComponent /></PrivateRoute>} />
 
         <Route path="/teacher/assessments" element={<PrivateRoute allowedRoles={['teacher']}><AssessmentsPage /></PrivateRoute>} />
         <Route path="/teacher/students" element={<PrivateRoute allowedRoles={['teacher']}><MyStudentsPage /></PrivateRoute>} />
+        <Route path="/teacher/class-roster" element={<PrivateRoute allowedRoles={['teacher']}><MyStudentsPage /></PrivateRoute>} />
         <Route path="/teacher/learning-paths" element={<PrivateRoute allowedRoles={['teacher']}><LearningPathsPage /></PrivateRoute>} />
-        <Route path="/teacher/lessons" element={<PrivateRoute allowedRoles={['teacher']}><TeacherLessonsPage /></PrivateRoute>} />
+        <Route path="/teacher/learning-paths/:pathId" element={<PrivateRoute allowedRoles={['teacher']}><LearningPathsPage /></PrivateRoute>} />
         <Route path="/teacher/schedules" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSchedulesPage /></PrivateRoute>} />
+        <Route path="/teacher/assignments" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSchedulesPage /></PrivateRoute>} />
         <Route path="/teacher/progress" element={<PrivateRoute allowedRoles={['teacher']}><TeacherProgressPage /></PrivateRoute>} />
-        <Route path="/teacher/activities" element={<PrivateRoute allowedRoles={['teacher']}><TeacherActivitiesPage /></PrivateRoute>} />
+        <Route path="/teacher/reading" element={<PrivateRoute allowedRoles={['teacher']}><TeacherReadingMaterials /></PrivateRoute>} />
+        <Route path="/teacher/modules" element={<PrivateRoute allowedRoles={['teacher']}><TeacherReadingMaterials /></PrivateRoute>} />
         <Route path="/teacher/settings" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSettingsPage /></PrivateRoute>} />
+        <Route path="/teacher/messages" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSettingsPage /></PrivateRoute>} />
         <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
         <Route path="/parent/schedules" element={<PrivateRoute allowedRoles={['parent']}><Schedules /></PrivateRoute>} />
 
         <Route path="/student/lessons" element={<Navigate to="/student-dashboard" replace />} />
+        <Route path="/student/learn" element={<PrivateRoute allowedRoles={['student']}><StudentReadingAssistant /></PrivateRoute>} />
         <Route path="/student/assessments" element={<Navigate to="/student-dashboard" replace />} />
         <Route path="/student/progress" element={<Navigate to="/student-dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

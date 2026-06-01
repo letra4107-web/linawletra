@@ -66,7 +66,7 @@ export const registerUser = async (email, password, userData) => {
     const displayName = buildDisplayName(userData);
     
     // Get backend API URL
-    const baseUrl = process.env.REACT_APP_API_URL;
+    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5002/api';
     const apiUrl = baseUrl.endsWith('/api') 
       ? baseUrl 
       : `${baseUrl}/api`;
@@ -141,7 +141,7 @@ export const registerUser = async (email, password, userData) => {
     } else if (error.message?.includes('email')) {
       errorMessage = 'Invalid email address';
     } else if (error.message?.includes('not running') || error.message?.includes('ECONNREFUSED')) {
-      errorMessage = 'Backend server is not running. Please ensure REACT_APP_API_URL is set.';
+      errorMessage = 'Backend server is not running on http://localhost:5002';
     } else if (error.message?.includes('Failed to fetch') || error.message?.includes('fetch')) {
       errorMessage = 'Cannot connect to backend. Check CORS and server status.';
     } else if (error.message) {
@@ -208,13 +208,12 @@ export const loginUser = async (email, password) => {
       user: {
         id: data.user.id,
         email: data.user.email,
-        displayName: userProfile?.display_name,
-        firstName: userProfile?.first_name,
-        lastName: userProfile?.last_name,
+        displayName: userProfile?.metadata?.displayName || userProfile?.name,
+        firstName: userProfile?.metadata?.firstName,
+        lastName: userProfile?.metadata?.lastName,
         role: normalizedRole,
         emailVerified: isEmailVerified,
-        profileImage: userProfile?.profile_image,
-        accountStatus: userProfile?.account_status,
+        profileImage: userProfile?.metadata?.profileImage,
         ...userProfile,
       },
       emailVerified: isEmailVerified,
@@ -334,7 +333,6 @@ export const updateUserEmail = async (newEmail) => {
         .update({
           email: newEmail.toLowerCase(),
           email_verified: false,
-          verified_at: null,
         })
         .eq('id', user.id);  // Use id (UUID)
 
@@ -393,7 +391,6 @@ export const verifyEmailWithOtp = async (email, code) => {
         .from('users')
         .update({
           email_verified: true,
-          verified_at: new Date().toISOString(),
         })
         .eq('id', data.user.id);
     }

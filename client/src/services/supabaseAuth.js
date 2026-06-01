@@ -46,7 +46,7 @@ export const registerUser = async (email, password, userData) => {
     const displayName = buildDisplayName(userData);
     
     // Get API URL with proper base URL (without /api since we add it below)
-    const baseUrl = process.env.REACT_APP_API_URL;
+    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5002/api';
     const apiUrl = baseUrl.endsWith('/api') 
       ? baseUrl 
       : `${baseUrl}/api`;
@@ -132,7 +132,7 @@ export const registerUser = async (email, password, userData) => {
     } else if (error.message?.includes('email')) {
       errorMessage = 'Invalid email address';
     } else if (error.message?.includes('not running') || error.message?.includes('ECONNREFUSED')) {
-      errorMessage = 'Backend server is not running. Please ensure the server is started and REACT_APP_API_URL is set.';
+      errorMessage = 'Backend server is not running. Please ensure the server is started on http://localhost:5002.';
     } else if (error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
       errorMessage = 'Cannot connect to backend server. Please ensure the server is running and CORS is properly configured.';
     } else if (error.message?.includes('Expected JSON')) {
@@ -286,7 +286,6 @@ export const updateUserEmail = async (newEmail) => {
         .update({
           email: newEmail.toLowerCase(),
           email_verified: false,
-          verified_at: null,
         })
         .eq('id', user.id);
     }
@@ -452,19 +451,18 @@ export const registerTeacherAccount = async (email, password, userData) => {
     const { error: profileError } = await supabase
       .from('users')
       .insert({
-        uid: teacherUser.id,
+        id: teacherUser.id,
         email: email.toLowerCase(),
-        display_name: displayName,
-        first_name: userData.firstName || '',
-        last_name: userData.lastName || '',
-        middle_initial: userData.middleInitial || '',
+        name: displayName,
         role: 'teacher',
-        phone: userData.phone || null,
-        profile_image: null,
         email_verified: true,
-        verified_at: new Date().toISOString(),
-        account_status: 'active',
-        is_active: true,
+        metadata: {
+          displayName,
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          middleInitial: userData.middleInitial || '',
+          phone: userData.phone || null,
+        },
       });
 
     if (profileError) throw profileError;

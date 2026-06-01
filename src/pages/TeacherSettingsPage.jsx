@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { userService } from '../services/api';
+import { AuthContext } from '../context/AuthContext';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
 
 export default function TeacherSettingsPage() {
   const navigate = useNavigate();
+  const { user, logout, loading: authLoading } = useContext(AuthContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -28,36 +30,36 @@ export default function TeacherSettingsPage() {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        navigate('/login');
-      }
-    });
-    return () => unsubscribe();
-  }, [navigate]);
+    if (authLoading) return;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
 
-  useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const profile = await getTeacherProfile();
+        const response = await userService.getProfile();
+        const profile = response.data?.user || response.data || {};
+        const metadata = profile.metadata || {};
         setFormValues({
-          name: profile?.name || '',
-          email: profile?.email || auth.currentUser?.email || '',
-          school: profile?.school || '',
-          grade: profile?.grade || '',
+          name: profile?.name || profile?.displayName || user?.name || '',
+          email: profile?.email || user?.email || '',
+          school: profile?.school || metadata.school || '',
+          grade: profile?.grade || metadata.grade || metadata.gradeLevel || '',
           role: profile?.role || 'Teacher',
-          avatarInitials: profile?.avatarInitials || '',
+          avatarInitials: profile?.avatarInitials || metadata.avatarInitials || '',
         });
       } catch (err) {
         console.error(err);
+        setStatusMessage('Unable to load settings.');
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, []);
+  }, [authLoading, navigate, user]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -76,16 +78,29 @@ export default function TeacherSettingsPage() {
     }
 
     try {
-      await updateTeacherProfile({
+      const payload = {
         name: formValues.name,
         school: formValues.school,
         grade: formValues.grade,
         avatarInitials: formValues.avatarInitials,
+      };
+
+      if (passwordValues.newPassword || passwordValues.confirmPassword || passwordValues.currentPassword) {
+        payload.currentPassword = passwordValues.currentPassword;
+        payload.newPassword = passwordValues.newPassword;
+        payload.confirmPassword = passwordValues.confirmPassword;
+      }
+
+      await userService.updateProfile(payload);
+      setPasswordValues({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
       });
       setStatusMessage('Settings saved successfully.');
     } catch (err) {
       console.error(err);
-      setStatusMessage('Unable to save settings.');
+      setStatusMessage(err.response?.data?.message || err.message || 'Unable to save settings.');
     } finally {
       setSaving(false);
     }
@@ -102,14 +117,14 @@ export default function TeacherSettingsPage() {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      await logout();
       navigate('/login');
     } catch (err) {
       console.error(err);
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <PageLayout title="Settings" subtitle="Manage your account and file uploads" showSearch={false}>
         <div className="page-main">

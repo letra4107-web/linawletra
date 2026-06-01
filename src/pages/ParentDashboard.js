@@ -320,6 +320,8 @@ export default function ParentDashboard() {
       const childId = selectedChild?.id ?? selectedChild?.studentId;
       if (!childId) return;
 
+      setProgress(null);
+      setActivities(null);
       try {
         const [p, a] = await Promise.all([
           parentDashboardApi.getProgressByChildId(childId),
@@ -342,9 +344,33 @@ export default function ParentDashboard() {
   }, [selectedChild]);
 
   const summaryCards = useMemo(() => {
-    const status = dashboard?.childReadingLevelStatus ?? dashboard?.childReadingLevel ?? null;
-    const weeklyProgress = dashboard?.weeklyProgressPercentage ?? dashboard?.weekly_progress_percentage ?? null;
-    const completedLessons = dashboard?.completedLessonsCount ?? dashboard?.completed_lessons_count ?? null;
+    const selectedProgress = progress?.student || selectedChild || {};
+    const status =
+      selectedProgress.readingLevel ||
+      selectedProgress.reading_level ||
+      dashboard?.childReadingLevelStatus ||
+      dashboard?.childReadingLevel ||
+      null;
+    const weeklyProgress =
+      selectedProgress.progressPercentage ??
+      progress?.progressPercentage ??
+      progress?.progress_percentage ??
+      dashboard?.weeklyProgressPercentage ??
+      dashboard?.weekly_progress_percentage ??
+      null;
+    const wordsFinished =
+      selectedProgress.wordsCompleted ??
+      selectedProgress.words_finished ??
+      selectedProgress.completedWords?.length ??
+      progress?.wordsCompleted ??
+      progress?.words_finished ??
+      progress?.completedWords?.length ??
+      selectedProgress.completedLessons ??
+      progress?.completedLessons ??
+      progress?.completed_lessons ??
+      dashboard?.completedLessonsCount ??
+      dashboard?.completed_lessons_count ??
+      null;
     const hasAlerts = Boolean(dashboard?.alertsIndicator ?? dashboard?.hasAlerts ?? dashboard?.has_alerts ?? (notifications?.length > 0));
 
     return [
@@ -359,9 +385,9 @@ export default function ParentDashboard() {
         note: 'Overall learning growth',
       },
       {
-        label: 'Completed Lessons',
-        value: typeof completedLessons === 'number' || typeof completedLessons === 'string' ? `${completedLessons}` : '—',
-        note: 'Total completions',
+        label: 'Words Finished',
+        value: typeof wordsFinished === 'number' || typeof wordsFinished === 'string' ? `${wordsFinished}` : '—',
+        note: 'Completed pronunciation words',
       },
       {
         label: 'Alerts / Issues',
@@ -369,7 +395,7 @@ export default function ParentDashboard() {
         note: hasAlerts ? 'Review insights & notifications' : 'No issues reported',
       },
     ];
-  }, [dashboard, notifications]);
+  }, [dashboard, notifications, progress, selectedChild]);
 
   if (loading) {
     return (
@@ -574,26 +600,62 @@ export default function ParentDashboard() {
               </div>
             </div>
             {Array.isArray(children) && children.length ? (
-              <div style={{ display: 'grid', gap: 10 }}>
+              <div className="parent-children-frame">
                 {children.map((c) => {
-                  const id = c?.id ?? c?.studentId;
+                  const id = c?.id ?? c?.studentId ?? c?.userId ?? c?.email;
                   const isActive = String(id) === String(selectedChild?.id ?? selectedChild?.studentId);
                   return (
                     <button
                       key={id}
                       type="button"
                       onClick={() => setSelectedChildId(id)}
-                      className="parent-list-row"
+                      className="parent-list-row parent-child-select-row"
                       style={{ cursor: 'pointer', textAlign: 'left', background: isActive ? 'rgba(79,70,229,0.06)' : undefined, borderColor: isActive ? 'rgba(79,70,229,0.22)' : undefined }}
                     >
-                      <div>
+                      <div className="parent-child-select-row__profile">
+                        <div className="parent-child-select-row__avatar">{String(c?.name || c?.full_name || 'C').charAt(0).toUpperCase()}</div>
+                        <div>
                         <div className="parent-list-row__title">{c?.name || c?.full_name || 'Child'}</div>
-                        <div className="parent-list-row__meta">Grade: {c?.grade || c?.class || '—'} • Progress: {c?.progressPercentage ?? c?.progress ?? '—'}%</div>
+                        <div className="parent-list-row__meta">Grade: {c?.gradeLevel || c?.grade || c?.class || '—'} • Progress: {c?.progressPercentage ?? c?.progress ?? '—'}%</div>
+                        </div>
                       </div>
                       <StatusChip variant={isActive ? 'completed' : 'progress'}>{isActive ? 'Selected' : 'View'}</StatusChip>
                     </button>
                   );
                 })}
+                {selectedChild && (
+                  <div className="parent-child-detail">
+                    <div className="parent-child-detail__head">
+                      <div>
+                        <div className="parent-section__title">{selectedChild.name}'s Progress</div>
+                        <div className="parent-section__sub">Reading status, completed work, and recent activity.</div>
+                      </div>
+                      <StatusChip variant="progress">{selectedChild.readingLevel || 'Reading level pending'}</StatusChip>
+                    </div>
+                    <div className="parent-child-detail__grid">
+                      <div className="parent-child-detail__metric">
+                        <span>Grade</span>
+                        <strong>{selectedChild.gradeLevel || selectedChild.grade || '—'}</strong>
+                      </div>
+                      <div className="parent-child-detail__metric">
+                        <span>Progress</span>
+                        <strong>{progress?.student?.progressPercentage ?? selectedChild.progressPercentage ?? selectedChild.progress ?? 0}%</strong>
+                      </div>
+                      <div className="parent-child-detail__metric">
+                        <span>Words Finished</span>
+                        <strong>{progress?.student?.wordsCompleted ?? progress?.student?.completedWords?.length ?? selectedChild.wordsCompleted ?? selectedChild.completedWords?.length ?? selectedChild.completedLessons ?? selectedChild.completed ?? 0}</strong>
+                      </div>
+                      <div className="parent-child-detail__metric">
+                        <span>Total XP</span>
+                        <strong>{progress?.student?.xp ?? selectedChild.xp ?? 0}</strong>
+                      </div>
+                    </div>
+                    <div className="parent-child-detail__activity">
+                      <div className="parent-section__sub">Recent activity</div>
+                      <RecentActivityList items={activities?.recentActivities ?? activities?.items ?? activities ?? []} />
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <EmptyState title="No children enrolled" subtitle="Contact the classroom/admin to enroll your child." />

@@ -1,10 +1,9 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../config/supabase';
 import { validateEmail } from '../services/validation';
 import { authService } from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-import { FiArrowRight, FiBookOpen, FiMail, FiLock } from 'react-icons/fi';
+import { FiArrowLeft, FiArrowRight, FiBookOpen, FiMail, FiLock } from 'react-icons/fi';
 import Alert from './Alert';
 import InputField from './InputField';
 import styles from './Login.module.css';
@@ -170,54 +169,65 @@ export default function Login() {
       const email = formValues.email.toLowerCase();
       console.log('[Login] Signing in via backend for:', email);
 
-      try {
-        const response = await authService.login({
-          email,
-          password: formValues.password,
+      const response = await authService.login({
+        email,
+        password: formValues.password,
+      });
+
+      if (response.data?.requiresLoginOTP) {
+        navigate('/verify-login-otp', {
+          state: {
+            email,
+            message: response.data.message || 'A verification code has been sent to your email. Enter it to complete login.',
+            isLoginFlow: true,
+            otpSent: response.data.emailSent !== false,
+          },
+          replace: true,
         });
-        if (response.data?.success) {
-          const userObject = {
-            ...response.data.user,
-            role: String(response.data.user?.role || 'parent').toLowerCase(),
-            emailVerified: Boolean(response.data.user?.emailVerified),
-          };
-          const token = response.data.session?.access_token;
-
-          login(userObject, token);
-
-          const normalizedRole = userObject.role;
-          if (normalizedRole === 'parent') navigate('/parent/summary', { replace: true });
-          else if (normalizedRole === 'student') navigate('/student-dashboard', { replace: true });
-          else if (normalizedRole === 'teacher') navigate('/teacher-dashboard', { replace: true });
-          else navigate('/admin-dashboard/overview', { replace: true });
-          return;
-        }
-
-        // Handle cases where server says email verification required
-        if (response.data?.requiresEmailVerification) {
-          navigate('/verify-email', {
-            state: {
-              email,
-              message: 'Please verify your email before logging in. A verification code was sent to your inbox.',
-              isLoginFlow: true,
-              otpAutoSent: true,
-            },
-            replace: true,
-          });
-          return;
-        }
-
-        setGlobalError(response.data?.message || 'Failed to send login OTP.');
-        return;
-      } catch (err) {
-        console.error('[Login] login error:', err);
-        setGlobalError(err.response?.data?.message || err.message || 'Login failed.');
         return;
       }
+
+      if (response.data?.requiresEmailVerification) {
+        navigate('/verify-email', {
+          state: {
+            email,
+            message: 'Please verify your email before logging in. A verification code was sent to your inbox.',
+            isLoginFlow: true,
+            otpAutoSent: true,
+          },
+          replace: true,
+        });
+        return;
+      }
+
+      if (response.data?.success && response.data?.user) {
+        const token = response.data.token || response.data.session?.access_token;
+        login(response.data.user, token);
+
+        const normalizedRole = String(response.data.user.role || '').toLowerCase();
+        if (normalizedRole === 'parent') navigate('/parent/summary', { replace: true });
+        else if (normalizedRole === 'student') navigate('/student-dashboard', { replace: true });
+        else if (normalizedRole === 'teacher') navigate('/teacher-dashboard', { replace: true });
+        else navigate('/admin-dashboard/overview', { replace: true });
+        return;
+      }
+
+      setGlobalError(response.data?.message || 'Login failed.');
     } catch (err) {
       console.error('[Login] Unexpected login error:', err);
-      alert(err.message || 'Unexpected login error.');
-      setGlobalError(err.message || 'Unexpected login error.');
+      if (err.response?.data?.requiresEmailVerification) {
+        navigate('/verify-email', {
+          state: {
+            email: formValues.email.toLowerCase(),
+            message: 'Please verify your email before logging in. A verification code was sent to your inbox.',
+            isLoginFlow: true,
+            otpAutoSent: true,
+          },
+          replace: true,
+        });
+        return;
+      }
+      setGlobalError(err.response?.data?.message || err.message || 'Unexpected login error.');
     } finally {
         setLoading(false);
       }
@@ -246,6 +256,10 @@ export default function Login() {
 
         {/* Login Form Column */}
         <main className={styles.formColumn}>
+          <button type="button" className={styles.backHomeButton} onClick={() => navigate('/')}>
+            <FiArrowLeft aria-hidden="true" />
+            Back to Home
+          </button>
           <div className={styles.pageBrand}>
             <img src="/logo.png" alt="LinawLetra logo" className={styles.brandLogo} />
             <span className={styles.brandName}>LinawLetra</span>

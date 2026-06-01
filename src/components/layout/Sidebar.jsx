@@ -27,6 +27,7 @@ const navSections = [
       { path: '/teacher/students', label: 'My Students', icon: Users },
       { path: '/teacher/learning-paths', label: 'Learning paths', icon: BookOpen },
       { path: '/teacher/lessons', label: 'Lessons', icon: BookOpen },
+      { path: '/teacher/reading', label: 'PDF reading', icon: FileText },
       { path: '/teacher/schedules', label: 'Schedules', icon: CalendarCheck2 },
     ],
   },

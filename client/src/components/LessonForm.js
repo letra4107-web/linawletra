@@ -129,25 +129,21 @@ export default function LessonForm({ onComplete, onCancel }) {
     
     setLoading(true);
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('title', formData.title);
-      formDataToSend.append('description', formData.description);
-      formDataToSend.append('category', formData.category);
-      formDataToSend.append('level', formData.level);
-      formDataToSend.append('tagalogText', formData.tagalogText);
-      formDataToSend.append('content', formData.content);
-      formDataToSend.append('estimatedDuration', formData.estimatedDuration || 30);
-      
-      if (file) {
-        formDataToSend.append('file', file);
-      }
-      
-      const response = await lessonService.createLesson(formDataToSend);
-      
-      if (response.data.success) {
+      const response = await lessonService.createLesson({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        level: formData.level,
+        tagalogText: formData.tagalogText,
+        content: formData.content,
+        estimatedDuration: formData.estimatedDuration || 30,
+      });
+
+      const createdLesson = response.data?.lesson || response.data?.data || response.data;
+      if (createdLesson) {
         setSuccess(true);
         setTimeout(() => {
-          onComplete(response.data.data);
+          onComplete(createdLesson);
         }, 1500);
       } else {
         setErrors({ submit: response.data.message || 'Failed to create lesson' });

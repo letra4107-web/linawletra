@@ -13,19 +13,19 @@
   --space-8: 4rem;
   --space-9: 5rem;
   --font-primary: 'Inter', 'Lexend', 'Atkinson Hyperlegible', system-ui, sans-serif;
-  --color-slate-50: #eef2ff;
-  --color-slate-100: #f8fafc;
-  --color-slate-200: #e2e8f0;
-  --color-slate-300: #cbd5e1;
-  --color-slate-500: #64748b;
-  --color-slate-600: #475569;
-  --color-slate-700: #334155;
-  --color-slate-900: #0f172a;
-  --color-red-500: #ef4444;
-  --color-red-600: #dc2626;
-  --color-orange-500: #f97316;
-  --color-indigo-500: #6366f1;
-  --color-indigo-600: #4f46e5;
+  --color-slate-50: var(--color-background);
+  --color-slate-100: var(--color-primary-light);
+  --color-slate-200: var(--color-border);
+  --color-slate-300: var(--color-border);
+  --color-slate-500: var(--color-text-secondary);
+  --color-slate-600: var(--color-text-secondary);
+  --color-slate-700: #374151;
+  --color-slate-900: var(--color-text-primary);
+  --color-red-500: var(--color-danger);
+  --color-red-600: var(--color-danger);
+  --color-orange-500: var(--color-warning);
+  --color-indigo-500: var(--color-primary);
+  --color-indigo-600: var(--color-primary-dark);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 20px 60px rgba(15, 23, 42, 0.12);
   --transition-fast: all 0.15s ease;
@@ -43,13 +43,13 @@ html {
 body {
   margin: 0;
   font-family: var(--font-primary);
-  background: #eef2ff;
+  background: var(--color-background);
 }
 
 .pageWrapper {
   min-height: 100vh;
   padding: var(--space-5);
-  background-color: #e8f0ff;
+  background-color: var(--color-background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -136,6 +136,29 @@ body {
   align-items: center;
   justify-content: flex-start;
   width: 100%;
+}
+
+.backHomeButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary-text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.backHomeButton:hover,
+.backHomeButton:focus-visible {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  outline: none;
 }
 
 .pageBrand {
@@ -315,7 +338,7 @@ body {
 }
 
 .policyLink {
-  color: #4338ca;
+  color: var(--color-primary-dark);
   text-decoration: none;
   font-weight: 700;
 }
@@ -330,7 +353,7 @@ body {
   justify-content: center;
   align-items: center;
   gap: var(--space-2);
-  background: linear-gradient(135deg, var(--color-indigo-600) 0%, #6366f1 100%);
+  background: var(--color-primary);
   color: white;
   border-radius: 999px;
   border: none;

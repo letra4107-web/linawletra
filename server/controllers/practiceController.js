@@ -15,7 +15,7 @@ const fetchStudent = async (studentId) => {
 };
 
 const fetchUser = async (userId) => {
-  const { data, error } = await supabase.from('users').select('*').eq('uid', userId).single();
+  const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
   if (error) {
     return null;
   }

@@ -172,12 +172,14 @@ const createDefaultProfilePayload = (authUser) => {
   return {
     id: authUser.id,
     email: normalizedEmail,
-    display_name: displayName,
-    first_name: metadata.firstName || null,
-    last_name: metadata.lastName || null,
+    name: displayName,
     role: safeRole,
-    account_status: 'active',
-    is_active: true,
+    email_verified: false,
+    metadata: {
+      displayName,
+      firstName: metadata.firstName || null,
+      lastName: metadata.lastName || null,
+    },
   };
 };
 
@@ -364,7 +366,7 @@ export const getTeacherUploadsByGradeLevel = async (gradeLevel) => {
       .from('uploaded_files')
       .select(`
         *,
-        users!uploaded_files_uploaded_by_fkey(display_name)
+        users!uploaded_files_uploaded_by_fkey(name)
       `)
       .eq('grade_level', normalizedGrade)
       .eq('is_public', true)
@@ -474,7 +476,7 @@ export const getAdminOverview = async () => {
       .from('activity_logs')
       .select(`
         *,
-        users(display_name)
+        users(name)
       `)
       .order('created_at', { ascending: false })
       .limit(10);

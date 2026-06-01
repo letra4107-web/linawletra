@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { FileText, Users, BookOpen, CalendarCheck2, Activity, Settings, PlusCircle, Search, LogOut, LayoutDashboard } from 'lucide-react';
 import '../styles/TeacherDashboard.css';
-import { adminService } from '../services/api';
+import { assessmentService, lessonService, progressService, studentService } from '../services/api';
 
 const sidebarSections = [
   {
@@ -18,7 +18,9 @@ const sidebarSections = [
     items: [
       { path: '/teacher/students', label: 'My Students', icon: Users },
       { path: '/teacher/learning-paths', label: 'Learning paths', icon: BookOpen },
-      { path: '/teacher/lessons', label: 'Schedules', icon: CalendarCheck2 },
+      { path: '/teacher/lessons', label: 'Lessons', icon: BookOpen },
+      { path: '/teacher/reading', label: 'PDF reading', icon: FileText },
+      { path: '/teacher/schedules', label: 'Schedules', icon: CalendarCheck2 },
     ],
   },
   {
@@ -51,13 +53,25 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await adminService.getOverview();
-        const overview = response?.data || {};
+        const [studentsResponse, lessonsResponse, assessmentsResponse, progressResponse] = await Promise.all([
+          studentService.getAllStudents().catch(() => ({ data: [] })),
+          lessonService.getLessons().catch(() => ({ data: [] })),
+          assessmentService.getAssessments().catch(() => ({ data: [] })),
+          progressService.getProgressReports().catch(() => ({ data: { reports: [] } })),
+        ]);
+        const students = Array.isArray(studentsResponse?.data) ? studentsResponse.data : [];
+        const lessons = Array.isArray(lessonsResponse?.data) ? lessonsResponse.data : [];
+        const assessments = assessmentsResponse?.data?.assessments || assessmentsResponse?.data || [];
+        const reports = progressResponse?.data?.reports || progressResponse?.data || [];
+        const averageProgress = reports.length
+          ? reports.reduce((sum, report) => sum + Number(report.overallScore || 0), 0) / reports.length
+          : 0;
+
         setStats({
-          totalStudents: overview.totalStudents || 0,
-          lessons: overview.lessonCount || overview.lessons || 0,
-          assessments: overview.assessmentCount || overview.assessments || 0,
-          avgProgressScore: overview.averageProgress || overview.avgProgressScore || 0,
+          totalStudents: students.length,
+          lessons: lessons.length,
+          assessments: Array.isArray(assessments) ? assessments.length : 0,
+          avgProgressScore: averageProgress,
           loading: false,
         });
       } catch (err) {

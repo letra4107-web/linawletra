@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { progressService } from '../services/api';
-import { onAuthStateChanged } from '../services/supabaseAuth';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
 
@@ -23,14 +21,6 @@ export default function TeacherProgressPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(null, (user) => {
-      if (!user) navigate('/login');
-    });
-    return () => unsubscribe();
-  }, [navigate]);
 
   useEffect(() => {
     const loadReports = async () => {
@@ -38,12 +28,12 @@ export default function TeacherProgressPage() {
       setError(false);
       try {
         const response = await progressService.getProgressReports();
-        const data = response?.data || [];
+        const data = response?.data?.reports || response?.data || [];
         setReports(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error('Progress error:', err.code, err.message);
+        console.error('Progress error:', err);
         setReports([]);
-        setError(false);
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -102,6 +92,11 @@ export default function TeacherProgressPage() {
           <section className="student-cards">
             {Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton-card" />)}
           </section>
+        ) : error ? (
+          <div className="empty-state">
+            <div className="empty-title">Unable to load progress reports</div>
+            <p className="empty-copy">Please refresh the page or try again later.</p>
+          </div>
         ) : visibleReports.length === 0 ? (
           <div className="empty-state">
             <div className="empty-title">No progress reports found</div>

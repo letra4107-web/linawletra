@@ -9,21 +9,21 @@
 }
 
 .error {
-  background: #fef2f2;
-  color: #991b1b;
-  border-color: #fecaca;
+  background: var(--color-danger);
+  color: var(--color-surface);
+  border-color: var(--color-danger);
 }
 
 .success {
-  background: #dcfce7;
-  color: #14532d;
-  border-color: #bbf7d0;
+  background: var(--color-success);
+  color: var(--color-surface);
+  border-color: var(--color-success);
 }
 
 .info {
-  background: #dbeafe;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: var(--color-warning);
+  color: var(--color-surface);
+  border-color: var(--color-warning);
 }
 
 .icon {

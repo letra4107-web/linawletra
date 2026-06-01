@@ -208,13 +208,12 @@ export const loginUser = async (email, password) => {
       user: {
         id: data.user.id,
         email: data.user.email,
-        displayName: userProfile?.display_name,
-        firstName: userProfile?.first_name,
-        lastName: userProfile?.last_name,
+        displayName: userProfile?.metadata?.displayName || userProfile?.name,
+        firstName: userProfile?.metadata?.firstName,
+        lastName: userProfile?.metadata?.lastName,
         role: normalizedRole,
         emailVerified: isEmailVerified,
-        profileImage: userProfile?.profile_image,
-        accountStatus: userProfile?.account_status,
+        profileImage: userProfile?.metadata?.profileImage,
         ...userProfile,
       },
       emailVerified: isEmailVerified,
@@ -334,7 +333,6 @@ export const updateUserEmail = async (newEmail) => {
         .update({
           email: newEmail.toLowerCase(),
           email_verified: false,
-          verified_at: null,
         })
         .eq('id', user.id);  // Use id (UUID)
 
@@ -393,7 +391,6 @@ export const verifyEmailWithOtp = async (email, code) => {
         .from('users')
         .update({
           email_verified: true,
-          verified_at: new Date().toISOString(),
         })
         .eq('id', data.user.id);
     }

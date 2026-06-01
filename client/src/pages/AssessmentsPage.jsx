@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { assessmentService } from '../services/api';
-import { onAuthStateChanged } from '../services/supabaseAuth';
 import FileUploadSection from '../components/ui/FileUploadSection';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
@@ -26,22 +24,14 @@ export default function AssessmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [expandedAssessment, setExpandedAssessment] = useState(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(null, (user) => {
-      if (!user) navigate('/login');
-    });
-    return () => unsubscribe();
-  }, [navigate]);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(false);
       try {
-        const response = await assessmentService.getAssessments(filter);
-        const data = response?.data || [];
+        const response = await assessmentService.getAssessments();
+        const data = response?.data?.assessments || response?.data || [];
         setAssessments(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error(err);

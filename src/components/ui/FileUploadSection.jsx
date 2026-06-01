@@ -1,5 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
-// File upload to be implemented via API
+
+const getStorageKey = ({ pageSource, linkedId }) => `linawletra-files:${pageSource}:${linkedId}`;
+
+const getUploadedFiles = async ({ pageSource, linkedId }) => {
+  try {
+    return JSON.parse(localStorage.getItem(getStorageKey({ pageSource, linkedId })) || '[]');
+  } catch (error) {
+    return [];
+  }
+};
+
+const uploadFile = async ({ file, pageSource, linkedId, description, onProgress }) => {
+  onProgress?.(100);
+  const existing = await getUploadedFiles({ pageSource, linkedId });
+  const record = {
+    id: `${Date.now()}-${file.name}`,
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+    fileUrl: URL.createObjectURL(file),
+    description,
+    uploadedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(getStorageKey({ pageSource, linkedId }), JSON.stringify([record, ...existing]));
+  return record;
+};
+
+const deleteUploadedFile = async (fileId, { pageSource, linkedId } = {}) => {
+  if (!pageSource || !linkedId) return;
+  const existing = await getUploadedFiles({ pageSource, linkedId });
+  localStorage.setItem(
+    getStorageKey({ pageSource, linkedId }),
+    JSON.stringify(existing.filter((file) => file.id !== fileId))
+  );
+};
 
 const fileIcon = (type) => {
   if (type?.includes('pdf')) return '📄';
@@ -88,7 +122,7 @@ export default function FileUploadSection({
   };
 
   const handleDelete = async (fileId) => {
-    await deleteUploadedFile(fileId);
+    await deleteUploadedFile(fileId, { pageSource, linkedId });
     setFiles((prev) => prev.filter((file) => file.id !== fileId));
   };
 

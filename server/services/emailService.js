@@ -1,3 +1,78 @@
+// Send teacher account credentials to new teacher
+const sendTeacherAccountEmail = async (teacherEmail, teacherName, tempPassword, loginUrl = null) => {
+  loginUrl = loginUrl || (config.frontendUrl ? `${config.frontendUrl}/login` : 'http://localhost:3000/login');
+  const subject = 'Welcome to LinawLetra';
+  const html = `
+    <div style="font-family: 'Josefin Sans', sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f9fafb; letter-spacing: 0.03em;">
+      <div style="background-color: #ffffff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <h1 style="color: #2d9c78; margin: 0 0 10px 0; font-size: 28px; letter-spacing: 0.05em;">Welcome to LinawLetra!</h1>
+        <p style="color: #1e5a96; font-size: 16px; margin: 0 0 20px 0; font-weight: 500;">Your Teacher Account Has Been Created</p>
+
+        <p style="color: #4b5563; font-size: 15px; line-height: 1.8;">
+          Hello ${teacherName ? teacherName : 'Teacher'},
+        </p>
+
+        <p style="color: #4b5563; font-size: 15px; line-height: 1.8;">
+          Your LinawLetra teacher account has been created. You can now log in and start using the platform.
+        </p>
+
+        <div style="background-color: #f0f8f5; border-left: 4px solid #2d9c78; padding: 20px; border-radius: 4px; margin: 25px 0;">
+          <h3 style="color: #1e5a96; margin-top: 0; font-size: 16px;">Teacher Login Credentials</h3>
+          <table style="width: 100%; color: #4b5563; font-size: 14px;">
+            <tr>
+              <td style="padding: 8px 0; width: 150px;"><strong>Email:</strong></td>
+              <td style="padding: 8px 0; font-family: 'Courier New', monospace; color: #1e5a96; font-weight: 600;">${teacherEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0;"><strong>Temporary Password:</strong></td>
+              <td style="padding: 8px 0; font-family: 'Courier New', monospace; color: #1e5a96; font-weight: 600; word-break: break-all;">${tempPassword}</td>
+            </tr>
+          </table>
+          <p style="color: #666; font-size: 12px; margin: 12px 0 0 0; padding-top: 12px; border-top: 1px solid #d0e8e2;">
+            ⚠️ <strong>Important:</strong> Please change your password after logging in for the first time.
+          </p>
+        </div>
+
+        <h3 style="color: #1e5a96; font-size: 16px; margin: 25px 0 15px 0;">How to Get Started:</h3>
+        <ol style="color: #4b5563; font-size: 15px; line-height: 1.8; padding-left: 20px;">
+          <li><strong>Visit the login page:</strong> <a href="${loginUrl}" style="color: #2d9c78; text-decoration: none;">${loginUrl}</a></li>
+          <li><strong>Enter your credentials:</strong> Use the email and temporary password above</li>
+          <li><strong>Set a new password:</strong> You will be prompted to change your password after logging in</li>
+          <li><strong>Access your dashboard:</strong> Start managing your classes and students</li>
+        </ol>
+
+        <p style="color: #4b5563; font-size: 15px; line-height: 1.8; margin-top: 25px;">
+          If you have any questions or need assistance, please contact our support team.
+        </p>
+
+        <p style="color: #4b5563; font-size: 15px; margin: 15px 0 5px 0;">
+          Best regards,<br/>
+          <strong>The LinawLetra Team</strong>
+        </p>
+
+        <p style="color: #999; font-size: 12px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+          If you did not expect this email, please contact support immediately. Never share these credentials with anyone else.
+        </p>
+      </div>
+    </div>
+  `;
+
+  const mailOptions = {
+    from: config.email.from,
+    to: teacherEmail,
+    subject,
+    html,
+  };
+
+  try {
+    await sendMailWithRetry(mailOptions, { type: 'teacher', email: teacherEmail, retries: 2 });
+    console.log(`✓ Teacher account email sent to ${teacherEmail}`);
+    return true;
+  } catch (error) {
+    console.error('✗ Error sending teacher account email:', error.message);
+    return false;
+  }
+};
 /**
  * Email Verification Service
  * Handles email verification codes, tokens, and sending
@@ -419,6 +494,7 @@ export {
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendStudentEnrollmentEmail,
+  sendTeacherAccountEmail,
   sendNewStudentAccountEmail,
   verifyCodeExpiration,
   transporter,

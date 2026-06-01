@@ -5,6 +5,16 @@ import { logoutUser } from '../services/supabaseAuth';
 
 export const AuthContext = createContext();
 
+const isSystemGeneratedStudentEmail = (email = '') => {
+  const normalizedEmail = String(email).toLowerCase();
+  return normalizedEmail.endsWith('@linaw.local') || normalizedEmail.endsWith('@student.linawletra.ph');
+};
+
+const isStudentVerified = (role, email, userData, supabaseUser) =>
+  role === 'student' ||
+  isSystemGeneratedStudentEmail(email) ||
+  Boolean(userData?.email_verified || userData?.emailVerified || supabaseUser?.email_confirmed_at);
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,7 +50,7 @@ export const AuthProvider = ({ children }) => {
           }
 
           const normalizedRole = String(userData?.role || '').toLowerCase() || 'parent';
-          const isEmailVerified = Boolean(supabaseUser.email_confirmed_at);
+          const isEmailVerified = isStudentVerified(normalizedRole, supabaseUser.email, userData, supabaseUser);
 
           const userObject = {
             id: supabaseUser.id,
@@ -90,7 +100,7 @@ export const AuthProvider = ({ children }) => {
             }
 
             const normalizedRole = String(userData?.role || '').toLowerCase() || 'parent';
-            const isEmailVerified = Boolean(supabaseUser.email_confirmed_at);
+            const isEmailVerified = isStudentVerified(normalizedRole, supabaseUser.email, userData, supabaseUser);
 
             const userObject = {
               id: supabaseUser.id,
@@ -160,10 +170,11 @@ export const AuthProvider = ({ children }) => {
   const login = (userData, token) => {
     console.log('[AuthContext] Login called with user:', userData?.email);
     const normalizedRole = String(userData?.role || 'parent').toLowerCase();
+    const isEmailVerified = isStudentVerified(normalizedRole, userData?.email, userData);
     const userObject = {
       ...userData,
       role: normalizedRole,
-      emailVerified: Boolean(userData?.emailVerified),
+      emailVerified: isEmailVerified,
     };
 
     setUser(userObject);

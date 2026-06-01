@@ -8,10 +8,33 @@ async function assertParentOwnsStudent(req, studentId) {
   return student.parentId?.toString() === req.user.id;
 }
 
+const sortByScheduledDate = (items = []) =>
+  [...items].sort((a, b) => new Date(a.scheduledDate || a.date || 0) - new Date(b.scheduledDate || b.date || 0));
+
+const normalizeSchedulePayload = (body = {}) => {
+  const scheduledDate = body.scheduledDate || body.scheduled_date || body.date || null;
+  return {
+    studentId: body.studentId || body.student_id,
+    lessonId: body.lessonId || body.lesson_id || null,
+    title: body.title || 'Lesson session',
+    description: body.description || body.notes || '',
+    sessionType: body.sessionType || body.session_type || 'reading',
+    scheduledDate,
+    duration: Number(body.duration || 60),
+    status: body.status || 'upcoming',
+    notes: body.notes || '',
+  };
+};
+
 // Create schedule
 exports.createSchedule = async (req, res) => {
   try {
-    const { studentId, lessonId, title, description, sessionType, scheduledDate, duration } = req.body;
+    const payload = normalizeSchedulePayload(req.body);
+    const { studentId } = payload;
+
+    if (!studentId) {
+      return res.status(400).json({ message: 'Student is required' });
+    }
 
     // Get student to verify parent relationship
     const Student = require('../models/Student');
@@ -27,10 +50,11 @@ exports.createSchedule = async (req, res) => {
 
     if (req.user.role === 'teacher') {
       teacherId = req.user.id;
-      parentId = student.parentId;
+      parentId = student.parentId || student.parent_id || null;
     } else if (req.user.role === 'parent') {
       // Verify the parent owns this student
-      if (student.parentId.toString() !== req.user.id) {
+      const ownerId = student.parentId || student.parent_id;
+      if (!ownerId || ownerId.toString() !== req.user.id) {
         return res.status(403).json({ message: 'You can only create schedules for your own children' });
       }
       parentId = req.user.id;
@@ -44,12 +68,14 @@ exports.createSchedule = async (req, res) => {
       studentId,
       teacherId,
       parentId,
-      lessonId,
-      title,
-      description,
-      sessionType,
-      scheduledDate,
-      duration,
+      lessonId: payload.lessonId,
+      title: payload.title,
+      description: payload.description,
+      sessionType: payload.sessionType,
+      scheduledDate: payload.scheduledDate,
+      duration: payload.duration,
+      status: payload.status,
+      notes: payload.notes,
     });
 
     await schedule.save();
@@ -68,10 +94,7 @@ exports.getSchedulesByStudent = async (req, res) => {
       return res.status(403).json({ message: 'You do not have permission to access this student schedule' });
     }
 
-    const schedules = await Schedule.find({ studentId })
-      .populate('lessonId', 'title')
-      .populate('teacherId', 'name email')
-      .sort({ scheduledDate: 1 });
+    const schedules = sortByScheduledDate(await Schedule.find({ studentId }));
 
     res.json(schedules);
   } catch (error) {
@@ -83,10 +106,7 @@ exports.getSchedulesByStudent = async (req, res) => {
 exports.getSchedulesByParent = async (req, res) => {
   try {
     const parentId = req.user.id;
-    const schedules = await Schedule.find({ parentId })
-      .populate('studentId', 'name')
-      .populate('teacherId', 'name email')
-      .sort({ scheduledDate: 1 });
+    const schedules = sortByScheduledDate(await Schedule.find({ parentId }));
 
     res.json(schedules);
   } catch (error) {
@@ -98,10 +118,7 @@ exports.getSchedulesByParent = async (req, res) => {
 exports.getSchedulesByTeacher = async (req, res) => {
   try {
     const teacherId = req.user.id;
-    const schedules = await Schedule.find({ teacherId })
-      .populate('studentId', 'name')
-      .populate('parentId', 'name email')
-      .sort({ scheduledDate: 1 });
+    const schedules = sortByScheduledDate(await Schedule.find({ teacherId }));
 
     res.json(schedules);
   } catch (error) {

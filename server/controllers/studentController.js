@@ -1,9 +1,41 @@
 const { supabase } = require('../config/supabase');
 const { sendStudentEnrollmentEmail } = require('../services/emailService');
 const { generateStudentCredentials } = require('../services/credentialGenerator');
+const { VALID_READING_LEVELS, normalizeReadingLevel } = require('../services/readingLevels');
 
 const VALID_GRADE_LEVELS = ['1', '2', '3', '4', '5', '6'];
-const VALID_READING_LEVELS = ['beginner', 'intermediate', 'advanced'];
+
+const isMissingStudentsTableError = (error) =>
+  error?.code === 'PGRST205' &&
+  String(error?.message || '').includes("public.students");
+
+const missingStudentsTableMessage =
+  "Supabase cannot find public.students in the API schema cache. Run FIX_STUDENTS_TABLE_SCHEMA_CACHE.sql in the Supabase SQL Editor, then retry enrollment.";
+
+const attachUserProfiles = async (students = []) => {
+  const safeStudents = Array.isArray(students) ? students : [];
+  const userIds = [...new Set(safeStudents.map((student) => student.user_id).filter(Boolean))];
+
+  if (!userIds.length) {
+    return safeStudents.map((student) => ({ ...student, user: null }));
+  }
+
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('*')
+    .in('id', userIds);
+
+  if (error) {
+    console.warn('[Students] Could not attach user profiles:', error.message);
+    return safeStudents.map((student) => ({ ...student, user: null }));
+  }
+
+  const usersById = new Map((users || []).map((user) => [user.id, user]));
+  return safeStudents.map((student) => ({
+    ...student,
+    user: usersById.get(student.user_id) || null,
+  }));
+};
 
 const isValidGradeLevel = (gradeLevel) =>
   gradeLevel === undefined ||
@@ -119,20 +151,23 @@ exports.createStudent = async (req, res) => {
     console.log('[Create Student] Creating user profile');
 
     // Create user profile in database
+    const normalizedReadingLevel = normalizeReadingLevel(readingLevel);
     const { data: userProfile, error: insertError } = await supabase
       .from('users')
-      .insert({
-        uid: authUser.id,
+      .upsert({
         id: authUser.id,
         email: studentUsername,
-        display_name: childName,
-        first_name: firstName,
-        last_name: lastName,
+        name: childName,
         role: 'student',
+        parent_id: parentId,
         email_verified: true, // Students created by parents are auto-verified
-        account_status: 'active',
-        is_active: true,
-      })
+        metadata: {
+          displayName: childName,
+          firstName,
+          lastName,
+          readingLevel: normalizedReadingLevel,
+        },
+      }, { onConflict: 'id' })
       .select()
       .single();
 
@@ -152,6 +187,7 @@ exports.createStudent = async (req, res) => {
         user_id: userProfile.id,
         parent_id: parentId,
         grade_level: gradeLevel || null,
+        reading_level: normalizedReadingLevel,
         school: null,
         enrollment_date: new Date().toISOString().split('T')[0],
       })
@@ -163,6 +199,13 @@ exports.createStudent = async (req, res) => {
       // Clean up
       await supabase.auth.admin.deleteUser(authUser.id);
       await supabase.from('users').delete().eq('id', userProfile.id);
+      if (isMissingStudentsTableError(studentError)) {
+        return res.status(503).json({
+          success: false,
+          message: missingStudentsTableMessage,
+          code: studentError.code,
+        });
+      }
       throw studentError;
     }
 
@@ -201,9 +244,11 @@ exports.createStudent = async (req, res) => {
       data: {
         student: {
           id: userProfile.id,
+          studentId: studentRecord.id,
           name: childName,
           email: studentUsername,
           gradeLevel,
+          readingLevel: normalizedReadingLevel,
           parentId,
         },
         credentials: {
@@ -228,25 +273,32 @@ exports.getStudentsByParent = async (req, res) => {
 
     console.log('[Get Students] Fetching students for parent:', parentId);
 
-    // Get students linked to this parent
+    // Get students linked to this parent, then attach profiles separately so
+    // this route does not depend on Supabase's embedded FK cache name.
     const { data: students, error } = await supabase
       .from('students')
-      .select(`
-        *,
-        users!students_parent_id_fkey(*)
-      `)
+      .select('*')
       .eq('parent_id', parentId);
 
     if (error) {
       console.error('[Get Students] Error:', error);
+      if (isMissingStudentsTableError(error)) {
+        return res.status(503).json({
+          success: false,
+          message: missingStudentsTableMessage,
+          code: error.code,
+        });
+      }
       throw error;
     }
 
-    console.log('[Get Students] Found students:', students?.length || 0);
+    const studentsWithUsers = await attachUserProfiles(students || []);
+
+    console.log('[Get Students] Found students:', studentsWithUsers.length || 0);
 
     res.json({
       success: true,
-      students: students || [],
+      students: studentsWithUsers,
     });
   } catch (error) {
     console.error('[Get Students] Error:', error.message, error.stack);
@@ -266,14 +318,11 @@ exports.getStudent = async (req, res) => {
 
     console.log('[Get Student] Fetching student:', studentId, 'for user:', userId, 'role:', userRole);
 
-    // Get student with user data
+    // Get student, then attach profile data separately to avoid brittle FK embed names.
     const { data: student, error } = await supabase
       .from('students')
-      .select(`
-        *,
-        users!students_user_id_fkey(*)
-      `)
-      .eq('id', studentId)
+      .select('*')
+      .or(`id.eq.${studentId},user_id.eq.${studentId}`)
       .single();
 
     if (error || !student) {
@@ -302,9 +351,11 @@ exports.getStudent = async (req, res) => {
 
     console.log('[Get Student] ✓ Student found and accessible');
 
+    const [studentWithUser] = await attachUserProfiles([student]);
+
     res.json({
       success: true,
-      student,
+      student: studentWithUser,
     });
   } catch (error) {
     console.error('[Get Student] Error:', error.message, error.stack);
@@ -348,7 +399,22 @@ exports.updateStudent = async (req, res) => {
 
     // Prepare update data
     const updateData = {};
-    const { name, gradeLevel, readingLevel } = req.body;
+    const {
+      name,
+      gradeLevel,
+      readingLevel,
+      xp,
+      wordsCompleted,
+      completedWords,
+      achievements,
+      accuracy,
+      completed,
+      streak,
+      history,
+      currentPhoneticLevel,
+      progressInCurrentLevel,
+      accessibilitySettings,
+    } = req.body;
 
     if (gradeLevel !== undefined && gradeLevel !== null && !VALID_GRADE_LEVELS.includes(String(gradeLevel).trim())) {
       return res.status(400).json({
@@ -368,20 +434,63 @@ exports.updateStudent = async (req, res) => {
     if (gradeLevel !== undefined) updateData.grade_level = gradeLevel;
     if (readingLevel !== undefined) updateData.reading_level = readingLevel;
 
-    // Update student record
-    const { data: updatedStudent, error: updateError } = await supabase
-      .from('students')
-      .update(updateData)
-      .eq('id', studentId)
-      .select()
-      .single();
+    let updatedStudent = existingStudent;
+    if (Object.keys(updateData).length > 0) {
+      const { data, error: updateError } = await supabase
+        .from('students')
+        .update(updateData)
+        .eq('id', studentId)
+        .select()
+        .single();
 
-    if (updateError) {
-      console.error('[Update Student] Update error:', updateError);
-      throw updateError;
+      if (updateError) {
+        console.error('[Update Student] Update error:', updateError);
+        throw updateError;
+      }
+      updatedStudent = data;
     }
 
     console.log('[Update Student] ✓ Student updated successfully');
+
+    const progressMetadata = {
+      ...(xp !== undefined ? { xp } : {}),
+      ...(wordsCompleted !== undefined ? { wordsCompleted } : {}),
+      ...(completedWords !== undefined ? { completedWords } : {}),
+      ...(achievements !== undefined ? { achievements } : {}),
+      ...(accuracy !== undefined ? { accuracy, progressPercentage: accuracy } : {}),
+      ...(completed !== undefined ? { completedLessons: completed, wordsFinished: completed } : {}),
+      ...(streak !== undefined ? { streak } : {}),
+      ...(history !== undefined ? { history } : {}),
+      ...(currentPhoneticLevel !== undefined ? { currentPhoneticLevel } : {}),
+      ...(progressInCurrentLevel !== undefined ? { progressInCurrentLevel } : {}),
+      ...(accessibilitySettings !== undefined ? { accessibilitySettings } : {}),
+      ...(readingLevel !== undefined ? { readingLevel } : {}),
+    };
+
+    if (Object.keys(progressMetadata).length > 0 && existingStudent.user_id) {
+      const { data: currentUser, error: userFetchError } = await supabase
+        .from('users')
+        .select('metadata')
+        .eq('id', existingStudent.user_id)
+        .single();
+
+      if (!userFetchError) {
+        const { error: userUpdateError } = await supabase
+          .from('users')
+          .update({
+            ...(name !== undefined ? { name } : {}),
+            metadata: {
+              ...(currentUser?.metadata || {}),
+              ...progressMetadata,
+            },
+          })
+          .eq('id', existingStudent.user_id);
+
+        if (userUpdateError) {
+          console.warn('[Update Student] Failed to update user progress metadata:', userUpdateError.message);
+        }
+      }
+    }
 
     res.json({
       success: true,

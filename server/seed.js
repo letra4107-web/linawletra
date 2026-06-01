@@ -51,16 +51,16 @@ const createOrUpdateAuthUser = async (email, password) => {
 const createOrUpdateUserProfile = async (authUser, profileData) => {
   const insertData = {
     id: authUser.id,
-    uid: authUser.id,
     email: normalizeEmail(authUser.email),
-    display_name: profileData.displayName,
-    first_name: profileData.firstName,
-    last_name: profileData.lastName,
+    name: profileData.displayName,
     role: profileData.role,
     email_verified: true,
-    account_status: 'active',
-    is_active: true,
-    ...(profileData.profileImage ? { profile_image: profileData.profileImage } : {}),
+    metadata: {
+      displayName: profileData.displayName,
+      firstName: profileData.firstName,
+      lastName: profileData.lastName,
+      profileImage: profileData.profileImage || null,
+    },
   };
 
   const { data, error } = await supabase

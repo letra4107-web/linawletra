@@ -2,14 +2,12 @@ import React, { useContext } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import {
-  Activity,
-  BarChart3,
   BookOpen,
   CalendarCheck2,
   FileText,
   LayoutDashboard,
   LogOut,
-  Settings,
+  MessageSquare,
   Users,
 } from 'lucide-react';
 
@@ -22,25 +20,17 @@ const navSections = [
     ],
   },
   {
-    label: 'Students',
+    label: 'Classroom',
     items: [
-      { path: '/teacher/students', label: 'My Students', icon: Users },
-      { path: '/teacher/learning-paths', label: 'Learning paths', icon: BookOpen },
-      { path: '/teacher/lessons', label: 'Lessons', icon: BookOpen },
-      { path: '/teacher/schedules', label: 'Schedules', icon: CalendarCheck2 },
+      { path: '/teacher/modules', label: 'Modules', icon: BookOpen },
+      { path: '/teacher/class-roster', label: 'Class Roster', icon: Users },
+      { path: '/teacher/assignments', label: 'Assignments', icon: CalendarCheck2 },
     ],
   },
   {
-    label: 'Analytics',
+    label: 'Communication',
     items: [
-      { path: '/teacher/progress', label: 'Progress reports', icon: BarChart3 },
-      { path: '/teacher/activities', label: 'Activities', icon: Activity },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { path: '/teacher/settings', label: 'Settings', icon: Settings },
+      { path: '/teacher/messages', label: 'Messages', icon: MessageSquare },
     ],
   },
 ];

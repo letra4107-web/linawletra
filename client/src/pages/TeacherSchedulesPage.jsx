@@ -1,7 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { studentService, scheduleService } from '../services/api';
-import { onAuthStateChanged } from '../services/supabaseAuth';
 import PageLayout from '../components/layout/PageLayout';
 import { PlusCircle, Trash2, Users } from 'lucide-react';
 
@@ -53,6 +52,50 @@ const statusClasses = {
   pending: 'bg-slate-100 text-slate-700',
 };
 
+const unwrapArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.data?.schedules)) return value.data.schedules;
+  if (Array.isArray(value?.data?.students)) return value.data.students;
+  return [];
+};
+
+const normalizeStudent = (student = {}) => {
+  const user = student.user || student.users || {};
+  const metadata = user.metadata || student.metadata || {};
+  const id = student.id || student.student_id || student._id;
+  return {
+    ...student,
+    id,
+    userId: student.user_id || user.id || id,
+    name:
+      student.name ||
+      user.name ||
+      metadata.displayName ||
+      [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
+      user.email ||
+      'Student',
+  };
+};
+
+const normalizeSchedule = (schedule = {}) => {
+  const scheduledDate = schedule.scheduledDate || schedule.scheduled_date || schedule.date;
+  const dateOnly = scheduledDate ? String(scheduledDate).slice(0, 10) : schedule.date;
+  const timeFromDate = scheduledDate && String(scheduledDate).includes('T')
+    ? new Date(scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  return {
+    ...schedule,
+    id: schedule.id || schedule._id,
+    studentId: schedule.studentId || schedule.student_id,
+    studentName: schedule.studentName || schedule.student_name || schedule.student?.name || schedule.studentId || 'Student',
+    date: dateOnly,
+    time: schedule.time || timeFromDate,
+    status: schedule.status || 'upcoming',
+  };
+};
+
 export default function TeacherSchedulesPage() {
   const [schedules, setSchedules] = useState([]);
   const [students, setStudents] = useState([]);
@@ -85,7 +128,8 @@ export default function TeacherSchedulesPage() {
     }
 
     try {
-      const data = await scheduleService.getSchedulesByTeacher(uid).catch(() => []);
+      const response = await scheduleService.getSchedulesByTeacher(uid).catch(() => ({ data: [] }));
+      const data = unwrapArray(response).map(normalizeSchedule);
       data.sort((a, b) => {
         const aDate = parseDateValue(a.date);
         const bDate = parseDateValue(b.date);
@@ -103,22 +147,16 @@ export default function TeacherSchedulesPage() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(null, (user) => {
-      if (!user) {
-        setError('Authentication required.');
-      }
-    });
-
     const loadData = async () => {
       setLoading(true);
       try {
-        const response = await studentService.getStudents();
-        const studentRecords = response?.data || [];
+        const response = await studentService.getAllStudents();
+        const studentRecords = unwrapArray(response).map(normalizeStudent);
         setStudents(studentRecords);
         await loadSchedules();
       } catch (err) {
-        console.error('Schedule loadData error:', err.code, err.message);
-        setError(false);
+        console.error('Schedule loadData error:', err);
+        setError('Unable to load schedules.');
         setSchedules([]);
       } finally {
         setLoading(false);
@@ -126,9 +164,7 @@ export default function TeacherSchedulesPage() {
     };
 
     loadData();
-
-    return () => unsubscribe();
-  }, []);
+  }, [currentTeacherId]);
 
   const filteredSchedules = useMemo(
     () =>
@@ -149,7 +185,7 @@ export default function TeacherSchedulesPage() {
 
   const handleNewScheduleChange = (event) => {
     const { name, value } = event.target;
-    const selected = name === 'studentId' ? students.find((student) => student.id === value) : null;
+    const selected = name === 'studentId' ? students.find((student) => student.id === value || student.userId === value) : null;
     setNewSchedule((prev) => ({
       ...prev,
       [name]: value,
@@ -174,12 +210,10 @@ export default function TeacherSchedulesPage() {
       }
 
       const scheduleData = {
-        teacherId: uid,
         studentId: newSchedule.studentId,
         studentName: newSchedule.studentName,
         title: newSchedule.title || 'Lesson session',
-        room: newSchedule.room,
-        date: newSchedule.date,
+        scheduledDate: `${newSchedule.date}T${newSchedule.time || '00:00'}`,
         time: newSchedule.time,
         duration: Number(newSchedule.duration),
         status: newSchedule.status,
@@ -188,13 +222,15 @@ export default function TeacherSchedulesPage() {
       };
 
       const result = await scheduleService.createSchedule(scheduleData);
-      const scheduleId = result?.id || newSchedule.studentId + Date.now();
+      const created = result?.data?.schedule || result?.data || {};
+      const scheduleId = created.id || newSchedule.studentId + Date.now();
 
       setSchedules((prev) => [
-        {
+        normalizeSchedule({
           id: scheduleId,
           ...newSchedule,
-        },
+          ...created,
+        }),
         ...prev,
       ]);
       setShowAddModal(false);

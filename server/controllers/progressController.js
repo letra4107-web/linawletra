@@ -1,5 +1,6 @@
 const Progress = require('../models/Progress');
 const Student = require('../models/Student');
+const { supabase } = require('../config/supabase');
 
 async function assertParentOwnsStudent(req, studentId) {
   if (req.user?.role !== 'parent') return;
@@ -7,6 +8,43 @@ async function assertParentOwnsStudent(req, studentId) {
   if (!student) return false;
   return student.parentId?.toString() === req.user.id;
 }
+
+const attachStudentInfo = async (progressRows = []) => {
+  const studentIds = [...new Set((progressRows || []).map((item) => item.studentId || item.student_id).filter(Boolean))];
+  if (!studentIds.length) return progressRows;
+
+  const { data: students } = await supabase
+    .from('students')
+    .select('id,user_id,grade_level,reading_level')
+    .in('id', studentIds);
+
+  const userIds = [...new Set((students || []).map((student) => student.user_id).filter(Boolean))];
+  const { data: users } = userIds.length
+    ? await supabase.from('users').select('id,name,email,metadata').in('id', userIds)
+    : { data: [] };
+
+  const usersById = new Map((users || []).map((user) => [user.id, user]));
+  const studentsById = new Map((students || []).map((student) => [student.id, student]));
+
+  return progressRows.map((row) => {
+    const studentId = row.studentId || row.student_id;
+    const student = studentsById.get(studentId);
+    const user = student ? usersById.get(student.user_id) : null;
+    const score = row.score ?? row.percentageComplete ?? row.percentage_complete ?? 0;
+    return {
+      ...row,
+      studentName: user?.name || user?.metadata?.displayName || user?.email || 'Student',
+      grade: student?.grade_level || '',
+      date: row.updatedAt || row.updated_at || row.createdAt || row.created_at,
+      overallScore: score,
+      trend: score >= 80 ? 'up' : score >= 60 ? 'stable' : 'down',
+      categories: row.categories || {
+        Reading: score,
+        Completion: row.percentageComplete ?? row.percentage_complete ?? score,
+      },
+    };
+  });
+};
 
 // Create or get progress
 exports.createOrGetProgress = async (req, res) => {
@@ -118,6 +156,19 @@ exports.getDashboardData = async (req, res) => {
       averageScore: averageScore[0]?.avgScore || 0,
       recentProgress,
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getProgressReports = async (req, res) => {
+  try {
+    const progress = await Progress.find({});
+    const reports = await attachStudentInfo(
+      [...progress].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+    );
+
+    res.json({ reports });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

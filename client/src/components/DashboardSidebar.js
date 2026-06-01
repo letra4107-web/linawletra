@@ -58,12 +58,10 @@ export default function DashboardSidebar({
         return [
           { path: '/teacher-dashboard', label: 'Dashboard', icon: <FiGrid /> },
           { path: '/teacher/assessments', label: 'Assessments', icon: <FiFileText /> },
-          { path: '/teacher/students', label: 'My Students', icon: <FiUsers /> },
-          { path: '/teacher/learning-paths', label: 'Learning Paths', icon: <FiBookOpen /> },
-          { path: '/teacher/schedules', label: 'Schedules', icon: <FiCalendar /> },
-          { path: '/teacher/progress', label: 'Progress Reports', icon: <FiBarChart2 /> },
-          { path: '/teacher/activities', label: 'Activities', icon: <FiMessageSquare /> },
-          { path: '/teacher/settings', label: 'Settings', icon: <FiSettings /> },
+          { path: '/teacher/modules', label: 'Modules', icon: <FiBookOpen /> },
+          { path: '/teacher/class-roster', label: 'Class Roster', icon: <FiUsers /> },
+          { path: '/teacher/assignments', label: 'Assignments', icon: <FiCalendar /> },
+          { path: '/teacher/messages', label: 'Messages', icon: <FiMessageSquare /> },
         ];
       case 'parent':
         return [

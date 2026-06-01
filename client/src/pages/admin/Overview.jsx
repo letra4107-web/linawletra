@@ -7,9 +7,9 @@ const formatNumber = (value) => {
 };
 
 const normalizeDate = (value) => {
-  if (!value) return '—';
+  if (!value) return '--';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return '--';
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
@@ -47,7 +47,7 @@ export default function Overview() {
   const recentActivities = overview?.recentActivities || overview?.activities || [];
 
   return (
-    <section className="dashboard-section">
+    <section className="dashboard-section overview-section">
       <div className="section-heading">
         <div>
           <h2>Overview</h2>
@@ -108,7 +108,7 @@ export default function Overview() {
           <ul className="alert-list">
             {loading
               ? Array.from({ length: 4 }).map((_, index) => (
-                  <li key={index} className="empty-state-card">Loading activity…</li>
+                  <li key={index} className="empty-state-card">Loading activity...</li>
                 ))
               : recentActivities.length
               ? recentActivities.slice(0, 6).map((item, index) => (

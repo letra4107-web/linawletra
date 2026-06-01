@@ -90,14 +90,14 @@ class User {
     const fields = selectedFields && selectedFields.length > 0
       ? selectedFields.map((field) => {
           const clean = field.replace(/^\+/, '');
-          return clean === 'id' || clean === '_id' ? 'uid' : User._snakeCase(clean);
+          return clean === '_id' ? 'id' : User._snakeCase(clean);
         }).join(',')
       : '*';
 
     let queryRef = supabase.from('users').select(fields);
 
     if (query.uid || query.id) {
-      queryRef = queryRef.eq('uid', query.uid || query.id);
+      queryRef = queryRef.eq('id', query.uid || query.id);
     }
     if (query.email) {
       queryRef = queryRef.eq('email', String(query.email).toLowerCase());
@@ -105,10 +105,6 @@ class User {
     if (query.role) {
       queryRef = queryRef.eq('role', query.role);
     }
-    if (query.accountStatus) {
-      queryRef = queryRef.eq('account_status', query.accountStatus);
-    }
-
     return queryRef;
   }
 
@@ -130,6 +126,10 @@ class User {
     if (!existing) return null;
 
     const updateData = User._normalizeFields(updates);
+    const allowedColumns = new Set(['email', 'name', 'role', 'parent_id', 'email_verified', 'metadata']);
+    Object.keys(updateData).forEach((key) => {
+      if (!allowedColumns.has(key)) delete updateData[key];
+    });
     if (updateData.email) {
       updateData.email = String(updateData.email).toLowerCase();
     }
@@ -137,12 +137,12 @@ class User {
       updateData.password_hash = await bcrypt.hash(String(updateData.password), 10);
       delete updateData.password;
     }
-    updateData.updated_at = new Date().toISOString();
+    if (!Object.keys(updateData).length) return existing;
 
     const { data, error } = await supabase
       .from('users')
       .update(updateData)
-      .eq('uid', existing.uid)
+      .eq('id', existing.id)
       .select()
       .single();
 
@@ -153,18 +153,18 @@ class User {
   }
 
   static async findByIdAndUpdate(id, updates = {}) {
-    return User.findOneAndUpdate({ uid: id }, updates);
+    return User.findOneAndUpdate({ id }, updates);
   }
 
   static async findById(id) {
-    return User.findOne({ uid: id }).exec();
+    return User.findOne({ id }).exec();
   }
 
   static async findByIdAndDelete(id) {
     const { data, error } = await supabase
       .from('users')
       .delete()
-      .eq('uid', id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -183,6 +183,10 @@ class User {
 
   async save() {
     const data = User._normalizeFields(this.toObject());
+    const allowedColumns = new Set(['id', 'email', 'name', 'role', 'parent_id', 'email_verified', 'metadata']);
+    Object.keys(data).forEach((key) => {
+      if (!allowedColumns.has(key)) delete data[key];
+    });
     if (data.email) {
       data.email = String(data.email).toLowerCase();
     }
@@ -190,10 +194,7 @@ class User {
       data.password_hash = await bcrypt.hash(String(data.password), 10);
       delete data.password;
     }
-    data.updated_at = new Date().toISOString();
-
     if (!this.uid && !this.id) {
-      data.created_at = new Date().toISOString();
       const { data: inserted, error } = await supabase
         .from('users')
         .insert(data)
@@ -210,7 +211,7 @@ class User {
     const uid = this.uid || this.id;
     const { data: upserted, error } = await supabase
       .from('users')
-      .upsert({ ...data, uid }, { onConflict: 'uid' })
+      .upsert({ ...data, id: uid }, { onConflict: 'id' })
       .select()
       .single();
 

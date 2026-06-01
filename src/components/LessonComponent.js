@@ -15,7 +15,11 @@ export default function LessonComponent() {
 
   useEffect(() => {
     fetchLesson();
-    fetchProgress();
+    if (studentId) {
+      fetchProgress();
+    } else {
+      setLoading(false);
+    }
   }, [lessonId, studentId]);
 
   const fetchLesson = async () => {
@@ -101,8 +105,14 @@ export default function LessonComponent() {
   };
 
   const handleCompleteLesson = async () => {
+    const progressId = progress?._id || progress?.id;
+    if (!progressId) {
+      alert('Lesson preview only. Open this as a student to save progress.');
+      return;
+    }
+
     try {
-      await progressService.updateProgress(progress._id, {
+      await progressService.updateProgress(progressId, {
         status: 'completed',
         score: 85,
         percentageComplete: 100,
@@ -163,7 +173,7 @@ export default function LessonComponent() {
         )}
 
         <button className="btn-primary" onClick={handleCompleteLesson} style={{ width: '100%', padding: '1rem' }}>
-          ✓ Complete Lesson
+          {studentId ? 'Complete Lesson' : 'Preview Lesson'}
         </button>
       </div>
     </div>

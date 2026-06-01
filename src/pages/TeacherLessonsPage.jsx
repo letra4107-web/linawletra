@@ -17,18 +17,12 @@ export default function TeacherLessonsPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) navigate('/login');
-    });
-    return () => unsubscribe();
-  }, [navigate]);
-
-  useEffect(() => {
     const loadLessons = async () => {
       setLoading(true);
       setError(false);
       try {
-        const data = await getLessons();
+        const response = await lessonService.getLessons();
+        const data = response?.data?.lessons || response?.data?.data?.lessons || response?.data || [];
         setLessons(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error(err);
@@ -46,14 +40,10 @@ export default function TeacherLessonsPage() {
     let isMounted = true;
     const loadCounts = async () => {
       const counts = {};
-      await Promise.all(
-        lessons.map(async (lesson) => {
-          const lessonId = lesson.id || lesson._id;
-          if (!lessonId) return;
-          const files = await getUploadedFiles({ pageSource: 'lessons', linkedId: lessonId });
-          counts[lessonId] = files.length;
-        })
-      );
+      lessons.forEach((lesson) => {
+        const lessonId = lesson.id || lesson._id;
+        if (lessonId) counts[lessonId] = lesson.fileCount || lesson.files?.length || 0;
+      });
       if (isMounted) setLessonFileCounts(counts);
     };
 
@@ -67,7 +57,10 @@ export default function TeacherLessonsPage() {
   }, [lessons, loading]);
 
   const visibleLessons = useMemo(() => {
-    return lessons.filter((lesson) => filter === 'All' || lesson.tier === filter);
+    return lessons.filter((lesson) => {
+      const tier = lesson.tier || lesson.level || lesson.difficulty || 'Tier 1';
+      return filter === 'All' || tier === filter;
+    });
   }, [lessons, filter]);
 
   return (

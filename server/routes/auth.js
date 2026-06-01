@@ -1,6 +1,6 @@
-import express from 'express';
-import { body } from 'express-validator';
-import * as validation from '../middleware/validation.js';
+
+const express = require('express');
+const { body } = require('express-validator');
 const {
   validateRegister,
   validateLogin,
@@ -8,10 +8,7 @@ const {
   validateForgotPasswordRequest,
   validateResetPassword,
   handleValidationErrors,
-} = validation;
-
-import authController from '../controllers/authController.js';
-
+} = require('../middleware/validation');
 const {
   register,
   createProfile,
@@ -26,29 +23,17 @@ const {
   forgotPassword,
   resetPassword,
   verifyResetCode,
-} = authController;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+} = require('../controllers/authController');
 
 const router = express.Router();
 
 
-// Register parent account and send the signup verification code.
-router.post('/register', validateRegister, handleValidationErrors, register);
+router.post(
+  '/register',
+  validateRegister,
+  handleValidationErrors,
+  register
+);
 
 // Create user profile after Supabase signUp
 router.post(
@@ -132,6 +117,7 @@ router.post(
   '/send-login-otp',
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('password').notEmpty().withMessage('Password is required'),
   ],
   handleValidationErrors,
   sendLoginOTP
@@ -158,4 +144,4 @@ router.post(
   resendLoginOTP
 );
 
-export default router;
+module.exports = router;

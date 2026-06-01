@@ -1,7 +1,8 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { supabase } from '../config/supabase';
-import { signOut, onAuthStateChanged } from '../services/supabaseAuth';
-import { studentService } from '../services/api';
+import { onAuthStateChanged } from '../services/supabaseAuth';
+import { AuthContext } from '../context/AuthContext';
+import { speechService, studentService } from '../services/api';
 import {
   FiBell,
   FiLogOut,
@@ -15,6 +16,13 @@ const auth = supabase.auth;
 // CONSTANTS: Activity & Gamification
 // ============================================================================
 const XP_PER_ACTIVITY = 50; // Normalized XP reward per completed activity/lesson
+const PRONUNCIATION_XP = {
+  perfect: 50,
+  correct: 40,
+  close: 25,
+  practice: 10,
+};
+const ENCOURAGEMENT_MESSAGES = ['YOU DID WELL!', 'GOOD JOB!', 'NICE TRY!', 'KEEP GOING!', 'GREAT EFFORT!'];
 // Phonetic progression system for LinawLetra
 const TAGALOG_PHONETIC_LEVELS = {
   Easy: [
@@ -94,7 +102,7 @@ const completeActivity = async (params) => {
         streak: currentStreak,
         last_activity_date: new Date().toISOString(),
       })
-      .eq('uid', userId)
+      .eq('id', userId)
       .select()
       .single();
     if (error) throw error;
@@ -174,6 +182,7 @@ const calculateStreak = async (params) => {
 };
 // Educational feedback messages for incorrect pronunciations
 const StudentDashboard = () => {
+  const { logout } = useContext(AuthContext);
   const [dateTime, setDateTime] = useState(new Date());
   const [accessibilitySettings, setAccessibilitySettings] = useState({
     darkMode: false,
@@ -223,8 +232,11 @@ const StudentDashboard = () => {
   const [currentPhoneticLevel, setCurrentPhoneticLevel] = useState('Easy');
   const [progressInCurrentLevel, setProgressInCurrentLevel] = useState(0);
   const [xpGainPopup, setXpGainPopup] = useState(null);
+  const [reassurancePopup, setReassurancePopup] = useState(null);
+  const [confettiPopup, setConfettiPopup] = useState(false);
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
+  const ttsAudioRef = useRef(null);
   const fontFamilies = {
     'Comic Sans': '"Comic Sans MS", cursive, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
@@ -242,25 +254,33 @@ const StudentDashboard = () => {
       }
       try {
         // Fetch user data via API
-        const userData = await studentService.getStudent(user.uid).catch(() => ({}));
-        setStudentName(userData.name || userData.fullName || 'Student');
-        setUserRole(userData.role || 'student');
-        setCurrentStudentId(userData.studentId || userData.student_id || null);
+        const userResponse = await studentService.getStudent(user.uid).catch(() => ({}));
+        const userData = userResponse?.data?.student || userResponse?.data || userResponse || {};
+        const profile = userData.user || userData.users || {};
+        const profileMetadata = profile.metadata || userData.metadata || {};
+        setStudentName(userData.name || profile.name || profileMetadata.displayName || userData.fullName || 'Student');
+        setUserRole(profile.role || userData.role || 'student');
+        setCurrentStudentId(userData.studentId || userData.student_id || userData.id || null);
         setStudentGrade(
           normalizeGradeLevel(userData.gradeLevel || userData.grade_level || userData.classId || userData.className || '')
         );
         setStudentRoom(userData.room || userData.classRoom || userData.class_room || '');
         setAccessibilitySettings({
-          darkMode: userData.accessibilitySettings?.darkMode ?? false,
-          largeText: userData.accessibilitySettings?.largeText ?? false,
-          highContrast: userData.accessibilitySettings?.highContrast ?? false,
-          fontFamily: userData.accessibilitySettings?.fontFamily || 'DM Sans',
-          textSize: userData.accessibilitySettings?.textSize || 16,
-          letterSpacing: userData.accessibilitySettings?.letterSpacing || 'normal',
-          wordHighlighting: userData.accessibilitySettings?.wordHighlighting ?? true,
+          darkMode: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.darkMode ?? false,
+          largeText: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.largeText ?? false,
+          highContrast: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.highContrast ?? false,
+          fontFamily: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.fontFamily || 'DM Sans',
+          textSize: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.textSize || 16,
+          letterSpacing: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.letterSpacing || 'normal',
+          wordHighlighting: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.wordHighlighting ?? true,
         });
         // Fetch progress data via API
-        const progressData = await studentService.getDashboardData?.(user.uid).catch(() => ({})) || {};
+        const dashboardResponse = await studentService.getDashboardData?.(user.uid).catch(() => ({}));
+        const dashboardData = dashboardResponse?.data?.data ?? dashboardResponse?.data ?? dashboardResponse ?? {};
+        const progressData = {
+          ...(profileMetadata || {}),
+          ...(dashboardData || {}),
+        };
         let assignedLevel = 'beginner';
         if (progressData && Object.keys(progressData).length > 0) {
           setProgress({
@@ -295,9 +315,10 @@ const StudentDashboard = () => {
           }));
         }
         // =====================================================================
-        if (userData.studentId) {
+        const studentRecordId = userData.studentId || userData.student_id || userData.id;
+        if (studentRecordId) {
           try {
-            const practiceResponse = await studentService.getPracticeLevel(userData.studentId);
+            const practiceResponse = await studentService.getPracticeLevel(studentRecordId);
             if (practiceResponse?.data?.level) {
               assignedLevel = practiceResponse.data.level;
             }
@@ -398,7 +419,7 @@ const StudentDashboard = () => {
   };
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await logout();
     } catch (error) {
       console.error('Logout error:', error);
       setFeedback('Unable to log out right now.');
@@ -442,18 +463,125 @@ const StudentDashboard = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     return SpeechRecognition ? new SpeechRecognition() : null;
   };
-  const speakTagalog = (text) => {
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voices = speechSynthesis.getVoices();
-  const tagalogVoice = voices.find(v => v.lang === "fil-PH");
-  if (tagalogVoice) {
-    utterance.voice = tagalogVoice;
-  }
-  utterance.lang = "fil-PH";
-  utterance.rate = 0.9;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-};
+  const getBestTagalogVoice = () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    const scoredVoices = voices
+      .map((voice) => {
+        const lang = String(voice.lang || '').toLowerCase();
+        const name = String(voice.name || '').toLowerCase();
+        let score = 0;
+        if (lang === 'fil-ph') score += 100;
+        if (lang === 'tl-ph') score += 95;
+        if (lang === 'en-ph') score += 60;
+        if (lang.startsWith('fil')) score += 80;
+        if (lang.startsWith('tl')) score += 75;
+        if (lang.includes('ph')) score += 20;
+        if (name.includes('filipino') || name.includes('tagalog')) score += 40;
+        if (name.includes('google')) score += 18;
+        if (name.includes('microsoft')) score += 12;
+        if (name.includes('natural') || name.includes('online')) score += 10;
+        if (name.includes('female') || name.includes('zira') || name.includes('heera')) score += 4;
+        return { voice, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+    return scoredVoices[0]?.voice || null;
+  };
+
+  const formatForTagalogSpeech = (text = '') =>
+    String(text)
+      .replace(/-/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\./g, '. ')
+      .trim();
+
+  const speakTagalogFallback = (text, options = {}) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(formatForTagalogSpeech(text));
+    const tagalogVoice = getBestTagalogVoice();
+    if (tagalogVoice) {
+      utterance.voice = tagalogVoice;
+      utterance.lang = tagalogVoice.lang;
+    } else {
+      utterance.lang = 'fil-PH';
+    }
+    utterance.rate = options.rate || 0.68;
+    utterance.pitch = options.pitch || 1.02;
+    utterance.volume = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const speakTagalog = async (text, options = {}) => {
+    if (!text) return;
+
+    ttsAudioRef.current?.pause?.();
+    window.speechSynthesis?.cancel?.();
+
+    try {
+      const response = await speechService.textToSpeech(formatForTagalogSpeech(text), {
+        speed: options.speed || options.rate || 0.82,
+        instructions: options.instructions || 'Pronounce this Filipino/Tagalog reading-practice word slowly and clearly for a child. Emphasize correct Tagalog vowels and syllables.',
+      });
+      const audioUrl = URL.createObjectURL(response.data);
+      const audio = new Audio(audioUrl);
+      ttsAudioRef.current = audio;
+      audio.onended = () => URL.revokeObjectURL(audioUrl);
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        speakTagalogFallback(text, options);
+      };
+      await audio.play();
+    } catch (error) {
+      speakTagalogFallback(text, options);
+    }
+  };
+
+  const playTone = (frequency, duration, delay = 0, type = 'sine', gainValue = 0.08) => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime + delay);
+    gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+    gain.gain.linearRampToValueAtTime(gainValue, ctx.currentTime + delay + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(ctx.currentTime + delay);
+    oscillator.stop(ctx.currentTime + delay + duration);
+    setTimeout(() => ctx.close().catch(() => {}), (delay + duration + 0.2) * 1000);
+  };
+
+  const playClapSound = () => {
+    [0, 0.12, 0.24].forEach((delay) => playTone(900, 0.08, delay, 'square', 0.06));
+    setTimeout(() => speakTagalog('Congratulations!', { rate: 0.9, pitch: 1.1 }), 260);
+  };
+
+  const playYeheySound = () => {
+    playTone(520, 0.12, 0, 'triangle', 0.07);
+    playTone(740, 0.16, 0.12, 'triangle', 0.07);
+    setTimeout(() => speakTagalog('Yehey!', { rate: 0.88, pitch: 1.18 }), 160);
+  };
+
+  const showReassurance = (message, variant = 'encourage') => {
+    setReassurancePopup({ message, variant });
+    setTimeout(() => setReassurancePopup(null), 2200);
+  };
+
+  const showConfetti = () => {
+    setConfettiPopup(true);
+    setTimeout(() => setConfettiPopup(false), 2400);
+  };
+
+  const awardPronunciationXp = (amount) => {
+    setXp((prev) => (Number(prev) || 0) + amount);
+    setXpGainPopup(amount);
+    setTimeout(() => setXpGainPopup(null), 2000);
+  };
   const normalizeForEvaluation = (text = '') =>
     text
       .toString()
@@ -554,16 +682,25 @@ const StudentDashboard = () => {
     const { score, feedback: tagalogFeedback, distance } = evaluation;
     const isCorrect = score >= 80;
     const isClose = score >= 70 && score < 80;
+    const attemptXp = score === 100
+      ? PRONUNCIATION_XP.perfect
+      : isCorrect
+        ? PRONUNCIATION_XP.correct
+        : isClose
+          ? PRONUNCIATION_XP.close
+          : PRONUNCIATION_XP.practice;
     setTranscribedText(spoken);
     setRecognitionDistance(distance);
     setAccuracy(score);
     setFeedback(tagalogFeedback);
     setAccuracyExplanation(getAccuracyExplanation(score, spoken, expected));
+    awardPronunciationXp(attemptXp);
     const attemptRecord = {
       word: expected,
       spoken,
       score,
       correct: isCorrect,
+      xp: attemptXp,
       playedTTS: score < 80,
       timestamp: Date.now(),
     };
@@ -572,14 +709,22 @@ const StudentDashboard = () => {
       history: [...(prev.history || []), attemptRecord],
     }));
     if (score < 80) {
-      speakTagalog(`Ganito ang tamang bigkas: ${expected}`);
+      const encouragement = ENCOURAGEMENT_MESSAGES[Math.floor(Math.random() * ENCOURAGEMENT_MESSAGES.length)];
+      showReassurance(encouragement, 'encourage');
+      playYeheySound();
+      setTimeout(() => speakTagalog(expected), 900);
       setFeedback(`${tagalogFeedback} Pakinggan mo ito.`);
     }
     if (isCorrect) {
       setStatus('correct');
       setRecognitionResult('success');
-      // NOTE: XP is now awarded ONLY via completeActivity(), not on every pronunciation
-      // This keeps speech recognition decoupled from gamification rewards
+      if (score === 100) {
+        showReassurance('CONGRATULATIONS!', 'perfect');
+        showConfetti();
+        playClapSound();
+      } else {
+        showReassurance('GOOD JOB!', 'success');
+      }
       const newProgress = progressInCurrentLevel + 1;
       const threshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
       const willAdvance = newProgress >= threshold;
@@ -598,8 +743,7 @@ const StudentDashboard = () => {
       setProgress((prev) => ({
         ...prev,
         completed: (prev.completed || 0) + 1,
-        accuracy: prev.accuracy + (distance === 0 ? 10 : 5),
-        streak: (prev.streak || 0) + 1,
+        accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
       }));
       setExpectedText(getPhoneticWordForProgress(nextLevel, willAdvance ? 0 : newProgress));
       setFeedback(willAdvance ? `🎉 Level up! Ngayon ay ${nextLevel}. ${tagalogFeedback}` : tagalogFeedback);
@@ -613,6 +757,7 @@ const StudentDashboard = () => {
     if (isClose) {
       setStatus('almost');
       setRecognitionResult('almost');
+      showReassurance('YOU DID WELL!', 'encourage');
       setStatusMessage(`Malapit na! Sinabi mo: ${spoken}`);
       setTimeout(() => {
         setStatus('idle');
@@ -941,6 +1086,26 @@ const StudentDashboard = () => {
             +{xpGainPopup} XP
           </div>
         )}
+        {reassurancePopup && (
+          <div className={`reassurance-popup reassurance-popup--${reassurancePopup.variant}`}>
+            {reassurancePopup.message}
+          </div>
+        )}
+        {confettiPopup && (
+          <div className="confetti-popup" aria-hidden="true">
+            {Array.from({ length: 28 }, (_, index) => (
+              <span
+                key={index}
+                className="confetti-piece"
+                style={{
+                  left: `${(index * 37) % 100}%`,
+                  animationDelay: `${(index % 8) * 0.08}s`,
+                  backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'][index % 4],
+                }}
+              />
+            ))}
+          </div>
+        )}
         <section className="detail-top-row">
           <div className="detail-avatar-large">{studentName?.charAt(0) || 'S'}</div>
           <div className="detail-info-block">
@@ -951,7 +1116,7 @@ const StudentDashboard = () => {
             </div>
             <p className="learning-path-text">
               {nextLesson
-                ? `Next lesson: ${nextLesson.title}. Keep your streak going with the next activity.`
+                ? `Next lesson: ${nextLesson.title}. Your streak counts the days you keep using LinawLetra.`
                 : 'Your teacher will share lessons and practice activities here soon. Check back for updates.'}
             </p>
           </div>
@@ -1054,6 +1219,7 @@ const StudentDashboard = () => {
                 <article className="stat-card">
                   <p className="stat-title">Streak</p>
                   <p className="stat-value">{streakDays} days</p>
+                  <p className="stat-note">Consecutive days using LinawLetra</p>
                 </article>
                 <article className="stat-card">
                   <p className="stat-title">Learning tier</p>
@@ -1170,8 +1336,11 @@ const StudentDashboard = () => {
                   >
                     {status === 'listening' ? 'Listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
                   </button>
+                  <button className="button-large button-secondary" type="button" onClick={() => speakTagalog(expectedText)}>
+                    Listen
+                  </button>
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
-                    Replay
+                    Replay Voice
                   </button>
                 </div>
               </div>
@@ -1220,6 +1389,15 @@ const StudentDashboard = () => {
           <>
             <section id="content-section" className="detail-block">
               <div className="detail-block-title">Shared lessons</div>
+              <div className="practice-header" style={{ marginBottom: 16 }}>
+                <div>
+                  <h3>PDF Reading Assistant</h3>
+                  <p className="practice-sub">Open assigned PDF stories, listen sentence by sentence, and read aloud for feedback.</p>
+                </div>
+                <a href="/student/learn" className="button-large button-primary" style={{ textDecoration: 'none' }}>
+                  Open Learn
+                </a>
+              </div>
               {uploadsLoading ? (
                 <p className="learning-path-text">Loading lessons...</p>
               ) : filteredLessons.length === 0 ? (
@@ -1286,11 +1464,11 @@ const StudentDashboard = () => {
             <div className="progress-metrics">
               <div className="metric-card">
                 <strong>{activitiesCompleted}</strong>
-                <span>Lessons finished</span>
+                <span>Words finished</span>
               </div>
               <div className="metric-card">
                 <strong>{streakDays}</strong>
-                <span>Streak days</span>
+                <span>Daily streak</span>
               </div>
               <div className="metric-card">
                 <strong>{progressXp}</strong>

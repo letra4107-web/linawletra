@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { userService, studentService } from '../services/api';
-import { onAuthStateChanged } from '../services/supabaseAuth';
+import { studentService } from '../services/api';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
 
@@ -15,21 +14,34 @@ export default function MyStudentsPage() {
   const [error, setError] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(null, (user) => {
-      if (!user) navigate('/login');
-    });
-    return () => unsubscribe();
-  }, [navigate]);
+  const normalizeStudent = (student = {}) => {
+    const user = student.user || student.users || {};
+    const metadata = user.metadata || student.metadata || {};
+    return {
+      ...student,
+      id: student.id || student.student_id || student._id,
+      name:
+        student.name ||
+        user.name ||
+        metadata.displayName ||
+        [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
+        user.email ||
+        'Unknown student',
+      grade: student.grade || student.gradeLevel || student.grade_level || '',
+      status: student.status || 'active',
+      score: student.score ?? student.accuracy ?? metadata.accuracy ?? null,
+      tier: student.tier || student.reading_level || student.readingLevel || metadata.readingLevel || 'Tier 1',
+    };
+  };
 
   useEffect(() => {
     const loadStudents = async () => {
       setLoading(true);
       setError(false);
       try {
-        const response = await studentService.getStudents();
+        const response = await studentService.getAllStudents();
         const data = response?.data || [];
-        setStudents(Array.isArray(data) ? data : []);
+        setStudents(Array.isArray(data) ? data.map(normalizeStudent) : []);
       } catch (err) {
         console.error(err);
         setStudents([]);

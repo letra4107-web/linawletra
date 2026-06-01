@@ -1,6 +1,6 @@
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
-const { supabase } = require('../config/supabase');
+const { supabase, getSupabaseAuthClient } = require('../config/supabase');
 const User = require('../models/User');
 
 const router = express.Router();
@@ -12,8 +12,14 @@ const sendError = (res, status, message, error = null) => {
 };
 
 // Get user profile
-router.get('/profile', authMiddleware, (req, res) => {
-  res.json({ user: req.user });
+router.get('/profile', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.json({ user: user || req.user });
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.json({ user: req.user });
+  }
 });
 
 // Sync user role metadata to Supabase Auth
@@ -42,12 +48,77 @@ router.get('/sync-claims', authMiddleware, async (req, res) => {
   }
 });
 
+const normalizeEmail = (email = '') => String(email).trim().toLowerCase();
+
 // Update user profile
 router.put('/profile', authMiddleware, async (req, res) => {
   try {
-    const { name, phone } = req.body;
-    const user = await User.findByIdAndUpdate(req.user.id, { name, phone });
-    res.json({ message: 'Profile updated', user });
+    const {
+      name,
+      phone,
+      school,
+      grade,
+      avatarInitials,
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body || {};
+
+    const existingUser = await User.findById(req.user.id);
+    if (!existingUser) {
+      return res.status(404).json({ message: 'User profile not found' });
+    }
+
+    const passwordChangeRequested = Boolean(currentPassword || newPassword || confirmPassword);
+
+    if (passwordChangeRequested) {
+      if (!currentPassword) {
+        return res.status(400).json({ message: 'Current password is required to set a new password.' });
+      }
+
+      if (!newPassword || String(newPassword).length < 8) {
+        return res.status(400).json({ message: 'New password must be at least 8 characters long.' });
+      }
+
+      if (newPassword !== confirmPassword) {
+        return res.status(400).json({ message: 'New passwords do not match.' });
+      }
+
+      const email = normalizeEmail(existingUser.email || req.user.email);
+      const { error: signInError } = await getSupabaseAuthClient().auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        return res.status(400).json({ message: 'Current password is incorrect.' });
+      }
+
+      await getSupabaseAuthClient().auth.signOut().catch(() => null);
+
+      const { error: passwordError } = await supabase.auth.admin.updateUserById(req.user.id, {
+        password: newPassword,
+      });
+
+      if (passwordError) {
+        throw passwordError;
+      }
+    }
+
+    const metadata = {
+      ...(existingUser.metadata || {}),
+      ...(school !== undefined ? { school } : {}),
+      ...(grade !== undefined ? { grade, gradeLevel: grade } : {}),
+      ...(avatarInitials !== undefined ? { avatarInitials } : {}),
+    };
+
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    updateData.metadata = metadata;
+
+    const user = await User.findByIdAndUpdate(req.user.id, updateData);
+    res.json({ message: newPassword ? 'Profile and password updated' : 'Profile updated', user });
   } catch (error) {
     console.error('Profile update error:', error);
     res.status(500).json({ message: error.message });

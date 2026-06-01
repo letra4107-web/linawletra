@@ -1,9 +1,9 @@
 ﻿import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { FileText, Users, BookOpen, CalendarCheck2, Activity, Settings, PlusCircle, Search, LogOut, LayoutDashboard } from 'lucide-react';
+import { FileText, Users, BookOpen, CalendarCheck2, PlusCircle, LogOut, LayoutDashboard, MessageSquare } from 'lucide-react';
 import '../styles/TeacherDashboard.css';
-import { adminService } from '../services/api';
+import { assessmentService, progressService, studentService } from '../services/api';
 
 const sidebarSections = [
   {
@@ -14,24 +14,17 @@ const sidebarSections = [
     ],
   },
   {
-    label: 'Students',
+    label: 'Classroom',
     items: [
-      { path: '/teacher/students', label: 'My Students', icon: Users },
-      { path: '/teacher/learning-paths', label: 'Learning paths', icon: BookOpen },
-      { path: '/teacher/lessons', label: 'Schedules', icon: CalendarCheck2 },
+      { path: '/teacher/modules', label: 'Modules', icon: BookOpen },
+      { path: '/teacher/class-roster', label: 'Class Roster', icon: Users },
+      { path: '/teacher/assignments', label: 'Assignments', icon: CalendarCheck2 },
     ],
   },
   {
-    label: 'Analytics',
+    label: 'Communication',
     items: [
-      { path: '/teacher/progress', label: 'Progress reports', icon: Activity },
-      { path: '/teacher/activities', label: 'Activities', icon: Activity },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { path: '/teacher/settings', label: 'Settings', icon: Settings },
+      { path: '/teacher/messages', label: 'Messages', icon: MessageSquare },
     ],
   },
 ];
@@ -39,10 +32,8 @@ const sidebarSections = [
 export default function TeacherDashboard() {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState('');
   const [stats, setStats] = useState({
     totalStudents: 0,
-    lessons: 0,
     assessments: 0,
     avgProgressScore: 0,
     loading: true,
@@ -51,13 +42,22 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await adminService.getOverview();
-        const overview = response?.data || {};
+        const [studentsResponse, assessmentsResponse, progressResponse] = await Promise.all([
+          studentService.getAllStudents().catch(() => ({ data: [] })),
+          assessmentService.getAssessments().catch(() => ({ data: [] })),
+          progressService.getProgressReports().catch(() => ({ data: { reports: [] } })),
+        ]);
+        const students = Array.isArray(studentsResponse?.data) ? studentsResponse.data : [];
+        const assessments = assessmentsResponse?.data?.assessments || assessmentsResponse?.data || [];
+        const reports = progressResponse?.data?.reports || progressResponse?.data || [];
+        const averageProgress = reports.length
+          ? reports.reduce((sum, report) => sum + Number(report.overallScore || 0), 0) / reports.length
+          : 0;
+
         setStats({
-          totalStudents: overview.totalStudents || 0,
-          lessons: overview.lessonCount || overview.lessons || 0,
-          assessments: overview.assessmentCount || overview.assessments || 0,
-          avgProgressScore: overview.averageProgress || overview.avgProgressScore || 0,
+          totalStudents: students.length,
+          assessments: Array.isArray(assessments) ? assessments.length : 0,
+          avgProgressScore: averageProgress,
           loading: false,
         });
       } catch (err) {
@@ -77,9 +77,9 @@ export default function TeacherDashboard() {
         description: 'Active learners this week',
       },
       {
-        label: 'Lessons',
-        value: stats.loading ? '...' : stats.lessons,
-        description: 'Open lesson plans',
+        label: 'Modules',
+        value: 'PDF',
+        description: 'Reading material workspace',
       },
       {
         label: 'Assessments',
@@ -99,14 +99,6 @@ export default function TeacherDashboard() {
     const name = user?.firstName || user?.displayName || user?.fullName || user?.name || '';
     return name.split(' ')[0] || 'Teacher';
   }, [user]);
-
-  const filteredLinks = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    if (!query) return sidebarSections.flatMap((section) => section.items);
-    return sidebarSections
-      .flatMap((section) => section.items)
-      .filter((item) => item.label.toLowerCase().includes(query));
-  }, [searchTerm]);
 
   return (
     <div className="teacher-dashboard-page">
@@ -157,20 +149,15 @@ export default function TeacherDashboard() {
 
       <main className="teacher-content">
         <div className="top-nav">
-          <div className="top-search">
-            <Search size={18} className="field-icon" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search teacher tools"
-            />
+          <div>
+            <p className="top-bar-subtitle">Teacher Dashboard</p>
+            <h1 className="top-bar-title">Dashboard</h1>
           </div>
           <div className="top-right">
             <button
               type="button"
               className="detail-action"
-              onClick={() => navigate('/teacher/schedules')}
+              onClick={() => navigate('/teacher/assignments')}
             >
               <PlusCircle size={18} /> Create schedule
             </button>
@@ -189,13 +176,13 @@ export default function TeacherDashboard() {
             <div className="dashboard-hero-copy">
               <p className="dashboard-kicker">Welcome back</p>
               <h1>Teaching made simple and professional</h1>
-              <p>Track student performance, manage lessons, and keep your classroom running smoothly with a clean, modern workspace.</p>
+              <p>Track student performance, coordinate assignments, and keep your classroom running smoothly with a clean, modern workspace.</p>
             </div>
             <div className="dashboard-hero-summary">
               <div className="dashboard-hero-card">
                 <p className="stat-title">Next session</p>
                 <p className="stat-value">{stats.loading ? '...' : `${stats.totalStudents} students`}</p>
-                <p className="stat-label">Pack your lessons and resources before class.</p>
+                <p className="stat-label">Prepare assignments and reading materials before class.</p>
               </div>
               <div className="dashboard-hero-card">
                 <p className="stat-title">Workflow health</p>
@@ -215,80 +202,19 @@ export default function TeacherDashboard() {
             ))}
           </div>
 
-          <div className="body-grid">
-            <section className="list-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Teacher tools</h2>
-                  <p>Find the section you need and go there quickly.</p>
-                </div>
-              </div>
-              <div className="list-controls">
-                <div className="list-search">
-                  <Search size={18} className="field-icon" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search tools"
-                  />
-                </div>
-                <div className="filter-tabs">
-                  <button type="button" className="filter-pill active">Overview</button>
-                  <button type="button" className="filter-pill">Students</button>
-                  <button type="button" className="filter-pill">Analytics</button>
-                </div>
-              </div>
-              <div className="student-cards">
-                {filteredLinks.length === 0 ? (
-                  <div className="empty-state">
-                    <div className="empty-illustration">🔍</div>
-                    <div className="empty-title">No matching tool</div>
-                    <p className="empty-copy">Try a different search term to find the right page.</p>
-                  </div>
-                ) : (
-                  filteredLinks.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.path}
-                        type="button"
-                        onClick={() => navigate(item.path)}
-                        className="student-card"
-                      >
-                        <div className="student-card-left">
-                          <div className="student-avatar">
-                            <Icon size={20} />
-                          </div>
-                          <div>
-                            <div className="student-name">{item.label}</div>
-                            <div className="student-meta">Open this section</div>
-                          </div>
-                        </div>
-                        <div className="student-card-right">
-                          <span className="student-score">Go</span>
-                          <span className="tier-pill">Quick access</span>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-              <div className="student-footer">{filteredLinks.length} of {sidebarSections.flatMap((section) => section.items).length} available teacher tools</div>
-            </section>
-
+          <div className="body-grid body-grid-single">
             <section className="detail-panel">
               <div className="detail-header">
                 <div>
-                  <h2>Lesson planning</h2>
-                  <p>Prepare the week, update plans, and review student growth details.</p>
+                  <h2>Classroom focus</h2>
+                  <p>Prepare the week, coordinate assignments, and review student growth details.</p>
                 </div>
                 <button
                   type="button"
                   className="detail-action"
-                  onClick={() => navigate('/teacher/lessons')}
+                  onClick={() => navigate('/teacher/modules')}
                 >
-                  Adjust lesson
+                  Open modules
                 </button>
               </div>
 
@@ -297,7 +223,7 @@ export default function TeacherDashboard() {
                 <div className="detail-info-block">
                   <div className="detail-name">{firstName}'s teaching dashboard</div>
                   <div className="detail-meta-row">
-                    Active lesson plans · 3 groups · {stats.loading ? '...' : stats.totalStudents} students
+                    Active modules · classroom roster · {stats.loading ? '...' : stats.totalStudents} students
                   </div>
                 </div>
                 <div className="detail-badges">

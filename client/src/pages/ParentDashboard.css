@@ -1,9 +1,9 @@
 :root{
-  --primary:#4F46E5;
-  --bg:#F7F3E9;
-  --text:#1F2937;
-  --success:#10B981;
-  --error:#EF4444;
+  --primary: var(--color-primary);
+  --bg: var(--color-background);
+  --text: var(--color-text-primary);
+  --success: var(--color-success);
+  --error: var(--color-danger);
 }
 
 .parent-dashboard-page{
@@ -24,7 +24,7 @@
   height: 44px;
   border-radius: 14px;
   border: 1px solid rgba(31,41,55,0.12);
-  background: #fff;
+  background: var(--color-surface);
   display: none;
   align-items: center;
   justify-content: center;
@@ -36,7 +36,7 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  background: #fff;
+  background: var(--color-surface);
   border-right: 1px solid rgba(31,41,55,0.10);
   padding: 18px 16px;
   display: flex;
@@ -62,7 +62,7 @@
 .parent-sidebar__brand-sub{font-size:0.82rem; color: rgba(31,41,55,0.65); font-weight:500;}
 
 .parent-sidebar__user{display:flex; gap:12px; align-items:center; padding:12px; border-radius: 18px; background: rgba(79,70,229,0.06); border: 1px solid rgba(79,70,229,0.14);}
-.parent-sidebar__avatar{width:42px; height:42px; border-radius: 50%; background: var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800;}
+.parent-sidebar__avatar{width:42px; height:42px; border-radius: 50%; background: var(--primary); color:var(--color-surface); display:flex; align-items:center; justify-content:center; font-weight:800;}
 .parent-sidebar__user-name{font-weight:800; font-size:0.95rem;}
 .parent-sidebar__user-role{font-size:0.78rem; color: rgba(31,41,55,0.65); font-weight:600; margin-top:2px;}
 
@@ -87,7 +87,7 @@
 .parent-sidebar__label{font-size:0.92rem;}
 
 .parent-sidebar__footer{padding-top:14px; border-top: 1px solid rgba(31,41,55,0.08);}
-.parent-sidebar__logout{width:100%; display:flex; align-items:center; gap:10px; justify-content:center; padding: 11px 12px; border-radius: 16px; border: 1px solid rgba(31,41,55,0.10); background: #fff; font-weight: 800; color: rgba(31,41,55,0.9);} 
+.parent-sidebar__logout{width:100%; display:flex; align-items:center; gap:10px; justify-content:center; padding: 11px 12px; border-radius: 16px; border: 1px solid rgba(31,41,55,0.10); background: var(--color-surface); font-weight: 800; color: rgba(31,41,55,0.9);} 
 .parent-sidebar__logout:hover{background: rgba(79,70,229,0.06); border-color: rgba(79,70,229,0.18);} 
 .parent-sidebar__logout-icon{display:flex; color: var(--primary);} 
 .parent-sidebar__overlay{position:fixed; inset:0; background: rgba(15,23,42,0.35); z-index: 60;}
@@ -101,7 +101,7 @@
 }
 
 .parent-topbar{
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid rgba(31,41,55,0.08);
   border-radius: 20px;
   padding: 18px 18px;
@@ -128,7 +128,7 @@
   transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
 }
 .parent-btn:active{transform: translateY(1px);} 
-.parent-btn--primary{background: var(--primary); color:#fff; box-shadow: 0 12px 22px rgba(79,70,229,0.22);} 
+.parent-btn--primary{background: var(--primary); color:var(--color-surface); box-shadow: 0 12px 22px rgba(79,70,229,0.22);} 
 .parent-btn--secondary{background: rgba(79,70,229,0.08); color: var(--primary); border: 1px solid rgba(79,70,229,0.18);} 
 
 .parent-grid{
@@ -150,7 +150,7 @@
 }
 
 .parent-banner{
-  background: linear-gradient(180deg, rgba(79,70,229,0.12), #fff);
+  background: linear-gradient(180deg, rgba(79,70,229,0.12), var(--color-surface));
   border-radius: 24px;
   padding: 26px;
   min-height: 220px;
@@ -162,7 +162,7 @@
 }
 
 .parent-banner--stats{
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid rgba(31,41,55,0.08);
 }
 
@@ -245,7 +245,7 @@
 }
 
 .parent-modal__content{
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 28px;
   padding: 28px;
   box-shadow: 0 32px 90px rgba(15,23,42,0.18);
@@ -313,7 +313,7 @@
   border-radius: 16px;
   border: 1px solid rgba(31,41,55,0.12);
   padding: 0 16px;
-  background: #fff;
+  background: var(--color-surface);
   color: var(--text);
   font-size: 1rem;
   transition: border-color .16s ease, box-shadow .16s ease;
@@ -353,7 +353,7 @@
 }
 
 .parent-card{
-  background:#fff;
+  background:var(--color-surface);
   border-radius: 20px;
   border: 1px solid rgba(31,41,55,0.08);
   box-shadow: 0 12px 30px rgba(15,23,42,0.05);
@@ -375,7 +375,7 @@
 .parent-chip--danger{background: rgba(239,68,68,0.10); color: rgb(239,68,68);} 
 
 .parent-section{
-  background:#fff;
+  background:var(--color-surface);
   border-radius: 20px;
   border: 1px solid rgba(31,41,55,0.08);
   box-shadow: 0 12px 30px rgba(15,23,42,0.05);
@@ -423,6 +423,47 @@
 .parent-list-row__title{font-weight: 900;}
 .parent-list-row__meta{margin-top:4px; color: rgba(31,41,55,0.66); font-weight: 600; font-size: 0.88rem;}
 
+.parent-child-detail{
+  margin-top: 8px;
+  border: 1px solid rgba(79,70,229,0.14);
+  background: rgba(79,70,229,0.04);
+  border-radius: 18px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+.parent-child-detail__head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+.parent-child-detail__grid{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 12px;
+}
+.parent-child-detail__metric{
+  background:var(--color-surface);
+  border:1px solid rgba(31,41,55,0.08);
+  border-radius: 16px;
+  padding: 12px;
+  display:grid;
+  gap:6px;
+}
+.parent-child-detail__metric span{
+  color: rgba(31,41,55,0.62);
+  font-size: .8rem;
+  font-weight: 800;
+}
+.parent-child-detail__metric strong{
+  font-size: 1.35rem;
+}
+.parent-child-detail__activity{
+  display:grid;
+  gap:10px;
+}
+
 .parent-status{
   font-weight: 900;
   padding: 8px 10px;
@@ -453,10 +494,12 @@
   .parent-sidebar-toggle{display:flex;}
   .parent-sidebar.is-mobile-open{display:block; position:fixed; left:0; top:0; bottom:0; width:min(84vw,320px); z-index: 65;}
   .parent-main{padding: 78px 16px 16px;}
+  .parent-child-detail__grid{grid-template-columns: repeat(2, minmax(0,1fr));}
 }
 
 @media (max-width: 520px){
   .parent-grid--cards{grid-template-columns: 1fr;}
   .child-overview-grid { grid-template-columns: 1fr; }
+  .parent-child-detail__grid{grid-template-columns: 1fr;}
 }
 

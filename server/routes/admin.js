@@ -1,6 +1,7 @@
 ﻿const express = require('express');
+const crypto = require('crypto');
 const { verifyAdmin } = require('../middleware/auth');
-const { supabase } = require('../config/supabase');
+const { supabase, getSupabaseAuthClient } = require('../config/supabase');
 const User = require('../models/User');
 const Feedback = require('../models/Feedback');
 const Progress = require('../models/Progress');
@@ -15,6 +16,30 @@ const DEFAULT_SETTINGS = {
   logoUrl: '',
   homepageText: 'Welcome to the LinawLetra learning platform.',
   announcements: [],
+};
+
+const normalizeEmail = (email = '') => String(email).trim().toLowerCase();
+
+const generateTeacherPassword = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const randomPart = Array.from(crypto.randomBytes(10))
+    .map((byte) => alphabet[byte % alphabet.length])
+    .join('');
+  return `Teacher-${randomPart}!`;
+};
+
+const verifyTeacherPasswordSignIn = async (email, password) => {
+  const { data, error } = await getSupabaseAuthClient().auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error || !data?.user) {
+    throw error || new Error('Teacher password verification failed.');
+  }
+
+  await getSupabaseAuthClient().auth.signOut().catch(() => null);
+  return data.user;
 };
 
 const sendError = (res, status, message, error = null) => {
@@ -93,12 +118,12 @@ router.get('/overview', async (req, res) => {
       countRows('users', (query) => query.eq('role', 'parent')),
       countRows('users', (query) => query.eq('role', 'teacher')),
       countRows('users', (query) => query.eq('role', 'student')),
-      countRows('users', (query) => query.eq('is_active', true)),
+      countRows('users'),
       countRows('lessons'),
       countRows('assessments'),
       countRows('student_progress'),
       countRows('student_progress', (query) => query.eq('completed', true)),
-      countRows('users', (query) => query.or('account_status.eq.pending,account_status.eq.pending_approval')),
+      0,
     ]);
 
     const { data: roleData, error: roleError } = await supabase.from('users').select('role');
@@ -184,9 +209,13 @@ router.get('/users', async (req, res) => {
     }
     if (statusFilter) {
       if (statusFilter === 'active') {
-        query = query.eq('is_active', true);
+        query = query;
+      } else if (statusFilter === 'inactive') {
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000');
       } else {
-        query = query.or(`account_status.eq.${normalizedStatus},status.eq.${normalizedStatus}`);
+        query = normalizedStatus === 'approved'
+          ? query
+          : query.eq('id', '00000000-0000-0000-0000-000000000000');
       }
     }
     if (search) {
@@ -262,7 +291,7 @@ router.get('/teachers', async (req, res) => {
         ...normalizeRecord(teacher),
         email: teacher.email,
         role: teacher.role || 'teacher',
-        status: teacher.account_status || teacher.status || (teacher.is_active ? 'active' : 'inactive') || 'active',
+        status: teacher.status || 'active',
         assignedStudents: Array.from(assignedStudents).slice(0, 10),
         assignedStudentCount: assignedStudents.size,
       };
@@ -275,13 +304,161 @@ router.get('/teachers', async (req, res) => {
   }
 });
 
+router.post('/teachers/create', async (req, res) => {
+  let authUserId = null;
+
+  try {
+    const {
+      firstName = '',
+      lastName = '',
+      name = '',
+      email = '',
+      gradeLevel = 'Grade 1',
+      password,
+    } = req.body || {};
+
+    const normalizedEmail = normalizeEmail(email);
+    const cleanFirstName = String(firstName || '').trim();
+    const cleanLastName = String(lastName || '').trim();
+    const displayName = String(name || `${cleanFirstName} ${cleanLastName}`).trim();
+
+    if (!displayName || !normalizedEmail) {
+      return sendError(res, 400, 'Teacher name and email are required.');
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return sendError(res, 400, 'Please enter a valid teacher email address.');
+    }
+
+    const { data: existingProfile, error: existingProfileError } = await supabase
+      .from('users')
+      .select('id,email,role')
+      .ilike('email', normalizedEmail)
+      .maybeSingle();
+
+    if (existingProfileError) throw existingProfileError;
+
+    if (existingProfile) {
+      return sendError(res, 409, 'A user profile with this email already exists.');
+    }
+
+    const { data: authList, error: authListError } = await supabase.auth.admin.listUsers();
+    if (authListError) throw authListError;
+
+    const existingAuthUser = (authList?.users || []).find(
+      (user) => normalizeEmail(user.email) === normalizedEmail
+    );
+    if (existingAuthUser) {
+      return sendError(res, 409, 'This email is already registered in Supabase Auth.');
+    }
+
+    const teacherPassword = password || generateTeacherPassword();
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: normalizedEmail,
+      password: teacherPassword,
+      email_confirm: true,
+      user_metadata: {
+        role: 'teacher',
+        approved: true,
+      },
+    });
+
+    if (authError || !authData?.user) {
+      throw authError || new Error('Failed to create teacher auth account.');
+    }
+
+    authUserId = authData.user.id;
+
+    try {
+      await verifyTeacherPasswordSignIn(normalizedEmail, teacherPassword);
+    } catch (verifyError) {
+      console.warn('Teacher password did not verify immediately; resetting password once:', verifyError.message);
+      const { error: resetPasswordError } = await supabase.auth.admin.updateUserById(authUserId, {
+        password: teacherPassword,
+        email_confirm: true,
+      });
+
+      if (resetPasswordError) throw resetPasswordError;
+      await verifyTeacherPasswordSignIn(normalizedEmail, teacherPassword);
+    }
+
+    const metadata = {
+      displayName,
+      firstName: cleanFirstName || displayName.split(' ')[0] || 'Teacher',
+      lastName: cleanLastName || displayName.split(' ').slice(1).join(' ') || '',
+      gradeLevel,
+      approved: true,
+      firstLoginOtpCompleted: true,
+      createdByAdmin: req.user.id,
+    };
+
+    const { data: teacherProfile, error: profileError } = await supabase
+      .from('users')
+      .upsert({
+        id: authUserId,
+        email: normalizedEmail,
+        name: displayName,
+        role: 'teacher',
+        email_verified: true,
+        metadata,
+      }, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (profileError) {
+      await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      throw profileError;
+    }
+
+    await logAdminAction(req, 'Created teacher account', 'teacher', authUserId, {
+      email: normalizedEmail,
+      gradeLevel,
+    });
+
+    // Send credentials email to teacher
+    const { sendTeacherAccountEmail } = require('../services/emailService');
+    const emailSent = await sendTeacherAccountEmail(
+      normalizedEmail,
+      displayName,
+      teacherPassword
+    );
+
+    if (!emailSent) {
+      // Roll back user if email fails
+      await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      await supabase.from('users').delete().eq('id', authUserId);
+      return sendError(res, 500, 'Teacher account was created but email delivery failed. The account has been rolled back. Please check your email configuration.');
+    }
+
+    return res.status(201).json({
+      teacher: {
+        ...normalizeRecord(teacherProfile),
+        gradeLevel,
+        status: 'active',
+        assignedStudentCount: 0,
+      },
+      credentials: {
+        email: normalizedEmail,
+        password: teacherPassword,
+      },
+      message: 'Teacher account created and email sent successfully.',
+    });
+  } catch (error) {
+    console.error('Create teacher error:', error);
+    if (authUserId) {
+      await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+    }
+    return sendError(res, 500, 'Could not create teacher account. Please try again.', error.message);
+  }
+});
+
 router.get('/pending-users', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('role', 'teacher')
-      .or('account_status.eq.pending_approval,status.eq.pending_approval')
+      .eq('id', '00000000-0000-0000-0000-000000000000')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -311,10 +488,7 @@ const approveTeacherAccount = async (teacherId) => {
   }
 
   const updateData = {
-    accountStatus: 'approved',
-    status: 'approved',
-    isActive: true,
-    updatedAt: new Date().toISOString(),
+    metadata: { approved: true },
   };
 
   const updatedUser = await User.findByIdAndUpdate(teacherId, updateData);
@@ -342,8 +516,7 @@ router.put('/pending-users/:id', async (req, res) => {
     }
 
     const updatedUser = await User.findByIdAndUpdate(req.params.id, {
-      accountStatus,
-      isActive: accountStatus === 'approved',
+      metadata: { approved: accountStatus === 'approved' },
     });
 
     await logAdminAction(req, `Account ${accountStatus}`, 'user', req.params.id, { userEmail: updatedUser.email });
@@ -421,7 +594,7 @@ router.put('/settings', async (req, res) => {
 
 router.put('/users/:id', async (req, res) => {
   try {
-    const { role, isActive, fullName, name, email, accountStatus } = req.body;
+    const { role, isActive, fullName, name, email } = req.body;
     const updateData = {};
 
     if (role !== undefined) updateData.role = role;
@@ -429,7 +602,6 @@ router.put('/users/:id', async (req, res) => {
     if (fullName !== undefined) updateData.fullName = fullName;
     if (name !== undefined) updateData.fullName = name;
     if (email !== undefined) updateData.email = String(email).toLowerCase();
-    if (accountStatus !== undefined) updateData.accountStatus = accountStatus;
 
     const existingUser = await User.findById(req.params.id);
     if (!existingUser) {

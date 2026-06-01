@@ -8,6 +8,7 @@ export default function Teachers() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', gradeLevel: 'Grade 1' });
   const [error, setError] = useState('');
+  const [createdCredentials, setCreatedCredentials] = useState(null);
 
   useEffect(() => {
     const loadTeachers = async () => {
@@ -16,7 +17,9 @@ export default function Teachers() {
       try {
         const response = await adminService.getTeachers();
         const payload = response.data || response;
-        if (Array.isArray(payload)) {
+        if (Array.isArray(payload?.teachers)) {
+          setTeachers(payload.teachers);
+        } else if (Array.isArray(payload)) {
           setTeachers(payload);
         }
       } catch (err) {
@@ -32,19 +35,27 @@ export default function Teachers() {
   const handleCreateTeacher = async (event) => {
     event.preventDefault();
     const newTeacher = {
-      id: Date.now(),
-      name: `${form.firstName} ${form.lastName}`,
+      firstName: form.firstName,
+      lastName: form.lastName,
+      name: `${form.firstName} ${form.lastName}`.trim(),
       email: form.email,
       gradeLevel: form.gradeLevel,
-      status: 'active',
     };
 
     try {
-      await adminService.createTeacher(newTeacher);
-      setTeachers((prev) => [newTeacher, ...prev]);
+      setError('');
+      setCreatedCredentials(null);
+      const response = await adminService.createTeacher(newTeacher);
+      const createdTeacher = response?.data?.teacher || {
+        ...newTeacher,
+        id: Date.now(),
+        status: 'active',
+      };
+      setTeachers((prev) => [createdTeacher, ...prev]);
+      setCreatedCredentials(response?.data?.credentials || null);
       setForm({ firstName: '', lastName: '', email: '', gradeLevel: 'Grade 1' });
     } catch (err) {
-      setError('Could not create teacher. Please try again.');
+      setError(err?.response?.data?.message || err?.message || 'Could not create teacher. Please try again.');
     }
   };
 
@@ -63,6 +74,12 @@ export default function Teachers() {
       </div>
 
       {error && <div className="dashboard-banner dashboard-banner-error">{error}</div>}
+      {createdCredentials && (
+        <div className="dashboard-banner">
+          Teacher created. Login email: <strong>{createdCredentials.email}</strong> Temporary password:{' '}
+          <strong>{createdCredentials.password}</strong>
+        </div>
+      )}
 
       <div className="panel-grid">
         <div className="card-panel">

@@ -18,21 +18,21 @@
   --font-primary: 'Inter', 'Lexend', 'Atkinson Hyperlegible', system-ui, sans-serif;
 
   /* Color Palette */
-  --color-slate-50: #eef2ff;
-  --color-slate-100: #f8fafc;
-  --color-slate-200: #f1f5f9;
-  --color-slate-300: #e2e8f0;
-  --color-slate-400: #cbd5e1;
-  --color-slate-500: #94a3b8;
-  --color-slate-600: #475569;
-  --color-slate-700: #334155;
-  --color-slate-900: #0f172a;
+  --color-slate-50: var(--color-background);
+  --color-slate-100: var(--color-primary-light);
+  --color-slate-200: var(--color-border);
+  --color-slate-300: var(--color-border);
+  --color-slate-400: #9ca3af;
+  --color-slate-500: var(--color-text-secondary);
+  --color-slate-600: var(--color-text-secondary);
+  --color-slate-700: #374151;
+  --color-slate-900: var(--color-text-primary);
 
-  --color-red-500: #ef4444;
-  --color-red-600: #dc2626;
-  --color-orange-500: #f97316;
-  --color-indigo-500: #4f46e5;
-  --color-indigo-600: #4338ca;
+  --color-red-500: var(--color-danger);
+  --color-red-600: var(--color-danger);
+  --color-orange-500: var(--color-warning);
+  --color-indigo-500: var(--color-primary);
+  --color-indigo-600: var(--color-primary-dark);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
@@ -58,7 +58,7 @@ html {
 body {
   margin: 0;
   font-family: var(--font-primary);
-  background: #e8f0ff;
+  background: var(--color-background);
 }
 
 /* ============================================================
@@ -68,7 +68,7 @@ body {
 .pageWrapper {
   min-height: 100vh;
   padding: var(--space-5);
-  background-color: #e8f0ff;
+  background-color: var(--color-background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -181,6 +181,29 @@ body {
   align-items: center;
   justify-content: flex-start;
   width: 100%;
+}
+
+.backHomeButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary-text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.backHomeButton:hover,
+.backHomeButton:focus-visible {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  outline: none;
 }
 
 .pageBrand {
@@ -302,8 +325,8 @@ body {
 
 .authCard input {
   width: 100%;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 1.25rem;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
@@ -342,7 +365,7 @@ body {
 }
 
 .actionLink:hover {
-  color: #3730a3;
+  color: var(--color-primary-text);
 }
 
 /* ============================================================
@@ -355,7 +378,7 @@ body {
   justify-content: center;
   align-items: center;
   gap: var(--space-2);
-  background: linear-gradient(135deg, var(--color-indigo-600) 0%, #6366f1 100%);
+  background: var(--color-primary);
   color: white;
   border-radius: 999px;
   border: none;
@@ -432,7 +455,7 @@ body {
 }
 
 .authFooter a:hover {
-  color: #3730a3;
+  color: var(--color-primary-text);
   text-decoration: underline;
 }
 

@@ -286,7 +286,6 @@ export const updateUserEmail = async (newEmail) => {
         .update({
           email: newEmail.toLowerCase(),
           email_verified: false,
-          verified_at: null,
         })
         .eq('id', user.id);
     }
@@ -452,19 +451,18 @@ export const registerTeacherAccount = async (email, password, userData) => {
     const { error: profileError } = await supabase
       .from('users')
       .insert({
-        uid: teacherUser.id,
+        id: teacherUser.id,
         email: email.toLowerCase(),
-        display_name: displayName,
-        first_name: userData.firstName || '',
-        last_name: userData.lastName || '',
-        middle_initial: userData.middleInitial || '',
+        name: displayName,
         role: 'teacher',
-        phone: userData.phone || null,
-        profile_image: null,
         email_verified: true,
-        verified_at: new Date().toISOString(),
-        account_status: 'active',
-        is_active: true,
+        metadata: {
+          displayName,
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          middleInitial: userData.middleInitial || '',
+          phone: userData.phone || null,
+        },
       });
 
     if (profileError) throw profileError;

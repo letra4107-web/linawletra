@@ -127,19 +127,19 @@ exports.register = async (req, res) => {
     // Using service role which BYPASSES all RLS policies
     const { data: userProfile, error: insertError } = await supabase
       .from('users')
-      .insert({
+      .upsert({
         id: authUser.id,  // CRITICAL: Must match auth.users.id
         email: normalizedEmail,
-        display_name: fullName,
-        first_name: firstName,
-        last_name: lastName,
-        middle_initial: middleInitial || null,
+        name: fullName,
         role: role || 'parent',
         email_verified: false,
-        account_status: 'active',
-        is_active: true,
-        profile_image: null,
-      })
+        metadata: {
+          displayName: fullName,
+          firstName,
+          lastName,
+          middleInitial: middleInitial || null,
+        },
+      }, { onConflict: 'id' })
       .select()
       .single();
 
@@ -292,7 +292,6 @@ exports.verifyEmail = async (req, res) => {
       .from('users')
       .update({
         email_verified: true,
-        verified_at: new Date().toISOString(),
       })
       .eq('email', email.toLowerCase());
 

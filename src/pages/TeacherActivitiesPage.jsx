@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-// Activities to be fetched via API
+import { readingService } from '../services/api';
 import FileUploadSection from '../components/ui/FileUploadSection';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
@@ -39,27 +39,23 @@ export default function TeacherActivitiesPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        navigate('/login');
-        return;
-      }
-      setCurrentUid(user.uid || 'general');
-    });
-    return () => unsubscribe();
-  }, [navigate]);
-
-  useEffect(() => {
     const loadActivities = async () => {
       setLoading(true);
       setError(false);
       try {
-        const data = await getActivities();
-        setActivities(Array.isArray(data) ? data : []);
+        const response = await readingService.getAnalytics();
+        const attempts = response?.data?.attempts || [];
+        setActivities(attempts.map((attempt) => ({
+          id: attempt.id,
+          type: 'assessment',
+          description: `${attempt.reading_materials?.title || 'Reading practice'} completed`,
+          studentName: attempt.student_name || attempt.student_id || 'Student',
+          timestamp: attempt.completed_at || attempt.created_at,
+        })));
       } catch (err) {
-        console.error('Activities error:', err.code, err.message);
+        console.error('Activities error:', err);
         setActivities([]);
-        setError(false);
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -96,7 +92,12 @@ export default function TeacherActivitiesPage() {
           emptyText="Upload activity sheets, worksheets, or classroom materials here."
         />
 
-        {loading ? (
+        {error ? (
+          <div className="empty-state">
+            <div className="empty-title">Unable to load activities</div>
+            <p className="empty-copy">Please refresh the page or try again later.</p>
+          </div>
+        ) : loading ? (
           <section className="student-cards">
             {Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton-card" />)}
           </section>

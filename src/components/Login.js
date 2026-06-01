@@ -1,6 +1,5 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../config/supabase';
 import { validateEmail } from '../services/validation';
 import { authService } from '../services/api';
 import { AuthContext } from '../context/AuthContext';
@@ -60,9 +59,10 @@ export default function Login() {
     }
 
     if (name === 'password') {
-      // Password is optional for OTP sign-in flow.
-      if (value && value.length < 6) {
-        errors.password = 'Password must be at least 6 characters if provided.';
+      if (!value) {
+        errors.password = 'Password is required.';
+      } else if (value.length < 6) {
+        errors.password = 'Password must be at least 6 characters.';
       }
     }
 
@@ -71,7 +71,8 @@ export default function Login() {
 
   const validateForm = () => {
     const emailErrors = validateField('email', formValues.email);
-    const errors = { ...emailErrors };
+    const passwordErrors = validateField('password', formValues.password);
+    const errors = { ...emailErrors, ...passwordErrors };
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -166,58 +167,67 @@ export default function Login() {
 
     try {
       const email = formValues.email.toLowerCase();
-      console.log('[Login] Requesting login OTP via backend for:', email);
+      console.log('[Login] Signing in via backend for:', email);
 
-      try {
-        const response = await authService.sendLoginOTP(email);
-        if (response.data?.success) {
-          // If server indicates admin bypass and provides user, navigate directly
-          if (response.data.skipOtp && response.data.user) {
-            const normalizedRole = String(response.data.user.role || '').toLowerCase();
-            if (normalizedRole === 'parent') navigate('/parent/summary', { replace: true });
-            else if (normalizedRole === 'student') navigate('/student-dashboard', { replace: true });
-            else if (normalizedRole === 'teacher') navigate('/teacher-dashboard', { replace: true });
-            else navigate('/admin-dashboard/overview', { replace: true });
-            return;
-          }
+      const response = await authService.login({
+        email,
+        password: formValues.password,
+      });
 
-          navigate('/verify-login-otp', {
-            state: {
-              email,
-              message: response.data.message || 'A verification code has been sent to your email. Enter it to complete login.',
-              isLoginFlow: true,
-              otpSent: response.data.emailSent !== false,
-            },
-            replace: true,
-          });
-          return;
-        }
-
-        // Handle cases where server says email verification required
-        if (response.data?.requiresEmailVerification) {
-          navigate('/verify-email', {
-            state: {
-              email,
-              message: 'Please verify your email before logging in. A verification code was sent to your inbox.',
-              isLoginFlow: true,
-              otpAutoSent: true,
-            },
-            replace: true,
-          });
-          return;
-        }
-
-        setGlobalError(response.data?.message || 'Failed to send login OTP.');
-        return;
-      } catch (err) {
-        console.error('[Login] sendLoginOTP error:', err);
-        setGlobalError(err.response?.data?.message || err.message || 'Failed to send login OTP.');
+      if (response.data?.requiresLoginOTP) {
+        navigate('/verify-login-otp', {
+          state: {
+            email,
+            message: response.data.message || 'A verification code has been sent to your email. Enter it to complete login.',
+            isLoginFlow: true,
+            otpSent: response.data.emailSent !== false,
+          },
+          replace: true,
+        });
         return;
       }
+
+      if (response.data?.requiresEmailVerification) {
+        navigate('/verify-email', {
+          state: {
+            email,
+            message: 'Please verify your email before logging in. A verification code was sent to your inbox.',
+            isLoginFlow: true,
+            otpAutoSent: true,
+          },
+          replace: true,
+        });
+        return;
+      }
+
+      if (response.data?.success && response.data?.user) {
+        const token = response.data.token || response.data.session?.access_token;
+        login(response.data.user, token);
+
+        const normalizedRole = String(response.data.user.role || '').toLowerCase();
+        if (normalizedRole === 'parent') navigate('/parent/summary', { replace: true });
+        else if (normalizedRole === 'student') navigate('/student-dashboard', { replace: true });
+        else if (normalizedRole === 'teacher') navigate('/teacher-dashboard', { replace: true });
+        else navigate('/admin-dashboard/overview', { replace: true });
+        return;
+      }
+
+      setGlobalError(response.data?.message || 'Login failed.');
     } catch (err) {
       console.error('[Login] Unexpected login error:', err);
-      alert(err.message || 'Unexpected login error.');
-      setGlobalError(err.message || 'Unexpected login error.');
+      if (err.response?.data?.requiresEmailVerification) {
+        navigate('/verify-email', {
+          state: {
+            email: formValues.email.toLowerCase(),
+            message: 'Please verify your email before logging in. A verification code was sent to your inbox.',
+            isLoginFlow: true,
+            otpAutoSent: true,
+          },
+          replace: true,
+        });
+        return;
+      }
+      setGlobalError(err.response?.data?.message || err.message || 'Unexpected login error.');
     } finally {
         setLoading(false);
       }
@@ -301,7 +311,7 @@ export default function Login() {
 
               <button
                 type="submit"
-                disabled={loading || !formValues.email.trim() || rateLimitExceeded}
+                disabled={loading || !formValues.email.trim() || !formValues.password || rateLimitExceeded}
                 className={styles.submitButton}
               >
                 {loading ? 'Logging in...' : 'Sign In'}
