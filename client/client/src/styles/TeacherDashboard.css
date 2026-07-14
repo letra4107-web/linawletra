@@ -1,4 +1,4 @@
-﻿/* Teacher Dashboard: Dyslexia-friendly production UI */
+/* Teacher Dashboard: Dyslexia-friendly production UI */
 :root {
   --bg-soft: #FDFAF5;
   --panel-bg: #FFFFFF;
@@ -19,7 +19,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif !important;
   line-height: 1.6 !important;
   letter-spacing: 0.02em !important;
 }
@@ -1176,3 +1176,4 @@
     grid-template-columns: 1fr;
   }
 }
+

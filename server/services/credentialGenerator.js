@@ -4,7 +4,7 @@
  * Produces username (email) and password suitable for the Student Dashboard
  */
 
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 /**
  * Generate a secure, random password
@@ -92,7 +92,7 @@ const isValidCredentials = (credentials) => {
   );
 };
 
-module.exports = {
+export {
   generatePassword,
   generateStudentUsername,
   generateStudentCredentials,

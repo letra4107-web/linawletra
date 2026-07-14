@@ -14,7 +14,7 @@
  */
 
 require('dotenv').config();
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
 console.log('\n🔍 === Email Configuration Verification ===\n');
 

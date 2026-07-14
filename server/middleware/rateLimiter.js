@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+import rateLimit from 'express-rate-limit';
 
 // General API rate limiter (100 requests per 15 minutes per IP)
 const generalLimiter = rateLimit({
@@ -57,7 +57,7 @@ const passwordResetLimiter = rateLimit({
   keyGenerator: (req) => req.body?.email || req.ip, // Rate limit by email if available
 });
 
-module.exports = {
+export {
   generalLimiter,
   authLimiter,
   verificationLimiter,

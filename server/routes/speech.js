@@ -1,8 +1,8 @@
-const express = require('express');
-const multer = require('multer');
-const OpenAI = require('openai');
-const fs = require('fs');
-const path = require('path');
+﻿import express from 'express';
+import multer from 'multer';
+import OpenAI from 'openai';
+import fs from 'fs';
+import path from 'path';
 
 const router = express.Router();
 const tempDir = path.join(__dirname, '../temp/');
@@ -112,4 +112,5 @@ router.post('/tts', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
+

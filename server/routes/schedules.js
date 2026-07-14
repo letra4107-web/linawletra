@@ -1,13 +1,11 @@
-const express = require('express');
-const { authMiddleware, roleMiddleware } = require('../middleware/auth');
-const {
-  createSchedule,
+import express from 'express';
+import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { createSchedule,
   getSchedulesByStudent,
   getSchedulesByParent,
   getSchedulesByTeacher,
   updateSchedule,
-  deleteSchedule,
-} = require('../controllers/scheduleController');
+  deleteSchedule, } from '../controllers/scheduleController.js';
 
 const router = express.Router();
 
@@ -29,4 +27,4 @@ router.put('/:id', authMiddleware, updateSchedule);
 // Delete schedule
 router.delete('/:id', authMiddleware, deleteSchedule);
 
-module.exports = router;
+export default router;

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../config/supabase';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
 

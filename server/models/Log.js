@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+import { supabase } from '../config/supabase.js';
 
 class Log {
   constructor(data = {}) {
@@ -111,4 +111,4 @@ class Log {
   }
 }
 
-module.exports = Log;
+export default Log;

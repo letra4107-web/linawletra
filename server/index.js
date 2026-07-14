@@ -1,5 +1,5 @@
-const http = require("http");
-const app = require("./server");
+import http from "http";
+import app from "./server.js";
 
 const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 5002;
 const MAX_PORT_ATTEMPTS = 20;

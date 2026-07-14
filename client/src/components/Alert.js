@@ -10,7 +10,12 @@ const iconByType = {
 
 export default function Alert({ type = 'error', message }) {
   return (
-    <div className={`${styles.alert} ${styles[type]}`} role="alert">
+    <div
+      className={`${styles.alert} ${styles[type]}`}
+      role="alert"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       <span className={styles.icon}>{iconByType[type]}</span>
       <p className={styles.message}>{message}</p>
     </div>

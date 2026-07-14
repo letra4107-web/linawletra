@@ -20,9 +20,9 @@
  *   node cleanup-email-registration.js --check <email>
  */
 
-const path = require('path');
-const dotenv = require('dotenv');
-const { createClient } = require('@supabase/supabase-js');
+import path from 'path';
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
 // Load environment variables
 [

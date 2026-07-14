@@ -1,6 +1,6 @@
-const Progress = require('../models/Progress');
-const Student = require('../models/Student');
-const { supabase } = require('../config/supabase');
+﻿import Progress from '../models/Progress.js';
+import Student from '../models/Student.js';
+import { supabase } from '../config/supabase.js';
 
 async function assertParentOwnsStudent(req, studentId) {
   if (req.user?.role !== 'parent') return;
@@ -47,7 +47,7 @@ const attachStudentInfo = async (progressRows = []) => {
 };
 
 // Create or get progress
-exports.createOrGetProgress = async (req, res) => {
+export const createOrGetProgress =async (req, res) => {
   try {
     const { studentId, lessonId } = req.body;
 
@@ -73,7 +73,7 @@ exports.createOrGetProgress = async (req, res) => {
 };
 
 // Update progress
-exports.updateProgress = async (req, res) => {
+export const updateProgress =async (req, res) => {
   try {
     const { progressId } = req.params;
     const { status, score, percentageComplete, timeSpent, feedback } = req.body;
@@ -110,7 +110,7 @@ exports.updateProgress = async (req, res) => {
 };
 
 // Get progress by student
-exports.getProgressByStudent = async (req, res) => {
+export const getProgressByStudent =async (req, res) => {
   try {
     const { studentId } = req.params;
 
@@ -129,7 +129,7 @@ exports.getProgressByStudent = async (req, res) => {
 };
 
 // Get dashboard data
-exports.getDashboardData = async (req, res) => {
+export const getDashboardData =async (req, res) => {
   try {
     const { studentId } = req.params;
 
@@ -161,7 +161,7 @@ exports.getDashboardData = async (req, res) => {
   }
 };
 
-exports.getProgressReports = async (req, res) => {
+export const getProgressReports =async (req, res) => {
   try {
     const progress = await Progress.find({});
     const reports = await attachStudentInfo(
@@ -173,3 +173,4 @@ exports.getProgressReports = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+

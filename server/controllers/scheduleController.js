@@ -1,5 +1,5 @@
-const Schedule = require('../models/Schedule');
-const Student = require('../models/Student');
+﻿import Schedule from '../models/Schedule.js';
+import Student from '../models/Student.js';
 
 async function assertParentOwnsStudent(req, studentId) {
   if (req.user?.role !== 'parent') return true;
@@ -27,7 +27,7 @@ const normalizeSchedulePayload = (body = {}) => {
 };
 
 // Create schedule
-exports.createSchedule = async (req, res) => {
+export const createSchedule =async (req, res) => {
   try {
     const payload = normalizeSchedulePayload(req.body);
     const { studentId } = payload;
@@ -37,7 +37,6 @@ exports.createSchedule = async (req, res) => {
     }
 
     // Get student to verify parent relationship
-    const Student = require('../models/Student');
     const student = await Student.findById(studentId);
 
     if (!student) {
@@ -86,7 +85,7 @@ exports.createSchedule = async (req, res) => {
 };
 
 // Get schedules by student
-exports.getSchedulesByStudent = async (req, res) => {
+export const getSchedulesByStudent =async (req, res) => {
   try {
     const { studentId } = req.params;
 
@@ -103,7 +102,7 @@ exports.getSchedulesByStudent = async (req, res) => {
 };
 
 // Get schedules for parent
-exports.getSchedulesByParent = async (req, res) => {
+export const getSchedulesByParent =async (req, res) => {
   try {
     const parentId = req.user.id;
     const schedules = sortByScheduledDate(await Schedule.find({ parentId }));
@@ -115,7 +114,7 @@ exports.getSchedulesByParent = async (req, res) => {
 };
 
 // Get schedules for teacher
-exports.getSchedulesByTeacher = async (req, res) => {
+export const getSchedulesByTeacher =async (req, res) => {
   try {
     const teacherId = req.user.id;
     const schedules = sortByScheduledDate(await Schedule.find({ teacherId }));
@@ -127,7 +126,7 @@ exports.getSchedulesByTeacher = async (req, res) => {
 };
 
 // Update schedule
-exports.updateSchedule = async (req, res) => {
+export const updateSchedule =async (req, res) => {
   try {
     const { scheduledDate, duration, status, notes, title, description } = req.body;
 
@@ -170,7 +169,7 @@ exports.updateSchedule = async (req, res) => {
 };
 
 // Delete schedule
-exports.deleteSchedule = async (req, res) => {
+export const deleteSchedule =async (req, res) => {
   try {
     // First, find the schedule to check permissions
     const schedule = await Schedule.findById(req.params.id);
@@ -196,3 +195,4 @@ exports.deleteSchedule = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+

@@ -1,5 +1,5 @@
-const { supabase } = require('../config/supabase');
-const Student = require('../models/Student');
+import { supabase } from '../config/supabase.js';
+import Student from '../models/Student.js';
 
 const LEVEL_OPTIONS = ['beginner', 'intermediate', 'advanced'];
 const DEFAULT_LEVEL = 'beginner';
@@ -37,7 +37,7 @@ const isAuthorizedForStudent = async (req, student) => {
   return false;
 };
 
-exports.getPracticeLevel = async (req, res) => {
+export const getPracticeLevel =async (req, res) => {
   try {
     const studentId = req.params.id;
     const student = await fetchStudent(studentId);
@@ -83,7 +83,7 @@ exports.getPracticeLevel = async (req, res) => {
   }
 };
 
-exports.setPracticeLevel = async (req, res) => {
+export const setPracticeLevel =async (req, res) => {
   try {
     const studentId = req.params.id;
     const rawLevel = req.body.level;

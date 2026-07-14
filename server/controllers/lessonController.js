@@ -1,7 +1,7 @@
-const Lesson = require('../models/Lesson');
+import Lesson from '../models/Lesson.js';
 
 // Create lesson
-exports.createLesson = async (req, res) => {
+export const createLesson =async (req, res) => {
   try {
     const { title, description, level, category, content, tagalogText, difficulty } = req.body;
 
@@ -23,7 +23,7 @@ exports.createLesson = async (req, res) => {
 };
 
 // Get lessons by level and category
-exports.getLessonsByLevelAndCategory = async (req, res) => {
+export const getLessonsByLevelAndCategory =async (req, res) => {
   try {
     const { level, category } = req.query;
 
@@ -39,7 +39,7 @@ exports.getLessonsByLevelAndCategory = async (req, res) => {
 };
 
 // Get single lesson
-exports.getLesson = async (req, res) => {
+export const getLesson =async (req, res) => {
   try {
     const lesson = await Lesson.findById(req.params.id);
 
@@ -54,7 +54,7 @@ exports.getLesson = async (req, res) => {
 };
 
 // Update lesson
-exports.updateLesson = async (req, res) => {
+export const updateLesson =async (req, res) => {
   try {
     const lesson = await Lesson.findByIdAndUpdate(
       req.params.id,
@@ -73,7 +73,7 @@ exports.updateLesson = async (req, res) => {
 };
 
 // Delete lesson
-exports.deleteLesson = async (req, res) => {
+export const deleteLesson =async (req, res) => {
   try {
     const lesson = await Lesson.findByIdAndDelete(req.params.id);
 

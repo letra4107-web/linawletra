@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Configuration Module
  * Supabase migration complete: MongoDB and Firebase legacy configuration removed
  * All authentication and database operations now use Supabase
@@ -42,20 +42,17 @@ const validateConfig = () => {
     console.warn('NODE_ENV is not set. Using development mode.');
   }
 
-  console.log('✓ Core environment values loaded');
+  console.log('âœ“ Core environment values loaded');
   if (supabaseUrl) {
-    console.log('✓ Database: Supabase');
-    console.log('✓ Supabase URL:', supabaseUrl);
+    console.log('âœ“ Database: Supabase');
+    console.log('âœ“ Supabase URL:', supabaseUrl);
   } else {
-    console.warn('⚠ Supabase URL is not configured. Database access may fail.');
+    console.warn('âš  Supabase URL is not configured. Database access may fail.');
   }
 
   if (!hasRealEmailPassword) {
-    console.error('❌ EMAIL_PASS is missing, too short, or not a valid Gmail App Password.');
-    console.error('   You must generate a 16-character Gmail App Password at https://myaccount.google.com/apppasswords');
-    console.error('   and set EMAIL_PASS in your .env file.');
-    console.error('   The backend will now exit to prevent silent email failures.');
-    process.exit(1);
+    console.warn('[Config] EMAIL_PASS is missing, too short, or not a valid Gmail App Password.');
+    console.warn('   Email delivery will be disabled, but auth and database APIs can still start.');
   }
 };
 
@@ -137,7 +134,7 @@ const config = {
  * Log configuration (safe, no secrets)
  */
 config.logConfig = () => {
-  console.log('\n🔥 === Backend Configuration ===');
+  console.log('\nðŸ”¥ === Backend Configuration ===');
   console.log(`Environment: ${config.nodeEnv}`);
   console.log(`Port: ${config.port}`);
   console.log(`Database: ${config.supabase.url ? 'Supabase' : 'Not configured'}`);
@@ -163,4 +160,5 @@ config.getPasswordResetExpiry = () => {
 validateConfig();
 
 export default config;
+
 

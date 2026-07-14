@@ -1,12 +1,10 @@
-const express = require('express');
-const { authMiddleware, roleMiddleware } = require('../middleware/auth');
-const {
-  createAssessment,
+﻿import express from 'express';
+import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { createAssessment,
   updateAssessmentScores,
   getAssessmentByStudent,
   getAssessmentsByParent,
-  getAssessments,
-} = require('../controllers/assessmentController');
+  getAssessments, } from '../controllers/assessmentController.js';
 
 const router = express.Router();
 
@@ -22,4 +20,5 @@ router.get('/student/:studentId', authMiddleware, getAssessmentByStudent);
 // Get assessments visible to the signed-in user
 router.get('/', authMiddleware, roleMiddleware('parent', 'teacher', 'admin'), getAssessments);
 
-module.exports = router;
+export default router;
+

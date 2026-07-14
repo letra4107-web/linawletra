@@ -1,4 +1,4 @@
-const READING_LEVELS = [
+﻿const READING_LEVELS = [
   {
     value: 'beginner',
     label: 'Beginner',
@@ -31,9 +31,10 @@ const getReadingLevelRank = (value) => {
   return READING_LEVELS.find((level) => level.value === normalized)?.rank || 1;
 };
 
-module.exports = {
+export {
   READING_LEVELS,
   VALID_READING_LEVELS,
   normalizeReadingLevel,
   getReadingLevelRank,
 };
+

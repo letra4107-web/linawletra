@@ -1,8 +1,15 @@
-const { supabase } = require('../config/supabase');
-const User = require('../models/User');
+import supabase from '../config/supabase.js';
+import User from '../models/User.js';
 
 const tokenCache = new Map();
 const TOKEN_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of tokenCache.entries()) {
+    if (val.expiry < now) tokenCache.delete(key);
+  }
+}, 5 * 60 * 1000);
 
 async function verifyTokenWithCache(token) {
   if (!token) return null;
@@ -28,10 +35,6 @@ async function verifyTokenWithCache(token) {
     decoded,
     expiry: Date.now() + TOKEN_CACHE_TTL,
   });
-
-  if (tokenCache.size > 1000) {
-    tokenCache.clear();
-  }
 
   return decoded;
 }
@@ -126,4 +129,4 @@ const roleMiddleware = (...roles) => {
   };
 };
 
-module.exports = { authMiddleware, roleMiddleware, requireAdmin, verifyAdmin };
+export { authMiddleware, roleMiddleware, requireAdmin, verifyAdmin };

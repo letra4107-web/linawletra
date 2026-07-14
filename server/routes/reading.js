@@ -1,12 +1,14 @@
-const express = require('express');
-const multer = require('multer');
-const pdfParseModule = require('pdf-parse');
-const { authMiddleware, roleMiddleware } = require('../middleware/auth');
-const { supabase } = require('../config/supabase');
-const { compareReadingText } = require('../services/readingAccuracy');
-const { VALID_READING_LEVELS, normalizeReadingLevel, getReadingLevelRank } = require('../services/readingLevels');
+﻿import express from 'express';
+import multer from 'multer';
+import { createRequire } from 'module';
+import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { supabase } from '../config/supabase.js';
+import { compareReadingText } from '../services/readingAccuracy.js';
+import { VALID_READING_LEVELS, normalizeReadingLevel, getReadingLevelRank } from '../services/readingLevels.js';
 
 const router = express.Router();
+const require = createRequire(import.meta.url);
+const pdfParseModule = require('pdf-parse');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -374,4 +376,6 @@ router.get('/analytics', authMiddleware, roleMiddleware('teacher', 'admin', 'par
   }
 });
 
-module.exports = router;
+export default router;
+
+

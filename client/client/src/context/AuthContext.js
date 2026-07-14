@@ -19,11 +19,29 @@ export const AuthProvider = ({ children }) => {
         const customToken = localStorage.getItem('token');
 
         if (storedUser && customToken) {
-          const userObject = JSON.parse(storedUser);
-          console.log('[AuthContext] ✓ Restored custom token auth:', userObject.email);
-          setUser(userObject);
-          isCustomTokenAuthRef.current = true;
-          return;
+          try {
+            const { data: { user: liveUser } } = await supabase.auth.getUser();
+            if (!liveUser) {
+              console.warn('[AuthContext] Cached token is expired - clearing local storage');
+              localStorage.removeItem('user');
+              localStorage.removeItem('token');
+              localStorage.removeItem('authToken');
+              setUser(null);
+              isCustomTokenAuthRef.current = false;
+            } else {
+              const userObject = JSON.parse(storedUser);
+              console.log('[AuthContext] Restored custom token auth:', userObject.email);
+              setUser(userObject);
+              isCustomTokenAuthRef.current = true;
+              return;
+            }
+          } catch {
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            localStorage.removeItem('authToken');
+            setUser(null);
+            isCustomTokenAuthRef.current = false;
+          }
         }
 
         const { data: { session } } = await supabase.auth.getSession();

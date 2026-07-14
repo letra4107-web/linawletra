@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 import Navigation from './components/Navigation';
@@ -12,7 +12,6 @@ import ResetPassword from './components/ResetPassword';
 import ResetCodeVerification from './components/ResetCodeVerification';
 import NewPassword from './components/NewPassword';
 import ResendVerification from './components/ResendVerification';
-import AdminDashboard from './pages/admin/AdminDashboard';
 import Overview from './pages/admin/Overview';
 import Users from './pages/admin/Users';
 import Teachers from './pages/admin/Teachers';
@@ -22,9 +21,7 @@ import Reports from './pages/admin/Reports';
 import Communication from './pages/admin/Communication';
 import AISettings from './pages/admin/AISettings';
 import SystemSettings from './pages/admin/SystemSettings';
-import TeacherDashboard from './pages/TeacherDashboard';
-import StudentDashboard from './pages/StudentDashboard';
-import ParentDashboard from './pages/ParentDashboard';
+import LoadingSpinner from './components/LoadingSpinner';
 import StudentManagement from './components/StudentManagement';
 import Schedules from './pages/Schedules';
 
@@ -39,6 +36,11 @@ import TeacherProgressPage from './pages/TeacherProgressPage';
 import TeacherActivitiesPage from './pages/TeacherActivitiesPage';
 import TeacherSettingsPage from './pages/TeacherSettingsPage';
 import './index.css';
+
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
+const ParentDashboard = lazy(() => import('./pages/ParentDashboard'));
 
 function PrivateRoute({ children, allowedRoles = [] }) {
   const { user, loading } = useContext(AuthContext);
@@ -108,13 +110,14 @@ function AppRoutes() {
   return (
     <>
       <Navigation />
-      <Routes>
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={user ? <RoleBasedRedirect /> : <Login />} />
         <Route path="/register" element={user ? <RoleBasedRedirect /> : <Register />} />
         <Route path="/verify-email" element={<EmailVerification />} />
-        <Route path="/email-verification" element={<EmailVerification />} />
-        <Route path="/verify-otp" element={<EmailVerification />} />
+        <Route path="/email-verification" element={<Navigate to="/verify-email" replace />} />
+        <Route path="/verify-otp" element={<Navigate to="/verify-email" replace />} />
         <Route path="/resend-verification" element={<ResendVerification />} />
         <Route path="/verify-login-otp" element={<OTPVerification />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -144,9 +147,10 @@ function AppRoutes() {
         <Route path="/student/dashboard/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
 
-        {/* Parent routes (single ParentDashboard with sections) */}
+{/* Parent routes: specific paths must come before :section */}
         <Route path="/parent-dashboard" element={<Navigate to="/parent/summary" replace />} />
         <Route path="/parent" element={<Navigate to="/parent/summary" replace />} />
+        <Route path="/parent/schedules" element={<PrivateRoute allowedRoles={['parent']}><Schedules /></PrivateRoute>} />
         <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
         <Route path="/students" element={<PrivateRoute allowedRoles={['parent', 'admin']}><StudentManagement /></PrivateRoute>} />
         <Route path="/assessment/:assessmentId" element={<PrivateRoute allowedRoles={['student', 'teacher', 'parent']}><AssessmentComponent /></PrivateRoute>} />
@@ -160,14 +164,13 @@ function AppRoutes() {
         <Route path="/teacher/progress" element={<PrivateRoute allowedRoles={['teacher']}><TeacherProgressPage /></PrivateRoute>} />
         <Route path="/teacher/activities" element={<PrivateRoute allowedRoles={['teacher']}><TeacherActivitiesPage /></PrivateRoute>} />
         <Route path="/teacher/settings" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSettingsPage /></PrivateRoute>} />
-        <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
-        <Route path="/parent/schedules" element={<PrivateRoute allowedRoles={['parent']}><Schedules /></PrivateRoute>} />
 
         <Route path="/student/lessons" element={<Navigate to="/student-dashboard" replace />} />
         <Route path="/student/assessments" element={<Navigate to="/student-dashboard" replace />} />
         <Route path="/student/progress" element={<Navigate to="/student-dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </>
   );
 }

@@ -1,5 +1,5 @@
-const bcrypt = require('bcryptjs');
-const { supabase } = require('../config/supabase');
+import bcrypt from 'bcryptjs';
+import { supabase } from '../config/supabase.js';
 
 class StudentQuery {
   constructor(query = {}, options = {}) {
@@ -301,4 +301,4 @@ class Student {
   }
 }
 
-module.exports = Student;
+export default Student;

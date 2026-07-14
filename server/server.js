@@ -1,28 +1,40 @@
-const express = require("express");
-const cors = require("cors");
-const authRoutes = require("./routes/auth");
-const adminRoutes = require("./routes/admin");
-const assessmentRoutes = require("./routes/assessments");
-const lessonRoutes = require("./routes/lessons");
-const progressRoutes = require("./routes/progress");
-const scheduleRoutes = require("./routes/schedules");
-const speechRoutes = require("./routes/speech");
-const studentPracticeRoutes = require("./routes/studentPracticeRoutes");
-const studentRoutes = require("./routes/students");
-const userRoutes = require("./routes/users");
-const readingRoutes = require("./routes/reading");
+﻿import express from "express";
+import cors from "cors";
+import authRoutes from "./routes/auth.js";
+import adminRoutes from "./routes/admin.js";
+import assessmentRoutes from "./routes/assessments.js";
+import lessonRoutes from "./routes/lessons.js";
+import progressRoutes from "./routes/progress.js";
+import scheduleRoutes from "./routes/schedules.js";
+import speechRoutes from "./routes/speech.js";
+import studentPracticeRoutes from "./routes/studentPracticeRoutes.js";
+import studentRoutes from "./routes/students.js";
+import userRoutes from "./routes/users.js";
+import readingRoutes from "./routes/reading.js";
 
 const app = express();
 app.use(express.json());
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://127.0.0.1:3000",
-  "http://192.168.1.107:8081"
-];
+const allowedOrigins =
+  process.env.NODE_ENV === "production"
+    ? [
+        "https://linawletra.com",
+        "https://www.linawletra.com",
+        "https://linawletra.web.app",
+        "https://linawletra.firebaseapp.com",
+      ]
+    : [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://localhost:8081",
+        "http://192.168.1.107:8081",
+      ];
 
 const isAllowedDevOrigin = (origin) => {
+  if (process.env.NODE_ENV === "production") return false;
+
   try {
     const { protocol, hostname } = new URL(origin);
     const isHttp = protocol === "http:" || protocol === "https:";
@@ -36,26 +48,37 @@ const isAllowedDevOrigin = (origin) => {
       /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
 
     return isHttp && (isLocalHost || isPrivateLan);
-  } catch (error) {
+  } catch {
     return false;
   }
 };
 
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      if (process.env.NODE_ENV === "production") {
+        return callback(new Error("CORS policy: Origin required in production"));
+      }
+      return callback(null, true);
+    }
     if (allowedOrigins.includes(origin) || isAllowedDevOrigin(origin)) {
       return callback(null, true);
     }
-    return callback(new Error("CORS policy: Origin not allowed"));
+    return callback(new Error("CORS policy: Origin not allowed - " + origin));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
   credentials: true,
   optionsSuccessStatus: 204
-}));
+};
 
-app.options("*", cors());
+app.use(cors(corsOptions));
+
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", env: process.env.NODE_ENV, timestamp: new Date().toISOString() });
+});
+
+app.options("*", cors(corsOptions));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
@@ -81,4 +104,5 @@ app.use((err, req, res, next) => {
   res.status(err?.status || 500).json({ error: err?.message || "Internal Server Error" });
 });
 
-module.exports = app;
+export default app;
+

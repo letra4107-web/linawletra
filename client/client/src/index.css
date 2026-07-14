@@ -1,10 +1,13 @@
-﻿@tailwind base;
+@import './styles/tokens.css';
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: light;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive;
+  font-family: 'Lexend', 'Atkinson Hyperlegible', 'OpenDyslexic', sans-serif;
   background-color: #f8fafc;
   color: #0f172a;
 }
@@ -13,7 +16,6 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
 }
 
 html {
@@ -21,18 +23,19 @@ html {
 }
 
 body {
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
   min-height: 100vh;
   background-color: #f8fafc;
   color: #0f172a;
-  line-height: 1.5;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
 }
 
 button,
 input,
 textarea,
 select {
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
-}
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
 
 button {
   cursor: pointer;
@@ -268,3 +271,4 @@ body::-webkit-scrollbar-track {
 .text-shadow-soft {
   text-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
+

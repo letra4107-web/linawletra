@@ -16,13 +16,6 @@ const supabaseErrorMessages = {
   'over_request_rate_limit': 'Too many login attempts. Please wait before trying again.',
 };
 
-const firebaseErrorMessages = {
-  'auth/user-not-found': 'No account found with this email address.',
-  'auth/wrong-password': 'Incorrect password.',
-  'auth/too-many-requests': 'Too many login attempts. Please try again later.',
-  'auth/user-disabled': 'This account has been disabled.',
-};
-
 export default function Login() {
   const [formValues, setFormValues] = useState({ email: '', password: '' });
   const [fieldErrors, setFieldErrors] = useState({});
@@ -105,23 +98,6 @@ export default function Login() {
 
     if (err.status === 400) {
       return supabaseErrorMessages['invalid_credentials'];
-    }
-
-    if (err.code && firebaseErrorMessages[err.code]) {
-      return firebaseErrorMessages[err.code];
-    }
-
-    if (message.includes('auth/user-not-found')) {
-      return firebaseErrorMessages['auth/user-not-found'];
-    }
-    if (message.includes('auth/wrong-password')) {
-      return firebaseErrorMessages['auth/wrong-password'];
-    }
-    if (message.includes('auth/too-many-requests')) {
-      return firebaseErrorMessages['auth/too-many-requests'];
-    }
-    if (message.includes('auth/user-disabled')) {
-      return firebaseErrorMessages['auth/user-disabled'];
     }
 
     return err.message || 'Invalid email or password.';

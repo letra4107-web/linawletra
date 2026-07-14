@@ -1,32 +1,19 @@
-const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-const { validationResult } = require('express-validator');
-const config = require('../config');
-const { supabase, getSupabaseAuthClient } = require('../config/supabase');
-const bcrypt = require('bcryptjs');
-const {
-  generateVerificationCode,
+﻿import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
+import { validationResult } from 'express-validator';
+import configModule from '../config.js';
+const config = configModule.default || configModule;
+import { supabase, getSupabaseAuthClient } from '../config/supabase.js';
+import bcrypt from 'bcryptjs';
+import { generateVerificationCode,
   hashCode,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendStudentEnrollmentEmail,
-  verifyCodeExpiration,
-} = require('../services/emailService');
-
-const VERIFICATION_TABLE_MISSING = 'PGRST205';
-
-const buildVerificationRecord = (code, expiresAt, resendAvailableAt) => ({
-  code,
-  expires_at: expiresAt.toISOString(),
-  resend_available_at: resendAvailableAt.toISOString(),
-  attempts: 0,
-  created_at: new Date().toISOString(),
-});
+  verifyCodeExpiration, } from '../services/emailService.js';
 
 const storeSignupVerificationCode = async (userId, email, code, expiresAt, resendAvailableAt) => {
-  const record = buildVerificationRecord(code, expiresAt, resendAvailableAt);
-
-  const { error: tableError } = await supabase
+  const { error } = await supabase
     .from('email_verification_codes')
     .insert({
       user_id: userId,
@@ -37,39 +24,16 @@ const storeSignupVerificationCode = async (userId, email, code, expiresAt, resen
       attempts: 0,
     });
 
-  if (!tableError) {
-    return { source: 'table', record };
+  if (error) {
+    console.error('[authController] Failed to store verification code:', error);
+    throw new Error('Could not send verification email. Please try again.');
   }
 
-  if (tableError.code !== VERIFICATION_TABLE_MISSING) {
-    throw tableError;
-  }
-
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('metadata')
-    .eq('id', userId)
-    .single();
-
-  if (userError) throw userError;
-
-  const metadata = {
-    ...(user?.metadata || {}),
-    emailVerification: record,
-  };
-
-  const { error: updateError } = await supabase
-    .from('users')
-    .update({ metadata })
-    .eq('id', userId);
-
-  if (updateError) throw updateError;
-
-  return { source: 'metadata', record };
+  return { source: 'table' };
 };
 
 const getSignupVerificationCode = async (user) => {
-  const { data: tableRecord, error: tableError } = await supabase
+  const { data: tableRecord, error } = await supabase
     .from('email_verification_codes')
     .select('*')
     .eq('user_id', user.id)
@@ -78,44 +42,27 @@ const getSignupVerificationCode = async (user) => {
     .limit(1)
     .maybeSingle();
 
-  if (!tableError && tableRecord) {
-    return { source: 'table', record: tableRecord };
-  }
-
-  if (tableError && tableError.code !== VERIFICATION_TABLE_MISSING) {
-    throw tableError;
-  }
-
-  const metadataRecord = user.metadata?.emailVerification;
-  if (!metadataRecord) return null;
-  return { source: 'metadata', record: metadataRecord };
+  if (error) throw error;
+  if (!tableRecord) return null;
+  return { source: 'table', record: tableRecord };
 };
 
 const updateSignupVerificationAttempts = async (user, record) => {
-  const metadata = {
-    ...(user.metadata || {}),
-    emailVerification: {
-      ...record,
-      attempts: (record.attempts || 0) + 1,
-    },
-  };
-
   const { error } = await supabase
-    .from('users')
-    .update({ metadata })
-    .eq('id', user.id);
+    .from('email_verification_codes')
+    .update({ attempts: (record.attempts || 0) + 1 })
+    .eq('id', record.id)
+    .eq('user_id', user.id);
 
   if (error) throw error;
 };
 
 const clearSignupVerificationCode = async (user) => {
-  const nextMetadata = { ...(user.metadata || {}) };
-  delete nextMetadata.emailVerification;
-
   const { error } = await supabase
-    .from('users')
-    .update({ metadata: nextMetadata })
-    .eq('id', user.id);
+    .from('email_verification_codes')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('email', user.email);
 
   if (error) throw error;
 };
@@ -253,7 +200,7 @@ const normalizeStudentLoginAccount = async (userData) => {
 };
 
 // Register - Creates Supabase Auth user + profile with id set to auth user id
-exports.register = async (req, res) => {
+export const register =async (req, res) => {
   try {
     console.log('[Register API] Request received at:', new Date().toISOString());
     console.log('[Register API] Request body:', {
@@ -323,7 +270,7 @@ exports.register = async (req, res) => {
 
     // Check if service role key is configured
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('[Register API] ❌ SUPABASE_SERVICE_ROLE_KEY not found in environment');
+      console.error('[Register API] âŒ SUPABASE_SERVICE_ROLE_KEY not found in environment');
       return res.status(500).json({
         success: false,
         message: 'Server configuration error',
@@ -395,7 +342,7 @@ exports.register = async (req, res) => {
       await supabase.auth.admin.deleteUser(authUser.id);
 
       if (insertError.message.includes('row-level security policy')) {
-        console.error('[Register API] ❌ RLS POLICY BLOCKED INSERT');
+        console.error('[Register API] âŒ RLS POLICY BLOCKED INSERT');
         console.error('[Register API] RLS Error Details:', {
           message: insertError.message,
           code: insertError.code,
@@ -411,7 +358,7 @@ exports.register = async (req, res) => {
       }
 
       if (insertError.message.includes('null value in column')) {
-        console.error('[Register API] ❌ NULL CONSTRAINT - Required column is null');
+        console.error('[Register API] âŒ NULL CONSTRAINT - Required column is null');
         console.error('[Register API] Null Constraint Details:', {
           message: insertError.message,
           code: insertError.code,
@@ -427,7 +374,7 @@ exports.register = async (req, res) => {
       }
 
       if (insertError.message.includes('duplicate key value')) {
-        console.error('[Register API] ❌ DUPLICATE KEY - User already exists');
+        console.error('[Register API] âŒ DUPLICATE KEY - User already exists');
         return res.status(400).json({
           success: false,
           message: 'Email already registered',
@@ -485,10 +432,10 @@ exports.register = async (req, res) => {
     console.log('[Register API] Sending verification email with OTP');
     try {
       await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
-      console.log('[Register API] ✓ Verification email sent successfully');
+      console.log('[Register API] âœ“ Verification email sent successfully');
     } catch (emailError) {
-      console.error('[Register API] ❌ Failed to send verification email:', emailError.message);
-      console.error('[Register API] ❌ Cleaning up created user because email delivery failed');
+      console.error('[Register API] âŒ Failed to send verification email:', emailError.message);
+      console.error('[Register API] âŒ Cleaning up created user because email delivery failed');
       await supabase.from('email_verification_codes').delete().eq('user_id', authUser.id);
       await supabase.from('users').delete().eq('id', authUser.id);
       await supabase.auth.admin.deleteUser(authUser.id);
@@ -498,7 +445,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    console.log('[Register API] ✓ Registration successful for:', normalizedEmail);
+    console.log('[Register API] âœ“ Registration successful for:', normalizedEmail);
     res.status(201).json({
       success: true,
       message: 'Registration successful. Please check your email for verification code.',
@@ -507,7 +454,7 @@ exports.register = async (req, res) => {
       requiresEmailVerification: true,
     });
   } catch (error) {
-    console.error('[Register API] ❌ Unexpected registration error:', {
+    console.error('[Register API] âŒ Unexpected registration error:', {
       message: error.message,
       stack: error.stack,
     });
@@ -519,7 +466,7 @@ exports.register = async (req, res) => {
 };
 
 // Create user profile after Supabase signUp
-exports.createProfile = async (req, res) => {
+export const createProfile =async (req, res) => {
   try {
     console.log('[Create Profile API] Request received at:', new Date().toISOString());
     console.log('[Create Profile API] Request headers:', req.headers);
@@ -668,14 +615,14 @@ exports.createProfile = async (req, res) => {
       throw insertError;
     }
 
-    console.log('[Create Profile API] ✓ Profile created successfully for:', normalizedEmail);
+    console.log('[Create Profile API] âœ“ Profile created successfully for:', normalizedEmail);
     res.status(201).json({
       success: true,
       message: 'Profile created successfully',
       userId: userProfile.id,
     });
   } catch (error) {
-    console.error('[Create Profile API] ❌ Unexpected error:', {
+    console.error('[Create Profile API] âŒ Unexpected error:', {
       message: error.message,
       code: error.code,
       details: error.details,
@@ -689,7 +636,7 @@ exports.createProfile = async (req, res) => {
 };
 
 // Send email verification code for Supabase signup flow
-exports.sendEmailVerificationCode = async (req, res) => {
+export const sendEmailVerificationCode =async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -744,9 +691,9 @@ exports.sendEmailVerificationCode = async (req, res) => {
     setImmediate(async () => {
       try {
         await sendVerificationEmail(normalizedEmail, code, null, type);
-        console.log(`[Email Verification] ✓ ${type} email sent`);
+        console.log(`[Email Verification] âœ“ ${type} email sent`);
       } catch (emailError) {
-        console.warn(`[Email Verification] ⚠ Failed to send ${type} email:`, emailError.message);
+        console.warn(`[Email Verification] âš  Failed to send ${type} email:`, emailError.message);
       }
     });
 
@@ -763,13 +710,13 @@ exports.sendEmailVerificationCode = async (req, res) => {
 };
 
 // Send newly generated student credentials to the parent email address
-exports.sendStudentEnrollmentDetails = async (req, res) => {
+export const sendStudentEnrollmentDetails =async (req, res) => {
   try {
     const { parentEmail, childName, childUsername, childPassword, gradeLevel, readingLevel } = req.body;
     const learnerProfile = [
       gradeLevel ? `Grade ${gradeLevel}` : '',
       readingLevel ? `${readingLevel} reading level` : '',
-    ].filter(Boolean).join(' • ');
+    ].filter(Boolean).join(' â€¢ ');
 
     const emailSent = await sendStudentEnrollmentEmail(
       parentEmail,
@@ -799,7 +746,7 @@ exports.sendStudentEnrollmentDetails = async (req, res) => {
 };
 
 // Verify Email
-exports.verifyEmail = async (req, res) => {
+export const verifyEmail =async (req, res) => {
   try {
     console.log('[Verify Email] Request body:', req.body);
     
@@ -917,7 +864,7 @@ exports.verifyEmail = async (req, res) => {
       console.error('[Verify Email] Failed to update Supabase Auth:', authUpdateError);
       // Don't throw here - database is updated, auth update is secondary
     } else {
-      console.log('[Verify Email] ✓ Supabase Auth email confirmed');
+      console.log('[Verify Email] âœ“ Supabase Auth email confirmed');
     }
 
     // Delete used verification code
@@ -930,7 +877,7 @@ exports.verifyEmail = async (req, res) => {
       await clearSignupVerificationCode(user);
     }
 
-    console.log('[Verify Email] ✓ Email verified successfully');
+    console.log('[Verify Email] âœ“ Email verified successfully');
     // Generate a Supabase access token for the user so frontend can use it
     try {
       const { data: { session } = {}, error: sessionError } = await supabase.auth.admin.generateAccessTokenForUser(
@@ -981,7 +928,7 @@ exports.verifyEmail = async (req, res) => {
 
 // Resend Verification Code
 // Resend Verification Code
-exports.resendVerificationCode = async (req, res) => {
+export const resendVerificationCode =async (req, res) => {
   try {
     console.log('[Resend Verification] Request body:', req.body);
     
@@ -1069,9 +1016,9 @@ exports.resendVerificationCode = async (req, res) => {
     console.log('[Resend Verification] Sending email to:', normalizedEmail);
     try {
       await sendVerificationEmail(normalizedEmail, verificationCode);
-      console.log('[Resend Verification] ✓ Email sent');
+      console.log('[Resend Verification] âœ“ Email sent');
     } catch (emailError) {
-      console.error('[Resend Verification] ❌ Failed to send email:', emailError.message);
+      console.error('[Resend Verification] âŒ Failed to send email:', emailError.message);
       return res.status(500).json({
         success: false,
         message: 'Failed to send verification email. Please try again later.',
@@ -1093,7 +1040,7 @@ exports.resendVerificationCode = async (req, res) => {
 };
 
 // Login - Authenticate with Supabase Auth and return profile data
-exports.login = async (req, res) => {
+export const login =async (req, res) => {
   try {
     console.log('[Login] Request received');
     console.log('   Body:', req.body);
@@ -1219,7 +1166,7 @@ exports.login = async (req, res) => {
       }
     }
 
-    console.log('[Login] ✓ Login successful for:', normalizedEmail);
+    console.log('[Login] âœ“ Login successful for:', normalizedEmail);
     res.json({
       success: true,
       message: 'Login successful',
@@ -1237,7 +1184,7 @@ exports.login = async (req, res) => {
 };
 
 // Send OTP for Login (2FA)
-exports.sendLoginOTP = async (req, res) => {
+export const sendLoginOTP =async (req, res) => {
   try {
     console.log('[Send Login OTP] Request received');
     console.log('   Body:', req.body);
@@ -1319,9 +1266,9 @@ exports.sendLoginOTP = async (req, res) => {
     console.log('[Send Login OTP] Sending OTP email...');
     try {
       await sendVerificationEmail(normalizedEmail, otpCode, null, 'login');
-      console.log('[Send Login OTP] ✓ OTP email sent');
+      console.log('[Send Login OTP] âœ“ OTP email sent');
     } catch (emailError) {
-      console.error('[Send Login OTP] ❌ Failed to send OTP email:', emailError.message);
+      console.error('[Send Login OTP] âŒ Failed to send OTP email:', emailError.message);
       return res.status(500).json({
         success: false,
         message: 'Failed to send login OTP email. Please try again later.',
@@ -1343,7 +1290,7 @@ exports.sendLoginOTP = async (req, res) => {
 };
 
 // Verify Login OTP
-exports.verifyLoginOTP = async (req, res) => {
+export const verifyLoginOTP =async (req, res) => {
   try {
     console.log('[Verify Login OTP] Request received');
     console.log('   Body:', req.body);
@@ -1425,7 +1372,7 @@ exports.verifyLoginOTP = async (req, res) => {
     }
 
     // OTP verified successfully
-    console.log('[Verify Login OTP] ✓ OTP verified for:', normalizedEmail);
+    console.log('[Verify Login OTP] âœ“ OTP verified for:', normalizedEmail);
 
     const token = otpRecord.access_token;
 
@@ -1467,7 +1414,7 @@ exports.verifyLoginOTP = async (req, res) => {
 };
 
 // Resend Login OTP (for existing login attempts)
-exports.resendLoginOTP = async (req, res) => {
+export const resendLoginOTP =async (req, res) => {
   try {
     console.log('[Resend Login OTP] Request received');
     console.log('   Body:', req.body);
@@ -1557,9 +1504,9 @@ exports.resendLoginOTP = async (req, res) => {
     setImmediate(async () => {
       try {
         await sendVerificationEmail(normalizedEmail, otpCode, null, 'login');
-        console.log('[Resend Login OTP] ✓ OTP email sent');
+        console.log('[Resend Login OTP] âœ“ OTP email sent');
       } catch (emailError) {
-        console.warn('[Resend Login OTP] ⚠ Failed to send OTP email:', emailError.message);
+        console.warn('[Resend Login OTP] âš  Failed to send OTP email:', emailError.message);
       }
     });
 
@@ -1578,7 +1525,7 @@ exports.resendLoginOTP = async (req, res) => {
 };
 
 // Forgot Password - Request Reset Code
-exports.forgotPassword = async (req, res) => {
+export const forgotPassword =async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1628,7 +1575,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 // Reset Password - Verify Code and Set New Password
-exports.resetPassword = async (req, res) => {
+export const resetPassword =async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1684,7 +1631,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 // Verify Reset Code Only
-exports.verifyResetCode = async (req, res) => {
+export const verifyResetCode =async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1732,3 +1679,4 @@ exports.verifyResetCode = async (req, res) => {
     });
   }
 };
+

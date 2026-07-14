@@ -46,7 +46,7 @@ const normalizeText = (text = '') =>
   text
     .toString()
     .toLowerCase()
-    .replace(/[^a-z0-9À-ſ\s]/g, ' ')
+    .replace(/[^a-z0-9\u00C0-\u017F\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 const normalizeGradeLevel = (value) => {
@@ -121,9 +121,9 @@ const completeActivity = async (params) => {
  * calculateStreak() - Compute streak on app load based on lastLoginDate
  * Runs on component mount; compares lastLoginDate with current date
  * Logic:
- *   - lastLoginDate === yesterday → streak += 1
- *   - lastLoginDate === today → streak unchanged
- *   - lastLoginDate < yesterday → reset streak to 1
+ *   - lastLoginDate === yesterday ? streak += 1
+ *   - lastLoginDate === today ? streak unchanged
+ *   - lastLoginDate < yesterday ? reset streak to 1
  * @param {Object} params - { userId, currentStreak }
  * @returns {Promise<Object>} - Updated: { streak, lastLoginDate }
  */
@@ -146,15 +146,15 @@ const calculateStreak = async (params) => {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       if (lastLoginDateParsed.getTime() === yesterday.getTime()) {
-        // Last login was yesterday → increment streak
+        // Last login was yesterday ? increment streak
         updatedStreak = (currentStreak || 0) + 1;
         console.log(`Streak incremented (yesterday login): ${updatedStreak}`);
       } else if (lastLoginDateParsed.getTime() === today.getTime()) {
-        // Last login was today → preserve streak
+        // Last login was today ? preserve streak
         updatedStreak = currentStreak || 0;
         console.log(`Streak preserved (already logged in today): ${updatedStreak}`);
       } else if (lastLoginDateParsed.getTime() < yesterday.getTime()) {
-        // Last login was before yesterday → reset streak
+        // Last login was before yesterday ? reset streak
         updatedStreak = 1;
         console.log(`Streak reset (gap detected): ${updatedStreak}`);
       }
@@ -238,7 +238,7 @@ const StudentDashboard = () => {
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
   const fontFamilies = {
-    'Comic Sans': '"Comic Sans MS", cursive, sans-serif',
+    'Lexend': '"Lexend", "Atkinson Hyperlegible", sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
     'Josefin Sans': '"Josefin Sans", sans-serif',
   };
@@ -632,7 +632,7 @@ const StudentDashboard = () => {
   // Get accuracy explanation based on score
   const getAccuracyExplanation = (accuracyScore, spoken, target) => {
     if (accuracyScore === 100) {
-      return "Perfect pronunciation! 🎉";
+      return "Perfect pronunciation! ??";
     } else if (accuracyScore >= 80) {
       return "Great pronunciation, just minor differences";
     } else if (accuracyScore >= 60) {
@@ -746,7 +746,7 @@ const StudentDashboard = () => {
         accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
       }));
       setExpectedText(getPhoneticWordForProgress(nextLevel, willAdvance ? 0 : newProgress));
-      setFeedback(willAdvance ? `🎉 Level up! Ngayon ay ${nextLevel}. ${tagalogFeedback}` : tagalogFeedback);
+      setFeedback(willAdvance ? `?? Level up! Ngayon ay ${nextLevel}. ${tagalogFeedback}` : tagalogFeedback);
       setStatusMessage(`You said: ${spoken}`);
       setTimeout(() => {
         setStatus('idle');
@@ -966,7 +966,7 @@ const StudentDashboard = () => {
             <div>
               <strong>{studentName}</strong>
               <div className="profile-meta">
-                {studentGrade}{studentRoom ? ` · ${studentRoom}` : ''}
+                {studentGrade}{studentRoom ? ` � ${studentRoom}` : ''}
               </div>
             </div>
           </div>
@@ -974,7 +974,7 @@ const StudentDashboard = () => {
             <FiLogOut aria-hidden="true" /> Logout
           </button>
           <div className="date-inline">
-            {formattedDate} • {formattedTime}
+            {formattedDate} � {formattedTime}
           </div>
           <div className="accessibility-dropdown-wrapper">
             <button
@@ -992,7 +992,7 @@ const StudentDashboard = () => {
                     value={accessibilitySettings.fontFamily}
                     onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.value })}
                   >
-                    <option value="Comic Sans">Comic Sans</option>
+                    <option value="Lexend">Lexend</option>
                     <option value="DM Sans">DM Sans</option>
                     <option value="Josefin Sans">Josefin Sans</option>
                   </select>
@@ -1087,8 +1087,8 @@ const StudentDashboard = () => {
             <div className="detail-info-block">
               <div className="detail-name">{studentName}</div>
               <div className="detail-meta-row">
-                {studentGrade || 'Student'}{studentRoom ? ` · ${studentRoom}` : ''}
-                {` · ${formattedDate} · Level: ${currentPhoneticLevel}`}
+                {studentGrade || 'Student'}{studentRoom ? ` � ${studentRoom}` : ''}
+                {` � ${formattedDate} � Level: ${currentPhoneticLevel}`}
               </div>
               <p className="learning-path-text">
                 {nextLesson
@@ -1273,7 +1273,7 @@ const StudentDashboard = () => {
                     onClick={handleMicClick}
                     disabled={isProcessing}
                   >
-                    {status === 'listening' ? 'Listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
+                    {status === 'listening' ? 'Listening�' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
                   </button>
                   <button className="button-large button-secondary" type="button" onClick={() => speakTagalog(expectedText)}>
                     Listen
@@ -1287,7 +1287,7 @@ const StudentDashboard = () => {
                 <h4>Pronunciation feedback</h4>
                 <div className={`feedback-result ${recognitionResult}`}>
                   <div className="feedback-icon">
-                    {recognitionResult === 'success' ? '✓' : recognitionResult === 'almost' ? '!' : '✕'}
+                    {recognitionResult === 'success' ? '?' : recognitionResult === 'almost' ? '!' : '?'}
                   </div>
                   <div className="feedback-text">
                     <p>{statusMessage || 'Press Say the word and speak the Tagalog word clearly.'}</p>
@@ -1447,7 +1447,7 @@ const StudentDashboard = () => {
                     value={accessibilitySettings.fontFamily}
                     onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.value })}
                   >
-                    <option value="Comic Sans">Comic Sans</option>
+                    <option value="Lexend">Lexend</option>
                     <option value="DM Sans">DM Sans</option>
                     <option value="Josefin Sans">Josefin Sans</option>
                   </select>
@@ -1500,3 +1500,5 @@ const StudentDashboard = () => {
   );
 };
 export default StudentDashboard;
+
+

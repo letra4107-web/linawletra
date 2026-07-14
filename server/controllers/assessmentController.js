@@ -1,6 +1,6 @@
-const Assessment = require('../models/Assessment');
-const Student = require('../models/Student');
-const { supabase } = require('../config/supabase');
+﻿import Assessment from '../models/Assessment.js';
+import Student from '../models/Student.js';
+import { supabase } from '../config/supabase.js';
 
 async function assertParentOwnsStudent(req, studentId) {
   if (req.user?.role !== 'parent') return true;
@@ -46,7 +46,7 @@ const attachStudentNames = async (assessments = []) => {
 };
 
 // Create assessment
-exports.createAssessment = async (req, res) => {
+export const createAssessment =async (req, res) => {
   try {
     const { studentId } = req.body;
     let parentId = req.user.id;
@@ -86,7 +86,7 @@ exports.createAssessment = async (req, res) => {
 };
 
 // Update assessment scores
-exports.updateAssessmentScores = async (req, res) => {
+export const updateAssessmentScores =async (req, res) => {
   try {
     const { assessmentId } = req.params;
     const { categories } = req.body;
@@ -144,7 +144,7 @@ exports.updateAssessmentScores = async (req, res) => {
 };
 
 // Get assessment by student
-exports.getAssessmentByStudent = async (req, res) => {
+export const getAssessmentByStudent =async (req, res) => {
   try {
     const { studentId } = req.params;
 
@@ -166,7 +166,7 @@ exports.getAssessmentByStudent = async (req, res) => {
 };
 
 // Get all assessments for parent
-exports.getAssessmentsByParent = async (req, res) => {
+export const getAssessmentsByParent =async (req, res) => {
   try {
     const parentId = req.user.id;
     const assessments = await attachStudentNames(sortByCreatedDate(await Assessment.find({ parentId })));
@@ -176,7 +176,7 @@ exports.getAssessmentsByParent = async (req, res) => {
   }
 };
 
-exports.getAssessments = async (req, res) => {
+export const getAssessments =async (req, res) => {
   try {
     let assessments = [];
 
@@ -192,3 +192,4 @@ exports.getAssessments = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+

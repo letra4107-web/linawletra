@@ -81,7 +81,8 @@ const sendTeacherAccountEmail = async (teacherEmail, teacherName, tempPassword, 
 
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import config from '../config.js';
+import configModule from '../config.js';
+const config = configModule.default || configModule;
 
 
 // Transporter creation (safer defaults for Gmail + fewer socket issues)

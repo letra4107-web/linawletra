@@ -9,8 +9,8 @@
  * Run: node server/verify-registration-setup.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 console.log('\n' + '='.repeat(80));
 console.log('REGISTRATION SETUP VERIFICATION SCRIPT');
@@ -141,7 +141,7 @@ console.log('\n[TEST 4] Checking Supabase Client Configuration');
 console.log('-'.repeat(80));
 
 try {
-  const supabaseConfig = require(path.resolve(__dirname, 'config/supabase'));
+  const { default: supabaseConfig } = await import(path.resolve(__dirname, 'config/supabase.js'));
   
   if (supabaseConfig.supabase) {
     pass('Supabase client is exported');

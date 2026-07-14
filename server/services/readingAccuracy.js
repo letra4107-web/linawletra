@@ -1,9 +1,9 @@
-const normalizeReadingText = (text = '') =>
+﻿const normalizeReadingText = (text = '') =>
   String(text)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s*[-‐‑‒–—]\s*/g, '')
+    .replace(/\s*[-â€â€‘â€’â€“â€”]\s*/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -44,7 +44,7 @@ const getDisplayWords = (text = '') => String(text).split(/\s+/).map((word) => w
 
 const getSyllables = (word = '') =>
   String(word)
-    .split(/[-‐‑‒–—]+/)
+    .split(/[-â€â€‘â€’â€“â€”]+/)
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -135,7 +135,8 @@ const compareReadingText = (expectedText = '', spokenText = '') => {
   };
 };
 
-module.exports = {
+export {
   compareReadingText,
   normalizeReadingText,
 };
+

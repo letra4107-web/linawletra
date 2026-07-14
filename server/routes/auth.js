@@ -1,16 +1,13 @@
-
-const express = require('express');
-const { body } = require('express-validator');
-const {
-  validateRegister,
+﻿
+import express from 'express';
+import { body } from 'express-validator';
+import { validateRegister,
   validateLogin,
   validateStudentEnrollmentEmail,
   validateForgotPasswordRequest,
   validateResetPassword,
-  handleValidationErrors,
-} = require('../middleware/validation');
-const {
-  register,
+  handleValidationErrors, } from '../middleware/validation.js';
+import { register,
   createProfile,
   sendStudentEnrollmentDetails,
   sendEmailVerificationCode,
@@ -22,8 +19,7 @@ const {
   resendLoginOTP,
   forgotPassword,
   resetPassword,
-  verifyResetCode,
-} = require('../controllers/authController');
+  verifyResetCode, } from '../controllers/authController.js';
 
 const router = express.Router();
 
@@ -144,4 +140,6 @@ router.post(
   resendLoginOTP
 );
 
-module.exports = router;
+export default router;
+
+

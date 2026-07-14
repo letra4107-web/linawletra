@@ -1,3 +1,6 @@
+@import './styles/tokens.css';
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -65,7 +68,7 @@
   --success-light: #d1fae5;
 
   color-scheme: light;
-  font-family: 'Inter', 'Lexend', 'Atkinson Hyperlegible', system-ui, sans-serif;
+  font-family: 'Lexend', 'Atkinson Hyperlegible', 'OpenDyslexic', sans-serif;
   background-color: var(--color-background);
   color: var(--color-text-primary);
 }
@@ -82,17 +85,19 @@ html {
 }
 
 body {
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
   min-height: 100vh;
   background-color: var(--color-background);
   color: var(--color-text-primary);
-  line-height: 1.5;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
 }
 
 button,
 input,
 textarea,
 select {
-  font-family: inherit;
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
 }
 
 button {

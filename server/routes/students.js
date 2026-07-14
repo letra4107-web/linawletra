@@ -1,12 +1,11 @@
-const express = require('express');
-const { authMiddleware, roleMiddleware } = require('../middleware/auth');
-const {
-  createStudent,
+﻿import express from 'express';
+import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { createStudent,
   getStudentsByParent,
   getStudent,
   updateStudent,
-  deleteStudent,
-} = require('../controllers/studentController');
+  deleteStudent, } from '../controllers/studentController.js';
+import { supabase } from '../config/supabase.js';
 
 const router = express.Router();
 
@@ -47,8 +46,6 @@ router.get('/', authMiddleware, roleMiddleware('parent'), getStudentsByParent);
 // Get all students (for teachers/admins)
 router.get('/all', authMiddleware, roleMiddleware('teacher', 'admin'), async (req, res) => {
   try {
-    const { supabase } = require('../config/supabase');
-
     const { data: students, error } = await supabase
       .from('students')
       .select('*');
@@ -67,7 +64,6 @@ router.get('/all', authMiddleware, roleMiddleware('teacher', 'admin'), async (re
 // Get student dashboard data
 router.get('/:id/dashboard', authMiddleware, async (req, res) => {
   try {
-    const { supabase } = require('../config/supabase');
     const studentId = req.params.id;
     const userRole = req.user.role;
     const userId = req.user.id;
@@ -108,4 +104,8 @@ router.put('/:id', authMiddleware, updateStudent);
 // Delete student
 router.delete('/:id', authMiddleware, deleteStudent);
 
-module.exports = router;
+export default router;
+
+
+
+

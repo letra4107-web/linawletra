@@ -1,7 +1,7 @@
-const express = require('express');
-const { authMiddleware } = require('../middleware/auth');
-const { supabase, getSupabaseAuthClient } = require('../config/supabase');
-const User = require('../models/User');
+﻿import express from 'express';
+import { authMiddleware } from '../middleware/auth.js';
+import { supabase, getSupabaseAuthClient } from '../config/supabase.js';
+import User from '../models/User.js';
 
 const router = express.Router();
 
@@ -176,4 +176,5 @@ router.delete('/:userId', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
+

@@ -1,12 +1,13 @@
-﻿const express = require('express');
-const crypto = require('crypto');
-const { verifyAdmin } = require('../middleware/auth');
-const { supabase, getSupabaseAuthClient } = require('../config/supabase');
-const User = require('../models/User');
-const Feedback = require('../models/Feedback');
-const Progress = require('../models/Progress');
-const Setting = require('../models/Setting');
-const Log = require('../models/Log');
+﻿import express from 'express';
+import crypto from 'crypto';
+import { verifyAdmin } from '../middleware/auth.js';
+import { supabase, getSupabaseAuthClient } from '../config/supabase.js';
+import User from '../models/User.js';
+import Feedback from '../models/Feedback.js';
+import Progress from '../models/Progress.js';
+import Setting from '../models/Setting.js';
+import Log from '../models/Log.js';
+import { sendTeacherAccountEmail } from '../services/emailService.js';
 
 const router = express.Router();
 const SETTINGS_DOC_ID = 'system';
@@ -416,7 +417,6 @@ router.post('/teachers/create', async (req, res) => {
     });
 
     // Send credentials email to teacher
-    const { sendTeacherAccountEmail } = require('../services/emailService');
     const emailSent = await sendTeacherAccountEmail(
       normalizedEmail,
       displayName,
@@ -927,4 +927,7 @@ router.get('/logs', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
+
+
+

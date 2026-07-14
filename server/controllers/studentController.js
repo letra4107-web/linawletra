@@ -1,7 +1,7 @@
-const { supabase } = require('../config/supabase');
-const { sendStudentEnrollmentEmail } = require('../services/emailService');
-const { generateStudentCredentials } = require('../services/credentialGenerator');
-const { VALID_READING_LEVELS, normalizeReadingLevel } = require('../services/readingLevels');
+﻿import { supabase } from '../config/supabase.js';
+import { sendStudentEnrollmentEmail } from '../services/emailService.js';
+import { generateStudentCredentials } from '../services/credentialGenerator.js';
+import { VALID_READING_LEVELS, normalizeReadingLevel } from '../services/readingLevels.js';
 
 const VALID_GRADE_LEVELS = ['1', '2', '3', '4', '5', '6'];
 
@@ -48,7 +48,7 @@ const isValidReadingLevel = (readingLevel) =>
   VALID_READING_LEVELS.includes(readingLevel);
 
 // Create student (Parent enrollment)
-exports.createStudent = async (req, res) => {
+export const createStudent =async (req, res) => {
   try {
     console.log('[Create Student] Request received');
     console.log('   Body:', req.body);
@@ -217,7 +217,7 @@ exports.createStudent = async (req, res) => {
         gradeLevel ? `Grade ${gradeLevel}` : '',
         readingLevel ? `${readingLevel} reading level` : '',
         age ? `${age} years old` : '',
-      ].filter(Boolean).join(' • ');
+      ].filter(Boolean).join(' â€¢ ');
 
       const emailSent = await sendStudentEnrollmentEmail(
         parentEmail,
@@ -228,15 +228,15 @@ exports.createStudent = async (req, res) => {
       );
 
       if (!emailSent) {
-        console.warn('[Create Student] ⚠ Failed to send enrollment email');
+        console.warn('[Create Student] âš  Failed to send enrollment email');
       } else {
-        console.log('[Create Student] ✓ Enrollment email sent');
+        console.log('[Create Student] âœ“ Enrollment email sent');
       }
     } catch (emailError) {
-      console.warn('[Create Student] ⚠ Email sending failed:', emailError.message);
+      console.warn('[Create Student] âš  Email sending failed:', emailError.message);
     }
 
-    console.log('[Create Student] ✓ Student created successfully');
+    console.log('[Create Student] âœ“ Student created successfully');
 
     res.status(201).json({
       success: true,
@@ -267,7 +267,7 @@ exports.createStudent = async (req, res) => {
 };
 
 // Get all students for parent
-exports.getStudentsByParent = async (req, res) => {
+export const getStudentsByParent =async (req, res) => {
   try {
     const parentId = req.user.id;
 
@@ -310,7 +310,7 @@ exports.getStudentsByParent = async (req, res) => {
 };
 
 // Get single student
-exports.getStudent = async (req, res) => {
+export const getStudent =async (req, res) => {
   try {
     const studentId = req.params.id;
     const userRole = req.user.role;
@@ -349,7 +349,7 @@ exports.getStudent = async (req, res) => {
       });
     }
 
-    console.log('[Get Student] ✓ Student found and accessible');
+    console.log('[Get Student] âœ“ Student found and accessible');
 
     const [studentWithUser] = await attachUserProfiles([student]);
 
@@ -367,7 +367,7 @@ exports.getStudent = async (req, res) => {
 };
 
 // Update student
-exports.updateStudent = async (req, res) => {
+export const updateStudent =async (req, res) => {
   try {
     const studentId = req.params.id;
     const userRole = req.user.role;
@@ -450,7 +450,7 @@ exports.updateStudent = async (req, res) => {
       updatedStudent = data;
     }
 
-    console.log('[Update Student] ✓ Student updated successfully');
+    console.log('[Update Student] âœ“ Student updated successfully');
 
     const progressMetadata = {
       ...(xp !== undefined ? { xp } : {}),
@@ -507,7 +507,7 @@ exports.updateStudent = async (req, res) => {
 };
 
 // Delete student
-exports.deleteStudent = async (req, res) => {
+export const deleteStudent =async (req, res) => {
   try {
     const studentId = req.params.id;
     const userRole = req.user.role;
@@ -557,7 +557,7 @@ exports.deleteStudent = async (req, res) => {
         if (authDeleteError && !String(authDeleteError.message).toLowerCase().includes('not found')) {
           console.warn('[Delete Student] Auth delete warning:', authDeleteError.message);
         } else {
-          console.log('[Delete Student] ✓ User deleted from Supabase Auth:', student.user_id);
+          console.log('[Delete Student] âœ“ User deleted from Supabase Auth:', student.user_id);
         }
 
         // Delete from custom users table
@@ -569,7 +569,7 @@ exports.deleteStudent = async (req, res) => {
         if (userDeleteError) {
           console.warn('[Delete Student] Failed to delete from users table:', userDeleteError.message);
         } else {
-          console.log('[Delete Student] ✓ User deleted from custom users table:', student.user_id);
+          console.log('[Delete Student] âœ“ User deleted from custom users table:', student.user_id);
         }
       } catch (userError) {
         console.warn('[Delete Student] Error cleaning up user account:', userError.message);
@@ -577,7 +577,7 @@ exports.deleteStudent = async (req, res) => {
       }
     }
 
-    console.log('[Delete Student] ✓ Student deleted successfully');
+    console.log('[Delete Student] âœ“ Student deleted successfully');
 
     res.json({
       success: true,
@@ -591,5 +591,6 @@ exports.deleteStudent = async (req, res) => {
     });
   }
 };
+
 
 

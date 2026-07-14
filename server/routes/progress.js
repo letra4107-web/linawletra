@@ -1,12 +1,10 @@
-const express = require('express');
-const { authMiddleware } = require('../middleware/auth');
-const {
-  createOrGetProgress,
+﻿import express from 'express';
+import { authMiddleware } from '../middleware/auth.js';
+import { createOrGetProgress,
   updateProgress,
   getProgressByStudent,
   getDashboardData,
-  getProgressReports,
-} = require('../controllers/progressController');
+  getProgressReports, } from '../controllers/progressController.js';
 
 const router = express.Router();
 
@@ -25,4 +23,5 @@ router.get('/reports', authMiddleware, getProgressReports);
 // Get dashboard data
 router.get('/dashboard/:studentId', authMiddleware, getDashboardData);
 
-module.exports = router;
+export default router;
+

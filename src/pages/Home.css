@@ -34,7 +34,7 @@
 .home p,
 .home button {
   letter-spacing: 0.02em;
-  font-family: 'Comic Neue', 'Comic Sans MS', cursive;
+  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
 }
 
 .home p {
@@ -1022,10 +1022,115 @@
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1100px) {
+  .home {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .home-shell {
+    width: 100%;
+    max-width: 100%;
+    padding-left: clamp(1rem, 4vw, 1.6rem);
+    padding-right: clamp(1rem, 4vw, 1.6rem);
+  }
+
+  .home-topbar {
+    padding: 0.55rem 0;
+  }
+
+  .home-topbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+  }
+
+  .home-brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .home-brand-btn {
+    max-width: 100%;
+    padding: 0.55rem 0.7rem;
+    border-radius: 16px;
+  }
+
+  .home-brand-title {
+    min-width: 0;
+  }
+
+  .home-brand-title strong,
+  .home-brand-title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .home-actions {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  .home-nav {
+    display: none;
+  }
+
+  .home-actions-login {
+    display: none;
+  }
+
+  .home-mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 14px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    cursor: pointer;
+  }
+
   .home-hero-grid {
     grid-template-columns: 1fr;
   }
+
+  .home-hero {
+    padding: 2rem 0 2.5rem;
+  }
+
+  .home-hero-card {
+    width: 100%;
+    padding: clamp(1.15rem, 4vw, 2rem);
+    border-radius: 22px;
+  }
+
+  .home-hero-card::before,
+  .home-hero-card::after {
+    display: none;
+  }
+
+  .home-badge,
+  .home-hero-search-card {
+    max-width: 100%;
+  }
+
+  .home-h1 {
+    max-width: 100%;
+    font-size: clamp(2.6rem, 12vw, 4.25rem);
+    line-height: 1;
+  }
+
+  .home-tagline,
+  .home-hero-description,
+  .home-lead {
+    max-width: 100%;
+  }
+
   .home-hero-side {
     align-items: stretch;
   }
@@ -1047,31 +1152,126 @@
 }
 
 @media (max-width: 760px) {
-  .home-nav {
-    display: none;
-  }
-  .home-mobile-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 14px;
-    border: 1px solid rgba(15, 23, 42, 0.12);
-    background: rgba(255, 255, 255, 0.86);
-    cursor: pointer;
-  }
   .home-mobile-panel {
     display: grid;
     gap: 0.5rem;
   }
 
-  .home-actions-login {
-    display: none;
+  .home-actions-primary {
+    padding: 0.62rem 0.9rem;
+    white-space: nowrap;
+  }
+
+  .home-logo-img {
+    width: 38px;
+    height: 38px;
+  }
+
+  .home-brand-title strong {
+    font-size: 0.95rem;
+  }
+
+  .home-brand-title span {
+    font-size: 0.72rem;
+  }
+
+  .home-mobile-panel {
+    left: 0;
+    right: 0;
+    width: 100%;
+    top: calc(100% + 0.35rem);
+  }
+
+  .home-hero-search-card {
+    align-items: flex-start;
+    border-radius: 22px;
+  }
+
+  .home-search-text {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .home-search-chips span {
+    min-width: 52px;
+  }
+
+  .home-hero-cta,
+  .home-mobile-cta {
+    grid-template-columns: 1fr;
+    display: grid;
+    width: 100%;
+  }
+
+  .home-hero-cta .home-btn,
+  .home-mobile-cta .home-btn {
+    width: 100%;
+  }
+
+  .home-hero-stats,
+  .home-progress-meta,
+  .home-footer-grid {
+    grid-template-columns: 1fr;
   }
 
   .home-footer-bottom {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .home-topbar {
+    position: sticky;
+  }
+
+  .home-shell {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .home-brand-btn {
+    padding: 0.5rem;
+    border-radius: 14px;
+  }
+
+  .home-brand {
+    gap: 0.55rem;
+  }
+
+  .home-brand-title span {
+    display: none;
+  }
+
+  .home-actions-primary {
+    display: none;
+  }
+
+  .home-hero {
+    padding-top: 1.25rem;
+  }
+
+  .home-hero-card {
+    padding: 1rem;
+    border-radius: 18px;
+  }
+
+  .home-h1 {
+    font-size: clamp(2.25rem, 16vw, 3rem);
+  }
+
+  .home-badge {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+  }
+
+  .home-tagline,
+  .home-hero-description,
+  .home p {
+    font-size: 0.98rem;
+    line-height: 1.75;
   }
 }

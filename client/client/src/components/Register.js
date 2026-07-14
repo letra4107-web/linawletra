@@ -19,21 +19,11 @@ import './Auth.css';
 
 const supabaseErrorMessages = {
   'email_rate_limit_exceeded': 'Too many signup attempts. Please wait 15–30 minutes before trying again.',
-  'email_exists': 'Email already exists. Please use a different email or try logging in.',
   'user_already_exists': 'This email is already registered. Please log in instead.',
   'invalid_credentials': 'Invalid email or password.',
-  'invalid_email_or_password': 'Invalid email or password.',
   'over_email_send_rate_limit': 'Too many emails sent. Please wait before trying again.',
   'over_request_rate_limit': 'Too many requests. Please wait before trying again.',
   'email_not_confirmed': 'Please verify your email before logging in.',
-  'email_address_already_exists': 'Email already exists. Please use a different email or try logging in.',
-};
-
-const firebaseErrorMessages = {
-  'auth/email-already-in-use': 'Email already exists. Please use a different email or try logging in.',
-  'auth/weak-password': 'Password is too weak. Please use a stronger password.',
-  'auth/invalid-email': 'Invalid email address.',
-  'auth/operation-not-allowed': 'Email/password registration is not enabled.',
 };
 
 export default function Register() {
@@ -162,11 +152,6 @@ export default function Register() {
     
     if (message.includes('not confirmed')) {
       return supabaseErrorMessages['email_not_confirmed'];
-    }
-    
-    // Fallback to Firebase errors if available
-    if (firebaseErrorMessages[errorCode]) {
-      return firebaseErrorMessages[errorCode];
     }
     
     // Return original message if no mapping found

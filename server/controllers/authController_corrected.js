@@ -1,5 +1,5 @@
 // --- TEST ENDPOINT: Send verification email to any address (for debugging) ---
-exports.testSendVerification = async (req, res) => {
+export const testSendVerification =async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ success: false, message: 'Email required.' });
   try {
@@ -10,23 +10,22 @@ exports.testSendVerification = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to send verification email.', error: err.message });
   }
 };
-const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-const { validationResult } = require('express-validator');
-const config = require('../config');
-const { supabase } = require('../config/supabase');
-const bcrypt = require('bcryptjs');
-const {
-  generateVerificationCode,
+import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
+import { validationResult } from 'express-validator';
+import configModule from '../config.js';
+const config = configModule.default || configModule;
+import { supabase } from '../config/supabase.js';
+import bcrypt from 'bcryptjs';
+import { generateVerificationCode,
   hashCode,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendStudentEnrollmentEmail,
-  verifyCodeExpiration,
-} = require('../services/emailService');
+  verifyCodeExpiration, } from '../services/emailService.js';
 
 // Register new user (creates auth user and profile)
-exports.register = async (req, res) => {
+export const register =async (req, res) => {
   try {
     console.log('[Register API] Request received at:', new Date().toISOString());
     console.log('[Register API] Request body:', {
@@ -236,7 +235,7 @@ exports.register = async (req, res) => {
 };
 
 // Send email verification code
-exports.sendEmailVerificationCode = async (req, res) => {
+export const sendEmailVerificationCode =async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -265,7 +264,7 @@ exports.sendEmailVerificationCode = async (req, res) => {
 };
 
 // Verify email (called after user receives code)
-exports.verifyEmail = async (req, res) => {
+export const verifyEmail =async (req, res) => {
   try {
     const { email, code } = req.body;
     console.log('[Email Verification] Verifying code for:', email);
@@ -309,7 +308,7 @@ exports.verifyEmail = async (req, res) => {
 };
 
 // Login user
-exports.login = async (req, res) => {
+export const login =async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log('[Login] Attempting login for:', email);

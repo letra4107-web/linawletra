@@ -1,12 +1,10 @@
-const express = require('express');
-const { authMiddleware, roleMiddleware } = require('../middleware/auth');
-const {
-  createLesson,
+import express from 'express';
+import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { createLesson,
   getLessonsByLevelAndCategory,
   getLesson,
   updateLesson,
-  deleteLesson,
-} = require('../controllers/lessonController');
+  deleteLesson, } from '../controllers/lessonController.js';
 
 const router = express.Router();
 
@@ -25,4 +23,4 @@ router.put('/:id', authMiddleware, roleMiddleware('admin', 'teacher'), updateLes
 // Delete lesson (admin only)
 router.delete('/:id', authMiddleware, roleMiddleware('admin'), deleteLesson);
 
-module.exports = router;
+export default router;

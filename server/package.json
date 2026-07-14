@@ -1,6 +1,7 @@
 {
   "name": "linawletra-server",
   "version": "1.0.0",
+  "type": "module",
   "description": "Backend API for LinawLetra - Tagalog literacy platform for children with dyslexia",
   "main": "index.js",
   "scripts": {

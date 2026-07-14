@@ -77,7 +77,7 @@ export default function Home() {
                 aria-expanded={mobileOpen ? 'true' : 'false'}
                 onClick={() => setMobileOpen((v) => !v)}
               >
-                {mobileOpen ? '✕' : '☰'}
+                {mobileOpen ? 'Close' : 'Menu'}
               </button>
             </div>
           </div>
@@ -108,14 +108,14 @@ export default function Home() {
           <div className="home-hero-card home-fade-in">
             <div className="home-hero-grid">
               <div className="home-hero-copy">
-                <span className="home-badge">AI-powered • Tagalog • Dyslexia-friendly</span>
+                <span className="home-badge">AI-powered - Tagalog - Dyslexia-friendly</span>
                 <h1 className="home-h1">
                   <span className="home-h1-line">Linaw</span>
                   <span className="home-h1-line home-h1-accent">Letra</span>
                 </h1>
                 <p className="home-tagline">Katuwang sa Pagbasa para sa Batang Pilipino</p>
                 <p className="home-hero-description">
-                  Tulong sa pagbabasa para sa mga batang may dyslexia sa Grades 1-6 gamit ang AI — syllable decoding, speech feedback, at marami pa.
+                  Tulong sa pagbabasa para sa mga batang may dyslexia sa Grades 1-6 gamit ang AI - syllable decoding, speech feedback, at marami pa.
                 </p>
                 <div className="home-hero-search-card">
                   <div className="home-search-text">Mga pantig:</div>
@@ -227,7 +227,7 @@ export default function Home() {
           <p className="home-section-tag">Para Kanino ang LinawLetra?</p>
           <h2>Isang Platform para sa Lahat</h2>
           <p className="home-lead">
-            Kung estudyante, guro, o magulang ka — mayroon kaming solusyon na akma para sa iyo.
+            Kung estudyante, guro, o magulang ka - mayroon kaming solusyon na akma para sa iyo.
           </p>
           <div className="home-grid-3">
             <div className="home-card home-fade-in">
@@ -282,7 +282,7 @@ export default function Home() {
               <p className="home-section-tag">Subukan ang Libreng Demo</p>
               <h2>Handa ka na ba? Subukan nang Libre</h2>
               <p className="home-lead">
-                I-sign up ngayon at makakuha ng libreng 30-araw na access sa lahat ng features ng LinawLetra — walang credit card na kailangan.
+                I-sign up ngayon at makakuha ng libreng 30-araw na access sa lahat ng features ng LinawLetra - walang credit card na kailangan.
               </p>
               <ul className="home-list home-signup-list">
                 <li>Libre ng 30-araw na full access</li>
@@ -358,7 +358,7 @@ export default function Home() {
           </div>
 
           <div className="home-footer-bottom">
-            <small>© {new Date().getFullYear()} LinawLetra. All rights reserved.</small>
+            <small>(c) {new Date().getFullYear()} LinawLetra. All rights reserved.</small>
             <button className="home-footer-top" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
               Back to top
             </button>
