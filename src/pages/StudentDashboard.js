@@ -188,7 +188,7 @@ const StudentDashboard = () => {
     darkMode: false,
     largeText: false,
     highContrast: false,
-    fontFamily: 'DM Sans',
+    fontFamily: 'Comic Sans',
     textSize: 16,
     letterSpacing: 'normal',
     wordHighlighting: true,
@@ -238,7 +238,7 @@ const StudentDashboard = () => {
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
   const fontFamilies = {
-    'Comic Sans': '"Comic Sans MS", cursive, sans-serif',
+    'Comic Sans': '"Comic Sans MS", "Comic Sans", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
     'Josefin Sans': '"Josefin Sans", sans-serif',
   };
@@ -269,7 +269,7 @@ const StudentDashboard = () => {
           darkMode: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.darkMode ?? false,
           largeText: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.largeText ?? false,
           highContrast: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.highContrast ?? false,
-          fontFamily: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.fontFamily || 'DM Sans',
+          fontFamily: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.fontFamily || 'Comic Sans',
           textSize: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.textSize || 16,
           letterSpacing: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.letterSpacing || 'normal',
           wordHighlighting: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.wordHighlighting ?? true,
@@ -952,7 +952,7 @@ const StudentDashboard = () => {
   const activitiesCompleted = progress.completed || 0;
   const streakDays = progress.streak || 0;
   const rootStyles = {
-    fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['DM Sans'],
+    fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['Comic Sans'],
     fontSize: `${accessibilitySettings.textSize}px`,
     letterSpacing: accessibilitySettings.letterSpacing === 'wide' ? '0.08em' : 'normal',
   };

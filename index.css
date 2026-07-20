@@ -18,21 +18,23 @@
   --border-radius: 12px;
   --padding: 16px;
   --gap: 16px;
+  --font-primary: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  font-family: var(--font-primary) !important;
 }
 
 body {
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  font-family: var(--font-primary) !important;
   background-color: var(--light-bg);
   color: var(--text-color);
   line-height: 1.6;
   letter-spacing: 0.02em;
+  word-spacing: 0.08em;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -62,7 +64,7 @@ button,
 input,
 textarea,
 select {
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  font-family: var(--font-primary) !important;
 }
 
 button {

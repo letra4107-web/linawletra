@@ -16,7 +16,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const SpeechRecognition = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
 const DEFAULT_READING_SETTINGS = {
-  font: 'dyslexic',
+  font: 'comic',
   fontSize: 2,
   lineHeight: 2,
   letterSpacing: 0,
@@ -287,6 +287,7 @@ export default function StudentReadingAssistant() {
           <label>
             Font
             <select value={readingSettings.font} onChange={(event) => updateReadingSetting('font', event.target.value)}>
+              <option value="comic">Comic Sans</option>
               <option value="dyslexic">OpenDyslexic</option>
               <option value="hyperlegible">Atkinson Hyperlegible</option>
               <option value="simple">Simple sans</option>

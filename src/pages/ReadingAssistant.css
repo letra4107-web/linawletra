@@ -4,7 +4,7 @@
   --reading-blue: #1e5a96;
   --reading-ink: #17324d;
   --reading-soft: #f4faf8;
-  font-family: 'OpenDyslexic', 'Josefin Sans', 'Comic Sans MS', sans-serif;
+  font-family: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
 }
 
 .reading-hero {
@@ -606,8 +606,9 @@ textarea:focus-visible {
   border-color: #071522;
 }
 
+.reading-font-comic,
 .reading-font-hyperlegible {
-  font-family: 'Atkinson Hyperlegible', Arial, sans-serif;
+  font-family: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
 }
 
 .reading-font-simple {

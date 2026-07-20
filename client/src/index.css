@@ -1,5 +1,4 @@
 @import './styles/tokens.css';
-@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -66,9 +65,11 @@
   --error-color: var(--color-danger);
   --error-light: #fee2e2;
   --success-light: #d1fae5;
+  --font-primary: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  --font-body: var(--font-primary);
 
   color-scheme: light;
-  font-family: 'Lexend', 'Atkinson Hyperlegible', 'OpenDyslexic', sans-serif;
+  font-family: var(--font-primary);
   background-color: var(--color-background);
   color: var(--color-text-primary);
 }
@@ -85,19 +86,20 @@ html {
 }
 
 body {
-  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
+  font-family: var(--font-primary);
   min-height: 100vh;
   background-color: var(--color-background);
   color: var(--color-text-primary);
   line-height: 1.6;
   letter-spacing: 0.02em;
+  word-spacing: 0.08em;
 }
 
 button,
 input,
 textarea,
 select {
-  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
+  font-family: var(--font-primary);
 }
 
 button {

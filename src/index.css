@@ -4,7 +4,8 @@
 
 :root {
   color-scheme: light;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive;
+  --font-primary: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  font-family: var(--font-primary);
   background-color: #f8fafc;
   color: #0f172a;
 }
@@ -13,7 +14,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  font-family: var(--font-primary) !important;
 }
 
 html {
@@ -24,14 +25,16 @@ body {
   min-height: 100vh;
   background-color: #f8fafc;
   color: #0f172a;
-  line-height: 1.5;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  word-spacing: 0.08em;
 }
 
 button,
 input,
 textarea,
 select {
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
+  font-family: var(--font-primary) !important;
 }
 
 button {

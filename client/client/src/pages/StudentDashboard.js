@@ -179,7 +179,7 @@ const StudentDashboard = () => {
     darkMode: false,
     largeText: false,
     highContrast: false,
-    fontFamily: 'DM Sans',
+    fontFamily: 'Comic Sans',
     textSize: 16,
     letterSpacing: 'normal',
     wordHighlighting: true,
@@ -226,7 +226,7 @@ const StudentDashboard = () => {
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const fontFamilies = {
-    'Lexend': '"Lexend", "Atkinson Hyperlegible", sans-serif',
+    'Comic Sans': '"Comic Sans MS", "Comic Sans", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
     'Josefin Sans': '"Josefin Sans", sans-serif',
   };
@@ -254,7 +254,7 @@ const StudentDashboard = () => {
           darkMode: userData.accessibilitySettings?.darkMode ?? false,
           largeText: userData.accessibilitySettings?.largeText ?? false,
           highContrast: userData.accessibilitySettings?.highContrast ?? false,
-          fontFamily: userData.accessibilitySettings?.fontFamily || 'DM Sans',
+          fontFamily: userData.accessibilitySettings?.fontFamily || 'Comic Sans',
           textSize: userData.accessibilitySettings?.textSize || 16,
           letterSpacing: userData.accessibilitySettings?.letterSpacing || 'normal',
           wordHighlighting: userData.accessibilitySettings?.wordHighlighting ?? true,
@@ -807,7 +807,7 @@ const StudentDashboard = () => {
   const activitiesCompleted = progress.completed || 0;
   const streakDays = progress.streak || 0;
   const rootStyles = {
-    fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['DM Sans'],
+    fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['Comic Sans'],
     fontSize: `${accessibilitySettings.textSize}px`,
     letterSpacing: accessibilitySettings.letterSpacing === 'wide' ? '0.08em' : 'normal',
   };
@@ -872,7 +872,7 @@ const StudentDashboard = () => {
                     value={accessibilitySettings.fontFamily}
                     onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.value })}
                   >
-                    <option value="Lexend">Lexend</option>
+                    <option value="Comic Sans">Comic Sans</option>
                     <option value="DM Sans">DM Sans</option>
                     <option value="Josefin Sans">Josefin Sans</option>
                   </select>
@@ -1330,7 +1330,7 @@ const StudentDashboard = () => {
                     value={accessibilitySettings.fontFamily}
                     onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.value })}
                   >
-                    <option value="Lexend">Lexend</option>
+                    <option value="Comic Sans">Comic Sans</option>
                     <option value="DM Sans">DM Sans</option>
                     <option value="Josefin Sans">Josefin Sans</option>
                   </select>

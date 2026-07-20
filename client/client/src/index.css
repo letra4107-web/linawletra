@@ -1,5 +1,4 @@
 @import './styles/tokens.css';
-@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,7 +6,8 @@
 
 :root {
   color-scheme: light;
-  font-family: 'Lexend', 'Atkinson Hyperlegible', 'OpenDyslexic', sans-serif;
+  --font-primary: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  font-family: var(--font-primary);
   background-color: #f8fafc;
   color: #0f172a;
 }
@@ -23,19 +23,21 @@ html {
 }
 
 body {
-  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
+  font-family: var(--font-primary);
   min-height: 100vh;
   background-color: #f8fafc;
   color: #0f172a;
   line-height: 1.6;
   letter-spacing: 0.02em;
+  word-spacing: 0.08em;
 }
 
 button,
 input,
 textarea,
 select {
-  font-family: 'Lexend', 'Atkinson Hyperlegible', sans-serif;
+  font-family: var(--font-primary);
+}
 
 button {
   cursor: pointer;
