@@ -1,5 +1,7 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import assessmentRoutes from "./routes/assessments.js";
@@ -13,6 +15,9 @@ import userRoutes from "./routes/users.js";
 import readingRoutes from "./routes/reading.js";
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 app.use(express.json());
 
 const allowedOrigins =
@@ -20,8 +25,6 @@ const allowedOrigins =
     ? [
         "https://linawletra.com",
         "https://www.linawletra.com",
-        "https://linawletra.web.app",
-        "https://linawletra.firebaseapp.com",
       ]
     : [
         "http://localhost:3000",
@@ -56,9 +59,6 @@ const isAllowedDevOrigin = (origin) => {
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) {
-      if (process.env.NODE_ENV === "production") {
-        return callback(new Error("CORS policy: Origin required in production"));
-      }
       return callback(null, true);
     }
     if (allowedOrigins.includes(origin) || isAllowedDevOrigin(origin)) {
@@ -95,6 +95,15 @@ app.use("/api/users", userRoutes);
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+if (process.env.NODE_ENV === "production") {
+  const clientBuildPath = path.resolve(__dirname, "../client/client/build");
+  app.use(express.static(clientBuildPath));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(clientBuildPath, "index.html"));
+  });
+}
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err && err.message ? err.message : err);

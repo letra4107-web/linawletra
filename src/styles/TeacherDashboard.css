@@ -1,4 +1,4 @@
-﻿/* Teacher Dashboard: Dyslexia-friendly production UI */
+/* Teacher Dashboard: Dyslexia-friendly production UI */
 :root {
   --bg-soft: #FDFAF5;
   --panel-bg: #FFFFFF;
@@ -19,9 +19,9 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Comic Sans MS', 'Comic Sans', cursive !important;
-  line-height: 1.6 !important;
-  letter-spacing: 0.02em !important;
+  font-family: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
 }
 
 .teacher-dashboard-page {
@@ -64,6 +64,20 @@
   gap: 22px;
 }
 
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-brand-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .sidebar-logo {
   font-size: 1.15rem;
   font-weight: 800;
@@ -74,9 +88,7 @@
 
 .sidebar-role {
   font-size: 0.7rem;
-  color: #A7F3D0;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  color: #A7F3D0;  letter-spacing: 0.18em;
 }
 
 .sidebar-menu {
@@ -92,9 +104,7 @@
 }
 
 .sidebar-section-title {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  font-size: 0.65rem;  letter-spacing: 0.14em;
   color: rgba(255, 255, 255, 0.45);
   padding: 0 14px;
   margin-bottom: 4px;
@@ -201,6 +211,11 @@
   align-items: center;
   gap: 18px;
   margin-bottom: 24px;
+  padding: 20px 24px;
+  background: #ffffff;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
 }
 
 .top-search,
@@ -260,9 +275,7 @@
 }
 
 .top-bar-subtitle {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-size: 0.85rem;  letter-spacing: 0.18em;
   color: #4B4F56;
 }
 
@@ -321,9 +334,7 @@
 
 .headline-sync-text {
   font-size: 0.85rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  color: var(--text-secondary);  letter-spacing: 0.18em;
   margin-bottom: 8px;
 }
 
@@ -348,9 +359,7 @@
 }
 
 .stat-title {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: 0.8rem;  letter-spacing: 0.1em;
   color: #787C82;
 }
 
@@ -401,9 +410,7 @@
   background: #F8F5EF;
   color: var(--text-secondary);
   font-size: 0.85rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+  letter-spacing: 0.08em;}
 
 .list-panel tbody tr:hover {
   background: #F8FCFB;
@@ -779,9 +786,7 @@
   background: rgba(42, 157, 143, 0.12);
   color: #2A9D8F;
   font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  font-size: 0.8rem;
+  letter-spacing: 0.16em;  font-size: 0.8rem;
 }
 
 .dashboard-hero-copy h1 {

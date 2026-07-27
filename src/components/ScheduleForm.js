@@ -142,7 +142,7 @@ export default function ScheduleForm({ onComplete, onCancel }) {
           backgroundColor: 'white',
           borderRadius: '8px',
           textAlign: 'center',
-          fontFamily: 'Josefin Sans, sans-serif',
+          fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
         }}
       >
         <div style={{ marginBottom: '1rem' }}>
@@ -162,10 +162,10 @@ export default function ScheduleForm({ onComplete, onCancel }) {
         padding: '2rem',
         backgroundColor: 'white',
         borderRadius: '8px',
-        fontFamily: 'Josefin Sans, sans-serif',
+        fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
       }}
     >
-      <h1 style={{ color: '#2d9c78', marginTop: 0, fontSize: '28px', letterSpacing: '0.06em' }}>
+      <h1 style={{ color: '#4F46E5', marginTop: 0, fontSize: '28px', letterSpacing: '0.06em' }}>
         Schedule a Lesson
       </h1>
       
@@ -404,7 +404,7 @@ export default function ScheduleForm({ onComplete, onCancel }) {
             type="submit"
             disabled={submitting || loading}
             style={{
-              backgroundColor: '#2d9c78',
+              backgroundColor: '#4F46E5',
               color: 'white',
               border: 'none',
               padding: '0.75rem 1.5rem',

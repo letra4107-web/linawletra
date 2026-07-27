@@ -15,7 +15,7 @@
   --space-9: 5rem;
 
   /* Typography */
-  --font-primary: 'Lexend', 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-primary: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
   --font-mono: 'Monaco', 'Courier New', monospace;
 
   /* Color Palette */

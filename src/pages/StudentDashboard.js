@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { supabase } from '../config/supabase';
 import { onAuthStateChanged } from '../services/supabaseAuth';
 import { AuthContext } from '../context/AuthContext';
@@ -7,8 +7,17 @@ import {
   FiBell,
   FiLogOut,
   FiStar,
+  FiHome,
+  FiBookOpen,
+  FiMic,
+  FiTrendingUp,
+  FiSettings,
+  FiZap,
 } from 'react-icons/fi';
 import { subscribeToTeacherUploadsByGradeLevel } from '../services/supabaseService';
+import { ACHIEVEMENTS, getUnlockedAchievementIds, getAchievementById } from '../services/achievementService';
+import AchievementBadge from '../components/AchievementBadge';
+import AchievementUnlockModal from '../components/AchievementUnlockModal';
 import './StudentDashboard.css';
 
 const auth = supabase.auth;
@@ -46,7 +55,7 @@ const normalizeText = (text = '') =>
   text
     .toString()
     .toLowerCase()
-    .replace(/[^a-z0-9À-ſ\s]/g, ' ')
+    .replace(/[^a-z0-9à-ÿ\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 const normalizeGradeLevel = (value) => {
@@ -121,9 +130,9 @@ const completeActivity = async (params) => {
  * calculateStreak() - Compute streak on app load based on lastLoginDate
  * Runs on component mount; compares lastLoginDate with current date
  * Logic:
- *   - lastLoginDate === yesterday → streak += 1
- *   - lastLoginDate === today → streak unchanged
- *   - lastLoginDate < yesterday → reset streak to 1
+ *   - lastLoginDate === yesterday ? streak += 1
+ *   - lastLoginDate === today ? streak unchanged
+ *   - lastLoginDate < yesterday ? reset streak to 1
  * @param {Object} params - { userId, currentStreak }
  * @returns {Promise<Object>} - Updated: { streak, lastLoginDate }
  */
@@ -146,15 +155,15 @@ const calculateStreak = async (params) => {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       if (lastLoginDateParsed.getTime() === yesterday.getTime()) {
-        // Last login was yesterday → increment streak
+        // Last login was yesterday ? increment streak
         updatedStreak = (currentStreak || 0) + 1;
         console.log(`Streak incremented (yesterday login): ${updatedStreak}`);
       } else if (lastLoginDateParsed.getTime() === today.getTime()) {
-        // Last login was today → preserve streak
+        // Last login was today ? preserve streak
         updatedStreak = currentStreak || 0;
         console.log(`Streak preserved (already logged in today): ${updatedStreak}`);
       } else if (lastLoginDateParsed.getTime() < yesterday.getTime()) {
-        // Last login was before yesterday → reset streak
+        // Last login was before yesterday ? reset streak
         updatedStreak = 1;
         console.log(`Streak reset (gap detected): ${updatedStreak}`);
       }
@@ -231,6 +240,11 @@ const StudentDashboard = () => {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [currentPhoneticLevel, setCurrentPhoneticLevel] = useState('Easy');
   const [progressInCurrentLevel, setProgressInCurrentLevel] = useState(0);
+  const [highestPhoneticLevel, setHighestPhoneticLevel] = useState('Easy');
+  const [hardCyclesCompleted, setHardCyclesCompleted] = useState(0);
+  const [hadStreakBreak, setHadStreakBreak] = useState(false);
+  const [unlockedAchievementIds, setUnlockedAchievementIds] = useState([]);
+  const [newlyUnlockedAchievements, setNewlyUnlockedAchievements] = useState([]);
   const [xpGainPopup, setXpGainPopup] = useState(null);
   const [reassurancePopup, setReassurancePopup] = useState(null);
   const [confettiPopup, setConfettiPopup] = useState(false);
@@ -238,7 +252,7 @@ const StudentDashboard = () => {
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
   const fontFamilies = {
-    'Comic Sans': '"Comic Sans MS", "Comic Sans", "Trebuchet MS", Verdana, Arial, sans-serif',
+    'Comic Sans': '"Comic Sans MS", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
     'Josefin Sans': '"Josefin Sans", sans-serif',
   };
@@ -254,7 +268,7 @@ const StudentDashboard = () => {
       }
       try {
         // Fetch user data via API
-        const userResponse = await studentService.getStudent(user.uid).catch(() => ({}));
+        const userResponse = await studentService.getStudent(user.uid);
         const userData = userResponse?.data?.student || userResponse?.data || userResponse || {};
         const profile = userData.user || userData.users || {};
         const profileMetadata = profile.metadata || userData.metadata || {};
@@ -275,7 +289,7 @@ const StudentDashboard = () => {
           wordHighlighting: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.wordHighlighting ?? true,
         });
         // Fetch progress data via API
-        const dashboardResponse = await studentService.getDashboardData?.(user.uid).catch(() => ({}));
+        const dashboardResponse = await studentService.getDashboardData?.(user.uid);
         const dashboardData = dashboardResponse?.data?.data ?? dashboardResponse?.data ?? dashboardResponse ?? {};
         const progressData = {
           ...(profileMetadata || {}),
@@ -299,6 +313,11 @@ const StudentDashboard = () => {
           // Load phonetic progression
           setCurrentPhoneticLevel(progressData.currentPhoneticLevel || 'Easy');
           setProgressInCurrentLevel(progressData.progressInCurrentLevel || 0);
+          // Load achievement tracking fields
+          setHighestPhoneticLevel(progressData.highestPhoneticLevel || progressData.currentPhoneticLevel || 'Easy');
+          setHardCyclesCompleted(progressData.hardCyclesCompleted || 0);
+          setHadStreakBreak(Boolean(progressData.hadStreakBreak));
+          setUnlockedAchievementIds(progressData.unlockedAchievementIds || []);
         }
         // =====================================================================
         // STREAK CALCULATION ON MOUNT
@@ -309,6 +328,9 @@ const StudentDashboard = () => {
           currentStreak,
         });
         if (streakResult) {
+          if (currentStreak >= 3 && streakResult.streak === 1) {
+            setHadStreakBreak(true);
+          }
           setProgress((prev) => ({
             ...prev,
             streak: streakResult.streak,
@@ -333,7 +355,7 @@ const StudentDashboard = () => {
         const initialProgressCount = progressData?.progressInCurrentLevel || 0;
         setExpectedText(getPhoneticWordForProgress(initialPhoneticLevel, initialProgressCount));
       } catch (error) {
-        console.error('Firebase load error:', error);
+        console.error('Student dashboard load error:', error);
         setFeedback('Cannot load progress right now. Please refresh the page.');
       }
     });
@@ -366,6 +388,10 @@ const StudentDashboard = () => {
         history: progress.history || [],
         currentPhoneticLevel,
         progressInCurrentLevel,
+        highestPhoneticLevel,
+        hardCyclesCompleted,
+        hadStreakBreak,
+        unlockedAchievementIds,
       };
       try {
         // Save progress via API
@@ -383,7 +409,30 @@ const StudentDashboard = () => {
       }
     };
     persistProgress();
-  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, currentStudentId]);
+  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, currentStudentId]);
+
+  // Recompute unlocked achievements whenever the underlying stats change.
+  useEffect(() => {
+    const stats = {
+      xp,
+      streak: progress.streak || 0,
+      accuracy: progress.accuracy || 0,
+      completed: progress.completed || 0,
+      history: progress.history || [],
+      highestPhoneticLevel,
+      hardCyclesCompleted,
+      hadStreakBreak,
+    };
+    const unlockedNow = getUnlockedAchievementIds(stats);
+    setUnlockedAchievementIds((prev) => {
+      const newlyUnlockedIds = unlockedNow.filter((id) => !prev.includes(id));
+      if (newlyUnlockedIds.length > 0) {
+        setNewlyUnlockedAchievements(newlyUnlockedIds.map(getAchievementById).filter(Boolean));
+        return unlockedNow;
+      }
+      return prev;
+    });
+  }, [xp, progress.streak, progress.accuracy, progress.completed, progress.history, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak]);
   useEffect(() => {
     if (!studentGrade || userRole !== 'student') {
       setTeacherUploads([]);
@@ -405,17 +454,20 @@ const StudentDashboard = () => {
     return () => unsubscribe();
   }, [studentGrade, userRole]);
   const persistAccessibilitySettings = async (updates) => {
-    setAccessibilitySettings((current) => {
-      const next = { ...current, ...updates };
-      if (currentStudentId) {
-        studentService.updateStudent(currentStudentId, {
+    const previous = accessibilitySettings;
+    const next = { ...previous, ...updates };
+    setAccessibilitySettings(next);
+    if (currentStudentId) {
+      try {
+        await studentService.updateStudent(currentStudentId, {
           accessibilitySettings: next,
-        }).catch((error) => {
-          console.error('Failed to save accessibility settings:', error);
         });
+      } catch (error) {
+        console.error('Failed to save accessibility settings:', error);
+        setAccessibilitySettings(previous);
+        setFeedback('Could not save your display settings. Please try again.');
       }
-      return next;
-    });
+    }
   };
   const handleLogout = async () => {
     try {
@@ -632,7 +684,7 @@ const StudentDashboard = () => {
   // Get accuracy explanation based on score
   const getAccuracyExplanation = (accuracyScore, spoken, target) => {
     if (accuracyScore === 100) {
-      return "Perfect pronunciation! 🎉";
+      return "Perfect pronunciation! ??";
     } else if (accuracyScore >= 80) {
       return "Great pronunciation, just minor differences";
     } else if (accuracyScore >= 60) {
@@ -669,9 +721,17 @@ const StudentDashboard = () => {
   const advanceLevel = () => {
     const levels = ['Easy', 'Medium', 'Hard'];
     const currentIndex = levels.indexOf(currentPhoneticLevel);
-    const nextLevel = currentIndex === levels.length - 1 ? 'Easy' : levels[currentIndex + 1];
+    const completingHardCycle = currentIndex === levels.length - 1;
+    const nextLevel = completingHardCycle ? 'Easy' : levels[currentIndex + 1];
     setCurrentPhoneticLevel(nextLevel);
     setProgressInCurrentLevel(0);
+    setHighestPhoneticLevel((prev) => {
+      const reachedLevel = completingHardCycle ? 'Hard' : nextLevel;
+      return levels.indexOf(reachedLevel) > levels.indexOf(prev) ? reachedLevel : prev;
+    });
+    if (completingHardCycle) {
+      setHardCyclesCompleted((prev) => prev + 1);
+    }
     return nextLevel;
   };
   const comparePronunciation = (spoken) => {
@@ -746,7 +806,7 @@ const StudentDashboard = () => {
         accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
       }));
       setExpectedText(getPhoneticWordForProgress(nextLevel, willAdvance ? 0 : newProgress));
-      setFeedback(willAdvance ? `🎉 Level up! Ngayon ay ${nextLevel}. ${tagalogFeedback}` : tagalogFeedback);
+      setFeedback(willAdvance ? `?? Level up! Ngayon ay ${nextLevel}. ${tagalogFeedback}` : tagalogFeedback);
       setStatusMessage(`You said: ${spoken}`);
       setTimeout(() => {
         setStatus('idle');
@@ -831,7 +891,7 @@ const StudentDashboard = () => {
       setStatus('idle');
       mediaRecorderRef.current?.stop();
       setRecognitionResult('error');
-      setFeedback(`Speech recognition failed: ${event.error || 'unknown error'}`);
+      setFeedback("We couldn't hear you clearly. Let's try again!");
       setStatusMessage('Please try again.');
     };
     recognition.onend = () => {
@@ -951,6 +1011,13 @@ const StudentDashboard = () => {
   const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
   const activitiesCompleted = progress.completed || 0;
   const streakDays = progress.streak || 0;
+  const phoneticThreshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
+  const phoneticPathNodes = Array.from({ length: phoneticThreshold }, (_, index) => {
+    const position = index + 1;
+    if (position <= progressInCurrentLevel) return 'completed';
+    if (position === progressInCurrentLevel + 1) return 'current';
+    return 'locked';
+  });
   const rootStyles = {
     fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['Comic Sans'],
     fontSize: `${accessibilitySettings.textSize}px`,
@@ -958,52 +1025,67 @@ const StudentDashboard = () => {
   };
   return (
     <div
-      className={`dashboard-container dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
+      className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
       style={rootStyles}
     >
-      <header className="top-nav">
-        <div className="top-nav-left">
-          <div className="brand">
-            <img src="/logo.png" alt="LinawLetra logo" className="brand-logo" />
-            <div className="brand-copy">
-              <div className="brand-name">LinawLetra</div>
-              <div className="brand-tagline">Student reading dashboard</div>
-            </div>
+    <div className="student-shell">
+      <aside className="student-sidebar">
+        <div className="student-sidebar-top">
+          <div className="student-sidebar-brand">
+            <img src="/logo.png" alt="LinawLetra logo" />
+            <span className="student-sidebar-brand-name">LinawLetra</span>
           </div>
-          <div className="top-search-box">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search lessons, practice, activities..."
-            />
-          </div>
+          <nav className="student-sidebar-nav">
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'home' ? 'active' : ''}`}
+              onClick={() => handleNav('home')}
+            >
+              <span className="student-sidebar-link-icon"><FiHome aria-hidden="true" /></span> Overview
+            </button>
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'content' ? 'active' : ''}`}
+              onClick={() => handleNav('content')}
+            >
+              <span className="student-sidebar-link-icon"><FiBookOpen aria-hidden="true" /></span> Learn
+            </button>
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'practice' ? 'active' : ''}`}
+              onClick={() => handleNav('practice')}
+            >
+              <span className="student-sidebar-link-icon"><FiMic aria-hidden="true" /></span> Practice
+            </button>
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'progress' ? 'active' : ''}`}
+              onClick={() => handleNav('progress')}
+            >
+              <span className="student-sidebar-link-icon"><FiTrendingUp aria-hidden="true" /></span> Progress
+            </button>
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'settings' ? 'active' : ''}`}
+              onClick={() => handleNav('settings')}
+            >
+              <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span> Settings
+            </button>
+          </nav>
         </div>
-        <div className="top-nav-right">
-          <div className="points-chip">
-            <FiStar aria-hidden="true" /> {progressXp} XP
-          </div>
-          <button className="icon-button" type="button" aria-label="Notifications">
-            <FiBell aria-hidden="true" />
-          </button>
-          <div className="profile-chip">
-            <span className="profile-avatar">{studentName?.charAt(0) || 'S'}</span>
+        <div className="student-sidebar-bottom">
+          <div className="student-sidebar-user">
+            <span className="student-sidebar-user-avatar">{studentName?.charAt(0) || 'S'}</span>
             <div>
-              <strong>{studentName}</strong>
-              <div className="profile-meta">
+              <div className="student-sidebar-user-name">{studentName}</div>
+              <div className="student-sidebar-user-meta">
                 {studentGrade}{studentRoom ? ` · ${studentRoom}` : ''}
               </div>
             </div>
           </div>
-          <button className="button-small button-danger" type="button" onClick={handleLogout}>
-            <FiLogOut aria-hidden="true" /> Logout
-          </button>
-          <div className="date-inline">
-            {formattedDate} • {formattedTime}
-          </div>
           <div className="accessibility-dropdown-wrapper">
             <button
-              className="button-small button-secondary"
+              className="student-sidebar-action"
               type="button"
               onClick={() => setShowAccessibilityMenu((open) => !open)}
             >
@@ -1064,16 +1146,25 @@ const StudentDashboard = () => {
               </div>
             )}
           </div>
+          <button className="student-sidebar-action logout" type="button" onClick={handleLogout}>
+            <FiLogOut aria-hidden="true" /> Logout
+          </button>
         </div>
-      </header>
-      <main className="main-content" style={{ position: 'relative' }}>
+      </aside>
+      <main className="student-main" style={{ position: 'relative' }}>
+        {newlyUnlockedAchievements.length > 0 && (
+          <AchievementUnlockModal
+            achievements={newlyUnlockedAchievements}
+            onClose={() => setNewlyUnlockedAchievements([])}
+          />
+        )}
         {xpGainPopup && (
           <div style={{
             position: 'fixed',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            backgroundColor: '#2a9d8f',
+            backgroundColor: '#4F46E5',
             color: '#fff',
             padding: '20px 40px',
             borderRadius: '12px',
@@ -1106,107 +1197,54 @@ const StudentDashboard = () => {
             ))}
           </div>
         )}
-        <section className="detail-top-row">
-          <div className="detail-avatar-large">{studentName?.charAt(0) || 'S'}</div>
-          <div className="detail-info-block">
-            <div className="detail-name">{studentName}</div>
-            <div className="detail-meta-row">
-              {studentGrade || 'Student'}{studentRoom ? ` · ${studentRoom}` : ''}
-              {` · ${formattedDate} · Level: ${currentPhoneticLevel}`}
-            </div>
-            <p className="learning-path-text">
-              {nextLesson
-                ? `Next lesson: ${nextLesson.title}. Your streak counts the days you keep using LinawLetra.`
-                : 'Your teacher will share lessons and practice activities here soon. Check back for updates.'}
-            </p>
-          </div>
-          <div className="detail-badges">
-            <span className="status-pill-large">Ready to learn</span>
-            <span className="tier-pill-large">{tier}</span>
-          </div>
-        </section>
-        <div className="detail-tabs">
-          <button
-            type="button"
-            className={`tab-button ${activeSection === 'home' ? 'active' : ''}`}
-            onClick={() => handleNav('home')}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${activeSection === 'content' ? 'active' : ''}`}
-            onClick={() => handleNav('content')}
-          >
-            Learn
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${activeSection === 'practice' ? 'active' : ''}`}
-            onClick={() => handleNav('practice')}
-          >
-            Practice
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${activeSection === 'progress' ? 'active' : ''}`}
-            onClick={() => handleNav('progress')}
-          >
-            Progress
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${activeSection === 'settings' ? 'active' : ''}`}
-            onClick={() => handleNav('settings')}
-          >
-            Settings
-          </button>
-        </div>
         {activeSection === 'home' && (
           <>
-            <section className="detail-block">
-              <div className="detail-block-title">Overview</div>
-              <p className="learning-path-text">
-                {nextLesson
-                  ? `Your next lesson is ${nextLesson.title}. Practice reading and pronunciation to keep moving forward.`
-                  : 'No lesson is assigned yet. Your progress and learning path will update once your teacher publishes a new activity.'}
-              </p>
-              <div className="hero-actions">
-                <button className="button-large button-primary" type="button" onClick={startReading}>
-                  Start Reading
-                </button>
+            <div className="path-hero-banner">
+              <div>
+                <p className="path-hero-banner-kicker">LEVEL: {currentPhoneticLevel.toUpperCase()}</p>
+                <h2>
+                  {nextLesson
+                    ? `Next lesson: ${nextLesson.title}`
+                    : 'Practice your Tagalog pronunciation'}
+                </h2>
               </div>
+              <button className="path-hero-guidebook" type="button" onClick={startReading}>
+                <FiMic aria-hidden="true" /> Start Reading
+              </button>
+            </div>
+            <section className="detail-block">
+              <div className="detail-block-title">Your reading path</div>
+              <div className="winding-path">
+                {phoneticPathNodes.map((state, index) => {
+                  const rowAlign = index % 3 === 1 ? 'align-right' : index % 3 === 2 ? 'align-left' : '';
+                  const isCurrent = state === 'current';
+                  return (
+                    <div key={index} className={`winding-path-node-row ${rowAlign}`}>
+                      <div className="path-node-wrapper">
+                        {isCurrent && <span className="path-node-label">START</span>}
+                        <button
+                          type="button"
+                          className={`path-node ${state}`}
+                          onClick={isCurrent ? startReading : undefined}
+                          disabled={!isCurrent}
+                          aria-label={`Word ${index + 1} of ${phoneticThreshold}, ${state}`}
+                        >
+                          {state === 'completed' ? <FiStar aria-hidden="true" /> : index + 1}
+                        </button>
+                      </div>
+                      {isCurrent && (
+                        <img src="/logo.png" alt="" className="path-mascot" aria-hidden="true" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px' }}>
+                {progressInCurrentLevel} / {phoneticThreshold} words in {currentPhoneticLevel} level
+              </p>
             </section>
             <section className="detail-block">
-              <div className="detail-block-title">Phonetic Level Progress</div>
-              <div className="progress-metrics">
-                <div className="metric-card">
-                  <strong>{currentPhoneticLevel}</strong>
-                  <span>Current Level</span>
-                </div>
-                <div className="metric-card">
-                  <strong>{progressInCurrentLevel}</strong>
-                  <span>Progress in Level</span>
-                </div>
-                <div className="metric-card">
-                  <strong>{currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2}</strong>
-                  <span>Required for Next</span>
-                </div>
-              </div>
-              <div className="progress-bar" style={{ marginTop: '16px' }}>
-                <div
-                  className="progress-fill"
-                  style={{
-                    width: `${(progressInCurrentLevel / (currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2)) * 100}%`,
-                  }}
-                />
-              </div>
-              <p style={{ fontSize: '0.9rem', color: '#556b85', marginTop: '8px' }}>
-                {progressInCurrentLevel} / {currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2}
-              </p>
-            </section>
-            <section className="detail-block">
-              <div className="detail-block-title">Today’s progress</div>
+              <div className="detail-block-title">Today's progress</div>
               <div className="home-summary-grid">
                 <article className="stat-card">
                   <p className="stat-title">Activities</p>
@@ -1228,13 +1266,13 @@ const StudentDashboard = () => {
               </div>
             </section>
             <section className="detail-block">
-              <div className="detail-block-title">Learning path</div>
+              <div className="detail-block-title">Assigned lessons</div>
               {learningPathSteps.length > 0 ? (
                 <div className="path-map">
                   {learningPathSteps.map((step) => (
                     <div key={step.id} className="path-step">
                       <div className={`path-dot ${step.completed ? 'completed' : 'pending'}`}>
-                        {step.completed ? '✓' : '•'}
+                        {step.completed ? <FiStar aria-hidden="true" /> : '○'}
                       </div>
                       <div>
                         <p className="path-step-title">{step.title}</p>
@@ -1261,17 +1299,6 @@ const StudentDashboard = () => {
                 >
                   {nextLesson ? `Continue ${nextLesson.title}` : 'Browse lessons'}
                 </button>
-              </div>
-            </section>
-            <section className="detail-block">
-              <div className="detail-block-title">Class notifications</div>
-              <div className="notifications-list">
-                {notifications.map((item) => (
-                  <div key={item.id} className="notification-item">
-                    <h4>{item.title}</h4>
-                    <p>{item.message}</p>
-                  </div>
-                ))}
               </div>
             </section>
           </>
@@ -1334,7 +1361,7 @@ const StudentDashboard = () => {
                     onClick={handleMicClick}
                     disabled={isProcessing}
                   >
-                    {status === 'listening' ? 'Listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
+                    {status === 'listening' ? 'Listening�' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
                   </button>
                   <button className="button-large button-secondary" type="button" onClick={() => speakTagalog(expectedText)}>
                     Listen
@@ -1348,7 +1375,7 @@ const StudentDashboard = () => {
                 <h4>Pronunciation feedback</h4>
                 <div className={`feedback-result ${recognitionResult}`}>
                   <div className="feedback-icon">
-                    {recognitionResult === 'success' ? '✓' : recognitionResult === 'almost' ? '!' : '✕'}
+                    {recognitionResult === 'success' ? '?' : recognitionResult === 'almost' ? '!' : '?'}
                   </div>
                   <div className="feedback-text">
                     <p>{statusMessage || 'Press Say the word and speak the Tagalog word clearly.'}</p>
@@ -1373,22 +1400,32 @@ const StudentDashboard = () => {
             </div>
             <div className="highlight-row">{renderWordHighlight()}</div>
             {isProcessing && <div className="loading-text">Checking your voice...</div>}
-            {achievements > 0 && (
-              <div className="achievements-section">
-                <h4>Achievements</h4>
-                <div className="achievements-list">
-                  {Array.from({ length: achievements }, (_, index) => (
-                    <span key={index} className="achievement-badge">Milestone {index + 1}</span>
-                  ))}
-                </div>
+            <div className="achievements-section">
+              <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
+              <div className="achievement-badge-grid">
+                {ACHIEVEMENTS.map((achievement) => (
+                  <AchievementBadge
+                    key={achievement.id}
+                    achievement={achievement}
+                    unlocked={unlockedAchievementIds.includes(achievement.id)}
+                  />
+                ))}
               </div>
-            )}
+            </div>
           </section>
         )}
         {activeSection === 'content' && (
           <>
             <section id="content-section" className="detail-block">
               <div className="detail-block-title">Shared lessons</div>
+              <div className="top-search-box" style={{ marginBottom: 16 }}>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search lessons, assessments..."
+                />
+              </div>
               <div className="practice-header" style={{ marginBottom: 16 }}>
                 <div>
                   <h3>PDF Reading Assistant</h3>
@@ -1557,6 +1594,55 @@ const StudentDashboard = () => {
           </section>
         )}
       </main>
+      <aside className="student-side-panel">
+        <div className="student-panel-card">
+          <div className="student-panel-stats-row">
+            <div className="student-stat-chip">
+              <FiZap aria-hidden="true" /> {streakDays}
+            </div>
+            <div className="student-stat-chip">
+              <FiStar aria-hidden="true" /> {progressXp}
+            </div>
+          </div>
+        </div>
+        <div className="student-panel-card">
+          <h4>Phonetic Level Progress</h4>
+          <div className="progress-metrics">
+            <div className="metric-card">
+              <strong>{currentPhoneticLevel}</strong>
+              <span>Current Level</span>
+            </div>
+            <div className="metric-card">
+              <strong>{progressInCurrentLevel}</strong>
+              <span>Progress in Level</span>
+            </div>
+            <div className="metric-card">
+              <strong>{phoneticThreshold}</strong>
+              <span>Required for Next</span>
+            </div>
+          </div>
+          <div className="progress-bar" style={{ marginTop: '16px' }}>
+            <div
+              className="progress-fill"
+              style={{
+                width: `${(progressInCurrentLevel / phoneticThreshold) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+        <div className="student-panel-card">
+          <h4>Class updates</h4>
+          <div className="notifications-list">
+            {notifications.map((item) => (
+              <div key={item.id} className="notification-item">
+                <h4>{item.title}</h4>
+                <p>{item.message}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
+    </div>
     </div>
   );
 };

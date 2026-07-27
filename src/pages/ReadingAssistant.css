@@ -1,14 +1,14 @@
 .reading-shell,
 .student-reading-page {
-  --reading-green: #2d9c78;
+  --reading-primary: #4F46E5;
   --reading-blue: #1e5a96;
   --reading-ink: #17324d;
-  --reading-soft: #f4faf8;
-  font-family: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  --reading-soft: #eef2ff;
+  font-family: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
 }
 
 .reading-hero {
-  border-left: 6px solid var(--reading-green);
+  border-left: 6px solid var(--reading-primary);
 }
 
 .reading-hero-actions {
@@ -117,7 +117,7 @@
 .student-check input {
   width: 20px;
   height: 20px;
-  accent-color: var(--reading-green);
+  accent-color: var(--reading-primary);
 }
 
 .reading-message {
@@ -229,7 +229,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   margin-bottom: 12px;
   padding: 0 12px 0 8px;
   border: 1px solid #bfd8d0;
@@ -267,7 +267,7 @@
 .reading-accessibility-panel select,
 .reading-accessibility-panel input[type='range'] {
   width: 100%;
-  accent-color: var(--reading-green);
+  accent-color: var(--reading-primary);
 }
 
 .reading-toggle {
@@ -278,13 +278,12 @@
 .reading-toggle input {
   width: 22px;
   height: 22px;
-  accent-color: var(--reading-green);
+  accent-color: var(--reading-primary);
 }
 
 .reading-kicker {
-  text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--reading-green);
+  color: var(--reading-primary);
   font-weight: 800;
 }
 
@@ -454,7 +453,7 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: var(--reading-green);
+  background: var(--reading-primary);
   color: #ffffff;
   font-weight: 800;
   font-size: 1rem;
@@ -490,7 +489,7 @@ textarea:focus-visible {
 }
 
 .speed-control input {
-  accent-color: var(--reading-green);
+  accent-color: var(--reading-primary);
 }
 
 .spoken-box,
@@ -519,7 +518,7 @@ textarea:focus-visible {
 }
 
 .feedback-card.great {
-  border-left-color: var(--reading-green);
+  border-left-color: var(--reading-primary);
   background: #edf9f4;
 }
 
@@ -595,7 +594,7 @@ textarea:focus-visible {
 }
 
 .reading-theme-contrast {
-  --reading-green: #007a5c;
+  --reading-primary: #3730A3;
   --reading-blue: #003f7f;
   --reading-ink: #071522;
   background: #ffffff;
@@ -608,7 +607,7 @@ textarea:focus-visible {
 
 .reading-font-comic,
 .reading-font-hyperlegible {
-  font-family: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  font-family: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
 }
 
 .reading-font-simple {

@@ -1,6 +1,8 @@
-import React from 'react';
-import { Outlet, useLocation, Link } from 'react-router-dom';
+import React, { useContext } from 'react';
+import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
+import { FiLogOut } from 'react-icons/fi';
 import Sidebar from '../../components/Sidebar';
+import { AuthContext } from '../../context/AuthContext';
 import '../AdminDashboard.css';
 
 const sectionMeta = {
@@ -22,8 +24,20 @@ const getActiveSection = (pathname) => {
 
 export default function AdminDashboard() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useContext(AuthContext);
   const activeSection = getActiveSection(location.pathname);
   const section = sectionMeta[activeSection] || sectionMeta.overview;
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Admin header logout failed:', error);
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
 
   return (
     <div className="admin-dashboard-shell">
@@ -42,6 +56,9 @@ export default function AdminDashboard() {
             <Link className="btn-secondary" to="analytics">
               Analytics
             </Link>
+            <button type="button" className="btn-secondary admin-header-logout" onClick={handleLogout}>
+              <FiLogOut aria-hidden="true" /> Logout
+            </button>
           </div>
         </header>
         <main className="admin-dashboard-content">

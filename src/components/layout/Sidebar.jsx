@@ -63,9 +63,12 @@ export default function Sidebar() {
   return (
     <aside className="teacher-sidebar">
       <div className="sidebar-top">
-        <div>
-          <div className="sidebar-logo">LinawLetra</div>
-          <div className="sidebar-role">Teacher dashboard</div>
+        <div className="sidebar-brand">
+          <img src="/logo.png" alt="" className="sidebar-brand-img" aria-hidden="true" />
+          <div>
+            <div className="sidebar-logo">LinawLetra</div>
+            <div className="sidebar-role">Teacher dashboard</div>
+          </div>
         </div>
 
         <div className="sidebar-menu">

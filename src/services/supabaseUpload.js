@@ -1,7 +1,7 @@
 /**
  * Supabase Storage Service
  * Handles file uploads, downloads, and storage operations
- * Replaces Firebase Storage operations
+ * Handles Supabase Storage operations
  */
 
 import { supabase } from '../config/supabase';

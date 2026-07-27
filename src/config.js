@@ -4,7 +4,10 @@
  */
 
 const getApiBaseUrl = () => {
-  return process.env.REACT_APP_API_URL || process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL;
+  return process.env.REACT_APP_API_URL ||
+    process.env.EXPO_PUBLIC_API_URL ||
+    process.env.API_BASE_URL ||
+    (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5002/api');
 };
 
 const config = {
@@ -108,12 +111,12 @@ const config = {
 
   // Dyslexia-Friendly Settings
   accessibility: {
-    font: 'Josefin Sans', // Dyslexia-friendly font
+    font: 'Comic Sans MS', // Dyslexia-friendly font
     fontSize: '16px', // Readable default
     lineHeight: 1.8, // Increased line height for readability
     letterSpacing: '0.06em', // Increased letter spacing
     colors: {
-      primary: '#2d9c78', // Green
+      primary: '#4F46E5', // Indigo
       secondary: '#1e5a96', // Blue
       error: '#ef4444', // Red
       warning: '#f59e0b', // Amber
@@ -134,7 +137,7 @@ const validateClientConfig = () => {
   const hasApiUrl = apiEnvKeys.some((key) => Boolean(process.env[key]));
 
   if (!hasApiUrl && process.env.NODE_ENV === 'production') {
-    console.error('Missing required environment variable: REACT_APP_API_URL, EXPO_PUBLIC_API_URL, or API_BASE_URL');
+    console.info('Using same-origin /api for production API requests.');
   }
 };
 

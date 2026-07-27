@@ -4,9 +4,9 @@
 
 /* Root colors and variables */
 :root {
-  --primary-color: #2d9c78;
-  --primary-light: #e8f5f1;
-  --primary-hover: #258b6a;
+  --primary-color: #4F46E5;
+  --primary-light: #eef2ff;
+  --primary-hover: #4338CA;
   --secondary-color: #3b82f6;
   --secondary-light: #eff6ff;
   --error-color: #ef4444;
@@ -29,7 +29,7 @@ input,
 textarea,
 button,
 select {
-  font-family: 'Inter', 'Lexend', 'Atkinson Hyperlegible', system-ui, sans-serif;
+  font-family: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
   line-height: 1.6;
   letter-spacing: 0.01em;
 }

@@ -63,7 +63,9 @@ export default function ParentSidebar() {
       <aside className={`parent-sidebar ${isMobileOpen ? 'is-mobile-open' : ''}`}>
         <div className="parent-sidebar__header">
           <div className="parent-sidebar__brand">
-            <div className="parent-sidebar__logo">L</div>
+            <div className="parent-sidebar__logo">
+              <img src="/logo.png" alt="" className="parent-sidebar__logo-img" aria-hidden="true" />
+            </div>
             <div>
               <div className="parent-sidebar__brand-name">LinawLetra</div>
               <div className="parent-sidebar__brand-sub">Parent Dashboard</div>

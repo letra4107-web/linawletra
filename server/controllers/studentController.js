@@ -414,6 +414,10 @@ export const updateStudent =async (req, res) => {
       currentPhoneticLevel,
       progressInCurrentLevel,
       accessibilitySettings,
+      highestPhoneticLevel,
+      hardCyclesCompleted,
+      hadStreakBreak,
+      unlockedAchievementIds,
     } = req.body;
 
     if (gradeLevel !== undefined && gradeLevel !== null && !VALID_GRADE_LEVELS.includes(String(gradeLevel).trim())) {
@@ -465,6 +469,10 @@ export const updateStudent =async (req, res) => {
       ...(progressInCurrentLevel !== undefined ? { progressInCurrentLevel } : {}),
       ...(accessibilitySettings !== undefined ? { accessibilitySettings } : {}),
       ...(readingLevel !== undefined ? { readingLevel } : {}),
+      ...(highestPhoneticLevel !== undefined ? { highestPhoneticLevel } : {}),
+      ...(hardCyclesCompleted !== undefined ? { hardCyclesCompleted } : {}),
+      ...(hadStreakBreak !== undefined ? { hadStreakBreak } : {}),
+      ...(unlockedAchievementIds !== undefined ? { unlockedAchievementIds } : {}),
     };
 
     if (Object.keys(progressMetadata).length > 0 && existingStudent.user_id) {

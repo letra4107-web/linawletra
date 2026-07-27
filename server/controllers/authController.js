@@ -225,6 +225,15 @@ export const register =async (req, res) => {
     const { firstName, lastName, middleInitial, email, password, role } = req.body;
     const normalizedEmail = email.toLowerCase();
 
+    if (!config.email.enabled) {
+      console.error('[Register API] Email verification is not configured; refusing to create unverified account.');
+      return res.status(503).json({
+        success: false,
+        message: 'Email verification is not configured on the server. Please contact support.',
+        code: 'EMAIL_NOT_CONFIGURED',
+      });
+    }
+
     console.log('[Register API] Checking if user already exists:', normalizedEmail);
     
     // Check if user profile already exists
@@ -1137,32 +1146,22 @@ export const login =async (req, res) => {
         });
       }
 
-      const requiresFirstLoginOtp =
-        userData.role !== 'admin' &&
+      if (userData.role !== 'admin' &&
         !isStudentVerificationExempt(userData) &&
-        userData.metadata?.firstLoginOtpCompleted !== true;
-
-      if (requiresFirstLoginOtp) {
-        const otpCode = generateVerificationCode();
-        await storeLoginOtp(userData, otpCode, authData.session);
-
-        console.log('[Login] Sending first-login OTP for:', normalizedEmail);
+        userData.metadata?.firstLoginOtpCompleted !== true) {
         try {
-          await sendVerificationEmail(normalizedEmail, otpCode, null, 'login');
-        } catch (emailError) {
-          console.error('[Login] Failed to send first-login OTP email:', emailError.message);
-          return res.status(500).json({
-            success: false,
-            message: 'Failed to send login OTP email. Please try again later.',
-          });
+          await markFirstLoginOtpCompleted(userData);
+          userData = {
+            ...userData,
+            metadata: {
+              ...(userData.metadata || {}),
+              firstLoginOtpCompleted: true,
+              firstLoginOtpCompletedAt: new Date().toISOString(),
+            },
+          };
+        } catch (metadataError) {
+          console.warn('[Login] Could not mark first-login OTP as completed:', metadataError.message);
         }
-
-        return res.json({
-          success: true,
-          message: 'First login verification code sent to your email',
-          requiresLoginOTP: true,
-          emailSent: true,
-        });
       }
     }
 
@@ -1550,14 +1549,24 @@ export const forgotPassword =async (req, res) => {
     const resetCode = generateVerificationCode();
     const hashedCode = hashCode(resetCode);
 
-    await User.findOneAndUpdate(
-      { email },
-      {
-        resetCode: hashedCode,
-        resetCodeExpires: config.getPasswordResetExpiry()
-      },
-      { new: true, runValidators: false }
-    );
+    const resetRecord = {
+      code: hashedCode,
+      expires_at: config.getPasswordResetExpiry().toISOString(),
+      attempts: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        metadata: {
+          ...(user.metadata || {}),
+          passwordReset: resetRecord,
+        },
+      })
+      .eq('id', user.id);
+
+    if (updateError) throw updateError;
 
     // Send reset email
     await sendPasswordResetEmail(email, resetCode);
@@ -1595,28 +1604,68 @@ export const resetPassword =async (req, res) => {
       });
     }
 
+    const resetRecord = user.metadata?.passwordReset;
+
+    if (!resetRecord) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset code not found. Please request a new one.',
+      });
+    }
+
     // Verify code expiration
-    if (!verifyCodeExpiration(user.resetCodeExpires)) {
+    if (!verifyCodeExpiration(new Date(resetRecord.expires_at))) {
       return res.status(400).json({
         success: false,
         message: 'Reset code has expired',
       });
     }
 
+    if ((resetRecord.attempts || 0) >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed attempts. Please request a new reset code.',
+      });
+    }
+
     // Verify code
     const hashedInputCode = hashCode(resetCode);
-    if (hashedInputCode !== user.resetCode) {
+    if (hashedInputCode !== resetRecord.code) {
+      await supabase
+        .from('users')
+        .update({
+          metadata: {
+            ...(user.metadata || {}),
+            passwordReset: {
+              ...resetRecord,
+              attempts: (resetRecord.attempts || 0) + 1,
+            },
+          },
+        })
+        .eq('id', user.id);
+
       return res.status(400).json({
         success: false,
         message: 'Invalid reset code',
       });
     }
 
-    // Update password
-    user.password = newPassword;
-    user.resetCode = null;
-    user.resetCodeExpires = null;
-    await user.save();
+    const { error: authUpdateError } = await supabase.auth.admin.updateUserById(
+      user.id,
+      { password: newPassword }
+    );
+
+    if (authUpdateError) throw authUpdateError;
+
+    const metadata = { ...(user.metadata || {}) };
+    delete metadata.passwordReset;
+
+    const { error: clearError } = await supabase
+      .from('users')
+      .update({ metadata })
+      .eq('id', user.id);
+
+    if (clearError) throw clearError;
 
     res.json({
       success: true,
@@ -1651,8 +1700,17 @@ export const verifyResetCode =async (req, res) => {
       });
     }
 
+    const resetRecord = user.metadata?.passwordReset;
+
+    if (!resetRecord) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset code not found. Please request a new one.',
+      });
+    }
+
     // Verify code expiration
-    if (!verifyCodeExpiration(user.resetCodeExpires)) {
+    if (!verifyCodeExpiration(new Date(resetRecord.expires_at))) {
       return res.status(400).json({
         success: false,
         message: 'Reset code has expired',
@@ -1661,7 +1719,7 @@ export const verifyResetCode =async (req, res) => {
 
     // Verify code
     const hashedInputCode = hashCode(resetCode);
-    if (hashedInputCode !== user.resetCode) {
+    if (hashedInputCode !== resetRecord.code) {
       return res.status(400).json({
         success: false,
         message: 'Invalid reset code',

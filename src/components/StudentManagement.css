@@ -71,7 +71,7 @@ input,
 button,
 select,
 textarea {
-  font-family: 'Josefin Sans', 'Trebuchet MS', sans-serif;
+  font-family: var(--font-primary, 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif);
   line-height: 1.8;
 }
 

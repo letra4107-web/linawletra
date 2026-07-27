@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { studentService, assessmentService } from '../services/api';
 import { FiAlertCircle, FiCheck, FiEdit2, FiTrash2, FiX } from 'react-icons/fi';
+import { ACHIEVEMENTS, getAchievementById } from '../services/achievementService';
+import AchievementBadge from './AchievementBadge';
 import './StudentManagement.css';
 
 export default function StudentManagement() {
@@ -155,7 +157,7 @@ export default function StudentManagement() {
       gradeLevel: student.gradeLevel || '',
       notes: student.notes || '',
     });
-    setEditingId(student._id);
+    setEditingId(student.id);
     setShowForm(true);
     setFieldErrors({});
     setGeneralError('');
@@ -186,7 +188,7 @@ export default function StudentManagement() {
   const startAssessment = async (studentId) => {
     try {
       const response = await assessmentService.createAssessment({ studentId });
-      window.location.href = `/assessment/${response.data.data?.assessment?._id || response.data.assessment._id}`;
+      window.location.href = `/assessment/${response.data.data?.assessment?.id || response.data.assessment.id}`;
     } catch (error) {
       console.error('Error starting assessment:', error);
       setGeneralError('Failed to start assessment');
@@ -463,7 +465,7 @@ export default function StudentManagement() {
           <div style={{ display: 'grid', gap: '1rem' }}>
             {students.map(student => (
               <div
-                key={student._id}
+                key={student.id}
                 className="student-card"
                 style={{
                   backgroundColor: 'white',
@@ -492,6 +494,29 @@ export default function StudentManagement() {
                       <strong>Notes:</strong> {student.notes}
                     </p>
                   )}
+                  {(() => {
+                    const unlockedIds = student.user?.metadata?.unlockedAchievementIds || [];
+                    if (unlockedIds.length === 0) {
+                      return (
+                        <p style={{ margin: '0.5rem 0 0', color: '#999', fontSize: '0.85rem' }}>
+                          Wala pang nakukuhang badge.
+                        </p>
+                      );
+                    }
+                    const previewBadges = unlockedIds.slice(-5).map(getAchievementById).filter(Boolean);
+                    return (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <p style={{ margin: '0 0 0.4rem', color: '#4F46E5', fontWeight: 700, fontSize: '0.85rem' }}>
+                          🏅 {unlockedIds.length}/{ACHIEVEMENTS.length} na badge
+                        </p>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {previewBadges.map((achievement) => (
+                            <AchievementBadge key={achievement.id} achievement={achievement} unlocked size="sm" />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem', marginLeft: '1rem' }}>
@@ -513,7 +538,7 @@ export default function StudentManagement() {
                     <FiEdit2 /> Edit
                   </button>
                   <button
-                    onClick={() => handleDelete(student._id)}
+                    onClick={() => handleDelete(student.id)}
                     style={{
                       padding: '0.5rem 1rem',
                       backgroundColor: '#e74c3c',
@@ -530,7 +555,7 @@ export default function StudentManagement() {
                     <FiTrash2 /> Remove
                   </button>
                   <button
-                    onClick={() => startAssessment(student._id)}
+                    onClick={() => startAssessment(student.id)}
                     style={{
                       padding: '0.5rem 1rem',
                       backgroundColor: '#f39c12',

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { studentService } from '../services/api';
+import { ACHIEVEMENTS } from '../services/achievementService';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
 
@@ -31,6 +32,7 @@ export default function MyStudentsPage() {
       status: student.status || 'active',
       score: student.score ?? student.accuracy ?? metadata.accuracy ?? null,
       tier: student.tier || student.reading_level || student.readingLevel || metadata.readingLevel || 'Tier 1',
+      badgeCount: (metadata.unlockedAchievementIds || []).length,
     };
   };
 
@@ -126,6 +128,7 @@ export default function MyStudentsPage() {
                 <div className="student-card-right">
                   <div className="student-score">{student.score != null ? `${student.score}%` : '—'}</div>
                   <span className="tier-pill">{student.tier || 'Tier 1'}</span>
+                  <span className="tier-pill" title="Mga nakuhang badge">🏅 {student.badgeCount}/{ACHIEVEMENTS.length}</span>
                 </div>
               </button>
             ))

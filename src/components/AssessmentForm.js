@@ -151,7 +151,7 @@ export default function AssessmentForm({ studentId, onComplete }) {
         padding: '2rem',
         backgroundColor: 'white',
         borderRadius: '8px',
-        fontFamily: 'Josefin Sans, sans-serif',
+        fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
       }}
     >
       {/* Progress Bar */}
@@ -169,7 +169,7 @@ export default function AssessmentForm({ studentId, onComplete }) {
             style={{
               height: '100%',
               width: `${((currentStep + 1) / steps.length) * 100}%`,
-              backgroundColor: '#2d9c78',
+              backgroundColor: '#4F46E5',
               transition: 'width 0.3s',
             }}
           ></div>
@@ -197,7 +197,7 @@ export default function AssessmentForm({ studentId, onComplete }) {
       
       {/* Step Content */}
       <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ color: '#2d9c78', marginTop: 0, fontSize: '24px', letterSpacing: '0.06em' }}>
+        <h2 style={{ color: '#4F46E5', marginTop: 0, fontSize: '24px', letterSpacing: '0.06em' }}>
           {currentStepData.title}
         </h2>
         <p style={{ color: '#666', fontSize: '16px', marginTop: '0.5rem' }}>
@@ -266,7 +266,7 @@ export default function AssessmentForm({ studentId, onComplete }) {
             onClick={handleNext}
             disabled={loading}
             style={{
-              backgroundColor: '#2d9c78',
+              backgroundColor: '#4F46E5',
               color: 'white',
               border: 'none',
               padding: '0.75rem 1rem',

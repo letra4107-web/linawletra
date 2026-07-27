@@ -46,7 +46,11 @@ export const registerUser = async (email, password, userData) => {
     const displayName = buildDisplayName(userData);
     
     // Get API URL with proper base URL (without /api since we add it below)
-    const baseUrl = process.env.REACT_APP_API_URL;
+    const baseUrl =
+      process.env.REACT_APP_API_URL ||
+      process.env.EXPO_PUBLIC_API_URL ||
+      process.env.API_BASE_URL ||
+      (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5002/api');
     const apiUrl = baseUrl.endsWith('/api') 
       ? baseUrl 
       : `${baseUrl}/api`;
@@ -132,9 +136,9 @@ export const registerUser = async (email, password, userData) => {
     } else if (error.message?.includes('email')) {
       errorMessage = 'Invalid email address';
     } else if (error.message?.includes('not running') || error.message?.includes('ECONNREFUSED')) {
-      errorMessage = 'Backend server is not running. Please ensure the server is started and REACT_APP_API_URL is set.';
+      errorMessage = 'Backend server is not running. Please ensure the server is started and reachable.';
     } else if (error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
-      errorMessage = 'Cannot connect to backend server. Please ensure the server is running and CORS is properly configured.';
+      errorMessage = 'Cannot connect to the backend server. Please check the API URL and CORS configuration.';
     } else if (error.message?.includes('Expected JSON')) {
       errorMessage = error.message;
     } else if (error.message) {

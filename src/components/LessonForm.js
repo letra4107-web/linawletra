@@ -165,7 +165,7 @@ export default function LessonForm({ onComplete, onCancel }) {
           backgroundColor: 'white',
           borderRadius: '8px',
           textAlign: 'center',
-          fontFamily: 'Josefin Sans, sans-serif',
+          fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
         }}
       >
         <div style={{ marginBottom: '1rem' }}>
@@ -185,10 +185,10 @@ export default function LessonForm({ onComplete, onCancel }) {
         padding: '2rem',
         backgroundColor: 'white',
         borderRadius: '8px',
-        fontFamily: 'Josefin Sans, sans-serif',
+        fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
       }}
     >
-      <h1 style={{ color: '#2d9c78', marginTop: 0, fontSize: '28px', letterSpacing: '0.06em' }}>
+      <h1 style={{ color: '#4F46E5', marginTop: 0, fontSize: '28px', letterSpacing: '0.06em' }}>
         Create New Lesson
       </h1>
       
@@ -431,14 +431,14 @@ export default function LessonForm({ onComplete, onCancel }) {
               justifyContent: 'center',
               gap: '0.5rem',
               padding: '1.5rem',
-              border: '2px dashed #2d9c78',
+              border: '2px dashed #4F46E5',
               borderRadius: '6px',
               cursor: loading ? 'not-allowed' : 'pointer',
               backgroundColor: '#f0fdf4',
             }}
           >
-            <FiUpload size={20} style={{ color: '#2d9c78' }} />
-            <span style={{ color: '#2d9c78', fontWeight: '600' }}>
+            <FiUpload size={20} style={{ color: '#4F46E5' }} />
+            <span style={{ color: '#4F46E5', fontWeight: '600' }}>
               {file ? `${file.name} (${(file.size / 1024).toFixed(2)} KB)` : 'Upload JPG, PNG, or PDF (max 5MB)'}
             </span>
             <input
@@ -480,7 +480,7 @@ export default function LessonForm({ onComplete, onCancel }) {
             type="submit"
             disabled={loading}
             style={{
-              backgroundColor: '#2d9c78',
+              backgroundColor: '#4F46E5',
               color: 'white',
               border: 'none',
               padding: '0.75rem 1.5rem',

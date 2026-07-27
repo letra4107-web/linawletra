@@ -23,6 +23,7 @@ import Communication from './pages/admin/Communication';
 import AISettings from './pages/admin/AISettings';
 import SystemSettings from './pages/admin/SystemSettings';
 import TeacherDashboard from './pages/TeacherDashboard';
+import TeacherLayout from './components/layout/TeacherLayout';
 import StudentDashboard from './pages/StudentDashboard';
 import ParentDashboard from './pages/ParentDashboard';
 import StudentManagement from './components/StudentManagement';
@@ -150,7 +151,6 @@ function AppRoutes() {
         </Route>
         <Route path="/admin" element={<Navigate to="/admin-dashboard/overview" replace />} />
 
-        <Route path="/teacher-dashboard" element={<PrivateRoute allowedRoles={['teacher']}><TeacherDashboard /></PrivateRoute>} />
         <Route path="/student-dashboard" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student-dashboard/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/dashboard/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
@@ -165,16 +165,19 @@ function AppRoutes() {
         <Route path="/lessons/:lessonId" element={<PrivateRoute allowedRoles={['teacher', 'admin']}><LessonComponent /></PrivateRoute>} />
         <Route path="/lesson/:lessonId/:studentId" element={<PrivateRoute allowedRoles={['student', 'teacher', 'parent']}><LessonComponent /></PrivateRoute>} />
 
-        <Route path="/teacher/assessments" element={<PrivateRoute allowedRoles={['teacher']}><AssessmentsPage /></PrivateRoute>} />
-        <Route path="/teacher/students" element={<PrivateRoute allowedRoles={['teacher']}><MyStudentsPage /></PrivateRoute>} />
-        <Route path="/teacher/learning-paths" element={<PrivateRoute allowedRoles={['teacher']}><LearningPathsPage /></PrivateRoute>} />
-        <Route path="/teacher/learning-paths/:pathId" element={<PrivateRoute allowedRoles={['teacher']}><LearningPathsPage /></PrivateRoute>} />
-        <Route path="/teacher/lessons" element={<PrivateRoute allowedRoles={['teacher']}><TeacherLessonsPage /></PrivateRoute>} />
-        <Route path="/teacher/schedules" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSchedulesPage /></PrivateRoute>} />
-        <Route path="/teacher/progress" element={<PrivateRoute allowedRoles={['teacher']}><TeacherProgressPage /></PrivateRoute>} />
-        <Route path="/teacher/activities" element={<PrivateRoute allowedRoles={['teacher']}><TeacherActivitiesPage /></PrivateRoute>} />
-        <Route path="/teacher/reading" element={<PrivateRoute allowedRoles={['teacher']}><TeacherReadingMaterials /></PrivateRoute>} />
-        <Route path="/teacher/settings" element={<PrivateRoute allowedRoles={['teacher']}><TeacherSettingsPage /></PrivateRoute>} />
+        <Route element={<PrivateRoute allowedRoles={['teacher']}><TeacherLayout /></PrivateRoute>}>
+          <Route path="/teacher-dashboard" element={<TeacherDashboard />} />
+          <Route path="/teacher/assessments" element={<AssessmentsPage />} />
+          <Route path="/teacher/students" element={<MyStudentsPage />} />
+          <Route path="/teacher/learning-paths" element={<LearningPathsPage />} />
+          <Route path="/teacher/learning-paths/:pathId" element={<LearningPathsPage />} />
+          <Route path="/teacher/lessons" element={<TeacherLessonsPage />} />
+          <Route path="/teacher/schedules" element={<TeacherSchedulesPage />} />
+          <Route path="/teacher/progress" element={<TeacherProgressPage />} />
+          <Route path="/teacher/activities" element={<TeacherActivitiesPage />} />
+          <Route path="/teacher/reading" element={<TeacherReadingMaterials />} />
+          <Route path="/teacher/settings" element={<TeacherSettingsPage />} />
+        </Route>
         <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
         <Route path="/parent/schedules" element={<PrivateRoute allowedRoles={['parent']}><Schedules /></PrivateRoute>} />
 

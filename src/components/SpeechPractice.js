@@ -41,25 +41,25 @@ const SpeechPractice = ({ expectedText }) => {
   const uploadAndProcess = async (audioBlob) => {
     setIsProcessing(true);
     try {
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, `audio/${Date.now()}.wav`);
-      await uploadBytes(storageRef, audioBlob);
-      const downloadURL = await getDownloadURL(storageRef);
+      const audioFile = new File([audioBlob], `reading-${Date.now()}.wav`, { type: audioBlob.type || 'audio/wav' });
+      const transcription = await speechService.speechToText(audioFile);
+      const spokenText = transcription?.data?.text || '';
+      const isMatch = spokenText.trim().toLowerCase() === String(expectedText).trim().toLowerCase();
+      const feedbackText = isMatch
+        ? 'Great reading! Your pronunciation matched the text.'
+        : `I heard "${spokenText || 'nothing clearly'}". Try reading "${expectedText}" again.`;
 
-      // Call Cloud Function
-      const functions = getFunctions();
-      const processSpeech = httpsCallable(functions, 'processSpeech');
-      const result = await processSpeech({
-        audioUrl: downloadURL,
-        expectedText,
-        userId: 'user123', // Replace with actual user ID
-      });
+      setFeedback(feedbackText);
 
-      setFeedback(result.data.feedbackText);
-
-      // Play TTS audio
-      const audio = new Audio(`data:audio/mp3;base64,${result.data.audioBase64}`);
-      audio.play();
+      try {
+        const ttsResponse = await speechService.textToSpeech(feedbackText);
+        const audioUrl = URL.createObjectURL(ttsResponse.data);
+        setAudioUrl(audioUrl);
+        const audio = new Audio(audioUrl);
+        audio.play();
+      } catch (ttsError) {
+        console.warn('Text-to-speech feedback is unavailable:', ttsError);
+      }
 
     } catch (error) {
       console.error('Error processing audio:', error);
@@ -86,6 +86,7 @@ const SpeechPractice = ({ expectedText }) => {
       {feedback && (
         <div className="feedback">
           <p>{feedback}</p>
+          {audioUrl && <audio controls src={audioUrl}>Your browser does not support audio playback.</audio>}
         </div>
       )}
     </div>

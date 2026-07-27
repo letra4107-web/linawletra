@@ -1,6 +1,6 @@
-﻿/**
+/**
  * Configuration Module
- * Supabase migration complete: MongoDB and Firebase legacy configuration removed
+ * Supabase migration complete: legacy database configuration removed
  * All authentication and database operations now use Supabase
  */
 
@@ -42,12 +42,12 @@ const validateConfig = () => {
     console.warn('NODE_ENV is not set. Using development mode.');
   }
 
-  console.log('âœ“ Core environment values loaded');
+  console.log('✓ Core environment values loaded');
   if (supabaseUrl) {
-    console.log('âœ“ Database: Supabase');
-    console.log('âœ“ Supabase URL:', supabaseUrl);
+    console.log('✓ Database: Supabase');
+    console.log('✓ Supabase URL:', supabaseUrl);
   } else {
-    console.warn('âš  Supabase URL is not configured. Database access may fail.');
+    console.warn('⚠ Supabase URL is not configured. Database access may fail.');
   }
 
   if (!hasRealEmailPassword) {
@@ -66,7 +66,7 @@ const normalizeSupabaseUrl = (url) => {
 const supabaseUrl = normalizeSupabaseUrl(process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || '');
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || '';
 
-// Config object - simplified for Firebase/Supabase
+// Config object - Supabase-only
 const emailUser = (process.env.EMAIL_USER || 'linawletra@gmail.com').trim().toLowerCase();
 const rawEmailPassword = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || '';
 const emailPassword = rawEmailPassword
@@ -134,7 +134,7 @@ const config = {
  * Log configuration (safe, no secrets)
  */
 config.logConfig = () => {
-  console.log('\nðŸ”¥ === Backend Configuration ===');
+  console.log('\n🔥 === Backend Configuration ===');
   console.log(`Environment: ${config.nodeEnv}`);
   console.log(`Port: ${config.port}`);
   console.log(`Database: ${config.supabase.url ? 'Supabase' : 'Not configured'}`);

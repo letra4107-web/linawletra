@@ -15,7 +15,7 @@
   --space-9: 5rem;    /* 80px */
 
   /* Typography */
-  --font-primary: 'Inter', 'Lexend', 'Atkinson Hyperlegible', system-ui, sans-serif;
+  --font-primary: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
 
   /* Color Palette */
   --color-slate-50: #f8fafc;

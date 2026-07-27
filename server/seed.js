@@ -1,6 +1,10 @@
-﻿const path = require('path');
+﻿import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 ['.env', '.env.local', '../.env', '../.env.local'].forEach((envFile) => {
   dotenv.config({ path: path.resolve(__dirname, envFile), override: false });

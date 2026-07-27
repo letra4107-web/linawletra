@@ -1,0 +1,92 @@
+.achievement-unlock-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+
+.achievement-unlock-card {
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 32px 28px;
+  max-width: 340px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(79, 70, 229, 0.35);
+  border: 2px solid rgba(79, 70, 229, 0.25);
+  animation: achievement-unlock-pop 0.35s ease;
+}
+
+@keyframes achievement-unlock-pop {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.achievement-unlock-eyebrow {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #4F46E5;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.achievement-unlock-image-wrap {
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 18px;
+  border-radius: 34px;
+  background: rgba(79, 70, 229, 0.12);
+  border: 3px solid rgba(79, 70, 229, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 12px 26px rgba(79, 70, 229, 0.28);
+}
+
+.achievement-unlock-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.achievement-unlock-name {
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+  color: #1f2937;
+}
+
+.achievement-unlock-description {
+  margin: 0 0 18px;
+  font-size: 0.95rem;
+  color: rgba(31, 41, 55, 0.72);
+  line-height: 1.5;
+}
+
+.achievement-unlock-progress {
+  margin: -8px 0 14px;
+  font-size: 0.8rem;
+  color: rgba(79, 70, 229, 0.7);
+  font-weight: 700;
+}
+
+.achievement-unlock-btn {
+  min-height: 48px;
+  padding: 12px 32px;
+  border-radius: 16px;
+  border: none;
+  background: #4F46E5;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.achievement-unlock-btn:hover {
+  background: #4338CA;
+}

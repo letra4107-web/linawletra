@@ -1,7 +1,7 @@
 ﻿import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { FileText, Users, BookOpen, CalendarCheck2, Activity, Settings, PlusCircle, Search, LogOut, LayoutDashboard } from 'lucide-react';
+import { FileText, Users, BookOpen, CalendarCheck2, Activity, Settings, PlusCircle, Search, LayoutDashboard } from 'lucide-react';
 import '../styles/TeacherDashboard.css';
 import { assessmentService, lessonService, progressService, studentService } from '../services/api';
 
@@ -39,7 +39,7 @@ const sidebarSections = [
 ];
 
 export default function TeacherDashboard() {
-  const { user, logout } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [stats, setStats] = useState({
@@ -123,53 +123,7 @@ export default function TeacherDashboard() {
   }, [searchTerm]);
 
   return (
-    <div className="teacher-dashboard-page">
-      <aside className="teacher-sidebar">
-        <div className="sidebar-top">
-          <div>
-            <div className="sidebar-logo">LinawLetra</div>
-            <div className="sidebar-role">Teacher dashboard</div>
-          </div>
-
-          <div className="sidebar-menu">
-            {sidebarSections.map((section) => (
-              <div key={section.label} className="sidebar-section">
-                <div className="sidebar-section-title">{section.label}</div>
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
-                    >
-                      <span className="sidebar-item-icon">
-                        <Icon size={18} />
-                      </span>
-                      {item.label}
-                    </NavLink>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-user-avatar">{firstName.charAt(0)}</div>
-            <div>
-              <div className="sidebar-user-name">{firstName}</div>
-              <div className="sidebar-user-role">Teacher</div>
-            </div>
-          </div>
-          <button type="button" className="sidebar-logout" onClick={logout}>
-            <LogOut size={16} /> Logout
-          </button>
-        </div>
-      </aside>
-
-      <main className="teacher-content">
+    <main className="teacher-content">
         <div className="top-nav">
           <div className="top-search">
             <Search size={18} className="field-icon" />
@@ -333,7 +287,6 @@ export default function TeacherDashboard() {
             </section>
           </div>
         </div>
-      </main>
-    </div>
+    </main>
   );
 }

@@ -14,13 +14,7 @@ const supabaseErrorMessages = {
   'invalid_email_or_password': 'Invalid email or password.',
   'user_not_found': 'No account found with this email address.',
   'over_request_rate_limit': 'Too many login attempts. Please wait before trying again.',
-};
-
-const firebaseErrorMessages = {
-  'auth/user-not-found': 'No account found with this email address.',
-  'auth/wrong-password': 'Incorrect password.',
-  'auth/too-many-requests': 'Too many login attempts. Please try again later.',
-  'auth/user-disabled': 'This account has been disabled.',
+  'user_disabled': 'This account has been disabled.',
 };
 
 export default function Login() {
@@ -107,21 +101,8 @@ export default function Login() {
       return supabaseErrorMessages['invalid_credentials'];
     }
 
-    if (err.code && firebaseErrorMessages[err.code]) {
-      return firebaseErrorMessages[err.code];
-    }
-
-    if (message.includes('auth/user-not-found')) {
-      return firebaseErrorMessages['auth/user-not-found'];
-    }
-    if (message.includes('auth/wrong-password')) {
-      return firebaseErrorMessages['auth/wrong-password'];
-    }
-    if (message.includes('auth/too-many-requests')) {
-      return firebaseErrorMessages['auth/too-many-requests'];
-    }
-    if (message.includes('auth/user-disabled')) {
-      return firebaseErrorMessages['auth/user-disabled'];
+    if (message.includes('disabled')) {
+      return supabaseErrorMessages['user_disabled'];
     }
 
     return err.message || 'Invalid email or password.';
@@ -227,7 +208,7 @@ export default function Login() {
         });
         return;
       }
-      setGlobalError(err.response?.data?.message || err.message || 'Unexpected login error.');
+      setGlobalError(err.response?.data?.message || 'We could not log you in right now. Please check your connection and try again.');
     } finally {
         setLoading(false);
       }

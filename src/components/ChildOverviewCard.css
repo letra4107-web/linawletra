@@ -112,9 +112,7 @@
 .child-overview-card__section-title {
   font-weight: 700;
   font-size: 0.9rem;
-  color: rgba(31, 41, 55, 0.72);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: rgba(31, 41, 55, 0.72);  letter-spacing: 0.08em;
 }
 
 /* Meta Grid (Reading Level + Grade) */

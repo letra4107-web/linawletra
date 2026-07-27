@@ -167,7 +167,7 @@ export default function ResetPassword() {
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: '#f9fafb',
-          fontFamily: 'Josefin Sans, sans-serif',
+          fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
         }}
       >
         <div 
@@ -206,7 +206,7 @@ export default function ResetPassword() {
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: '#f9fafb',
-          fontFamily: 'Josefin Sans, sans-serif',
+          fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
         }}
       >
         <div 
@@ -253,7 +253,7 @@ export default function ResetPassword() {
         justifyContent: 'center',
         backgroundColor: '#f9fafb',
         padding: '1rem',
-        fontFamily: 'Josefin Sans, sans-serif',
+        fontFamily: "'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif",
       }}
     >
       <div 

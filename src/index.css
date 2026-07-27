@@ -1,20 +1,29 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: light;
-  --font-primary: 'Comic Sans MS', 'Comic Sans', 'Trebuchet MS', Verdana, Arial, sans-serif;
+  --font-primary: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
   font-family: var(--font-primary);
   background-color: #f8fafc;
   color: #0f172a;
+}
+
+html.is-android {
+  --font-primary: 'Trebuchet MS', Verdana, Arial, sans-serif;
+}
+
+html.is-android,
+html.is-android * {
+  font-family: 'Trebuchet MS', Verdana, Arial, sans-serif !important;
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: var(--font-primary) !important;
+  font-family: var(--font-primary);
 }
 
 html {

@@ -5,7 +5,7 @@ const sendTeacherAccountEmail = async (teacherEmail, teacherName, tempPassword, 
   const html = `
     <div style="font-family: 'Josefin Sans', sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f9fafb; letter-spacing: 0.03em;">
       <div style="background-color: #ffffff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-        <h1 style="color: #2d9c78; margin: 0 0 10px 0; font-size: 28px; letter-spacing: 0.05em;">Welcome to LinawLetra!</h1>
+        <h1 style="color: #4F46E5; margin: 0 0 10px 0; font-size: 28px; letter-spacing: 0.05em;">Welcome to LinawLetra!</h1>
         <p style="color: #1e5a96; font-size: 16px; margin: 0 0 20px 0; font-weight: 500;">Your Teacher Account Has Been Created</p>
 
         <p style="color: #4b5563; font-size: 15px; line-height: 1.8;">
@@ -16,7 +16,7 @@ const sendTeacherAccountEmail = async (teacherEmail, teacherName, tempPassword, 
           Your LinawLetra teacher account has been created. You can now log in and start using the platform.
         </p>
 
-        <div style="background-color: #f0f8f5; border-left: 4px solid #2d9c78; padding: 20px; border-radius: 4px; margin: 25px 0;">
+        <div style="background-color: #eef2ff; border-left: 4px solid #4F46E5; padding: 20px; border-radius: 4px; margin: 25px 0;">
           <h3 style="color: #1e5a96; margin-top: 0; font-size: 16px;">Teacher Login Credentials</h3>
           <table style="width: 100%; color: #4b5563; font-size: 14px;">
             <tr>
@@ -35,7 +35,7 @@ const sendTeacherAccountEmail = async (teacherEmail, teacherName, tempPassword, 
 
         <h3 style="color: #1e5a96; font-size: 16px; margin: 25px 0 15px 0;">How to Get Started:</h3>
         <ol style="color: #4b5563; font-size: 15px; line-height: 1.8; padding-left: 20px;">
-          <li><strong>Visit the login page:</strong> <a href="${loginUrl}" style="color: #2d9c78; text-decoration: none;">${loginUrl}</a></li>
+          <li><strong>Visit the login page:</strong> <a href="${loginUrl}" style="color: #4F46E5; text-decoration: none;">${loginUrl}</a></li>
           <li><strong>Enter your credentials:</strong> Use the email and temporary password above</li>
           <li><strong>Set a new password:</strong> You will be prompted to change your password after logging in</li>
           <li><strong>Access your dashboard:</strong> Start managing your classes and students</li>
@@ -223,7 +223,7 @@ const sendVerificationEmail = async (email, verificationCode, verificationLink =
   let subject = 'LinawLetra: Email Verification';
   let title = 'Welcome to LinawLetra';
   let message = 'Thank you for signing up to LinawLetra. Please verify your email to complete your registration.';
-  let titleColor = '#2d9c78';
+  let titleColor = '#4F46E5';
   let instruction = 'Click the button below to verify your email address.';
 
   if (type === 'login') {
@@ -351,7 +351,7 @@ const sendStudentEnrollmentEmail = async (
   const html = `
     <div style="font-family: 'Josefin Sans', sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f9fafb; letter-spacing: 0.03em;">
       <div style="background-color: #ffffff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-        <h1 style="color: #2d9c78; margin: 0 0 10px 0; font-size: 28px; letter-spacing: 0.05em;">Welcome to LinawLetra!</h1>
+        <h1 style="color: #4F46E5; margin: 0 0 10px 0; font-size: 28px; letter-spacing: 0.05em;">Welcome to LinawLetra!</h1>
         <p style="color: #1e5a96; font-size: 16px; margin: 0 0 20px 0; font-weight: 500;">Child Account Successfully Created</p>
 
         <p style="color: #4b5563; font-size: 15px; line-height: 1.8;">
@@ -362,7 +362,7 @@ const sendStudentEnrollmentEmail = async (
           Great news! The account for <strong>${childName}</strong> has been successfully created in LinawLetra. Your child can now begin their reading journey!
         </p>
 
-        <div style="background-color: #f0f8f5; border-left: 4px solid #2d9c78; padding: 20px; border-radius: 4px; margin: 25px 0;">
+        <div style="background-color: #eef2ff; border-left: 4px solid #4F46E5; padding: 20px; border-radius: 4px; margin: 25px 0;">
           <h3 style="color: #1e5a96; margin-top: 0; font-size: 16px;">Student Login Credentials</h3>
           <table style="width: 100%; color: #4b5563; font-size: 14px;">
             <tr>
@@ -382,7 +382,7 @@ const sendStudentEnrollmentEmail = async (
 
         <h3 style="color: #1e5a96; font-size: 16px; margin: 25px 0 15px 0;">How Your Child Can Get Started:</h3>
         <ol style="color: #4b5563; font-size: 15px; line-height: 1.8; padding-left: 20px;">
-          <li><strong>Visit the login page:</strong> Go to <a href="${loginUrl}/login" style="color: #2d9c78; text-decoration: none;">${loginUrl}/login</a></li>
+          <li><strong>Visit the login page:</strong> Go to <a href="${loginUrl}/login" style="color: #4F46E5; text-decoration: none;">${loginUrl}/login</a></li>
           <li><strong>Enter credentials:</strong> Use the username and password provided above</li>
           <li><strong>Complete profile:</strong> After login, your child may be prompted to complete their profile (optional)</li>
           <li><strong>Start learning:</strong> Access lessons, take assessments, and track progress from the Student Dashboard</li>

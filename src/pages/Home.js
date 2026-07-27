@@ -1,10 +1,29 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  FiEye,
+  FiSliders,
+  FiHeart,
+  FiBookOpen,
+  FiMic,
+  FiZap,
+  FiTrendingUp,
+  FiUsers,
+  FiCheckCircle,
+  FiStar,
+  FiMail,
+} from 'react-icons/fi';
+import { FaFacebookF, FaInstagram } from 'react-icons/fa';
 import './Home.css';
+
+const SYLLABLES = ['Ba', 'Be', 'Bi', 'Bo', 'Bu', 'Ka', 'Ga', 'Ha', 'Sa', 'La', 'Ma', 'Na'];
 
 export default function Home() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('features');
+  const suppressScrollSpyRef = useRef(false);
+  const resumeTimerRef = useRef(null);
   const MOBILE_BREAKPOINT = 760;
 
   const sections = useMemo(() => ([
@@ -21,7 +40,13 @@ export default function Home() {
 
   const handleNav = (id) => {
     setMobileOpen(false);
+    setActiveSection(id);
+    suppressScrollSpyRef.current = true;
     scrollToId(id);
+    window.clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = window.setTimeout(() => {
+      suppressScrollSpyRef.current = false;
+    }, 700);
   };
 
   useEffect(() => {
@@ -33,6 +58,25 @@ export default function Home() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    const ids = sections.map((s) => s.id);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (suppressScrollSpyRef.current) return;
+        const visible = entries.filter((entry) => entry.isIntersecting);
+        if (visible.length > 0) {
+          setActiveSection(visible[0].target.id);
+        }
+      },
+      { rootMargin: '-40% 0px -50% 0px' }
+    );
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [sections]);
 
   return (
     <div className="home">
@@ -57,7 +101,12 @@ export default function Home() {
 
             <nav className="home-nav" aria-label="Landing navigation">
               {sections.map((s) => (
-                <button key={s.id} type="button" onClick={() => handleNav(s.id)}>
+                <button
+                  key={s.id}
+                  type="button"
+                  className={activeSection === s.id ? 'is-active' : ''}
+                  onClick={() => handleNav(s.id)}
+                >
                   {s.label}
                 </button>
               ))}
@@ -104,11 +153,19 @@ export default function Home() {
 
       {/* HERO */}
       <section className="home-hero">
+        <div className="home-syllable-watermark" aria-hidden="true">
+          {[...SYLLABLES, ...SYLLABLES].map((syllable, index) => (
+            <span key={`${syllable}-${index}`}>{syllable}</span>
+          ))}
+        </div>
         <div className="home-shell">
           <div className="home-hero-card home-fade-in">
             <div className="home-hero-grid">
               <div className="home-hero-copy">
-                <span className="home-badge">AI-powered - Tagalog - Dyslexia-friendly</span>
+                <div className="home-badge-split">
+                  <span className="home-badge-part home-badge-part--indigo">AI-Powered</span>
+                  <span className="home-badge-part home-badge-part--warm">Dyslexia-Friendly</span>
+                </div>
                 <h1 className="home-h1">
                   <span className="home-h1-line">Linaw</span>
                   <span className="home-h1-line home-h1-accent">Letra</span>
@@ -152,24 +209,43 @@ export default function Home() {
                 </div>
               </div>
               <div className="home-hero-side">
-                <div className="home-device-card">
-                  <div className="home-device-chip">Antas 3</div>
-                  <div className="home-device-title">AI Reading Coach</div>
-                  <p>
-                    Nagbibigay ng malinaw na gabay sa pagbigkas at tulong sa pagbuo ng tiwala habang nagbabasa.
-                  </p>
-                </div>
-                <div className="home-progress-card">
-                  <div className="home-progress-head">
-                    <span>Progress Tracking</span>
-                    <strong>72%</strong>
+                <div className="home-phone-mockup">
+                  <div className="home-phone-frame">
+                    <div className="home-phone-notch" />
+                    <div className="home-phone-screen">
+                      <p className="home-phone-app-title">Student Dashboard</p>
+                      <div className="home-phone-avatar" aria-hidden="true">🙂</div>
+                      <p className="home-phone-greeting">
+                        Hi, Marco!
+                        <span>Grade 3</span>
+                      </p>
+                      <div className="home-device-card">
+                        <div className="home-device-chip">Antas 3</div>
+                        <div className="home-device-title">AI Reading Coach</div>
+                        <p>
+                          Nagbibigay ng malinaw na gabay sa pagbigkas at tulong sa pagbuo ng tiwala habang nagbabasa.
+                        </p>
+                      </div>
+                      <div className="home-progress-card">
+                        <div className="home-progress-head">
+                          <span>Progress Tracking</span>
+                          <strong>72%</strong>
+                        </div>
+                        <div className="home-progress-bar">
+                          <div className="home-progress-fill" />
+                        </div>
+                        <div className="home-progress-meta">
+                          <span>Natapos</span>
+                          <span>6 / 8 aralin</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="home-progress-bar">
-                    <div className="home-progress-fill" />
+                  <div className="home-floating-chip home-floating-chip--streak">
+                    <FiStar aria-hidden="true" /> +2 Streak
                   </div>
-                  <div className="home-progress-meta">
-                    <span>Natapos</span>
-                    <span>6 / 8 aralin</span>
+                  <div className="home-floating-chip home-floating-chip--confidence">
+                    <FiCheckCircle aria-hidden="true" /> Confidence: Improving
                   </div>
                 </div>
               </div>
@@ -178,7 +254,46 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="home-section home-feature-section" id="features">
+      <section className="home-section home-what-section" id="features">
+        <div className="home-shell">
+          <div className="home-what-grid">
+            <div className="home-what-copy home-fade-in">
+              <p className="home-section-tag">Ano ang LinawLetra?</p>
+              <p className="home-lead">
+                Ginawa ang LinawLetra para sa mga estudyante sa Grades 1-6 na nangangailangan ng suportang tool para sa pagbasa ng Tagalog kasabay ng dyslexia. Pinagsasama nito ang research-backed na pamamaraan at AI upang gawing malinaw, kalmado, at nakakapagpalakas-loob ang pagsasanay sa pagbasa.
+              </p>
+              <ul className="home-checklist">
+                <li><FiCheckCircle aria-hidden="true" /> Suporta sa pagkilala ng salita at pantig sa Tagalog</li>
+                <li><FiCheckCircle aria-hidden="true" /> Gabay sa pagbigkas gamit ang AI speech feedback</li>
+                <li><FiCheckCircle aria-hidden="true" /> Dyslexia-friendly na interface at font</li>
+                <li><FiCheckCircle aria-hidden="true" /> Progress tracking para sa mag-aaral, magulang, at guro</li>
+              </ul>
+            </div>
+            <div className="home-what-support">
+              <h2>Sumusuporta sa Paglalakbay sa Pagbasa ng Bawat Bata</h2>
+              <div className="home-support-cards">
+                <div className="home-support-card home-fade-in">
+                  <span className="home-support-icon home-support-icon--indigo"><FiEye aria-hidden="true" /></span>
+                  <h3>Accessible</h3>
+                  <p>Dinisenyo gamit ang dyslexia-friendly na font, adjustable na text size, at malinaw na visuals.</p>
+                </div>
+                <div className="home-support-card home-fade-in">
+                  <span className="home-support-icon home-support-icon--warm"><FiSliders aria-hidden="true" /></span>
+                  <h3>Personalized</h3>
+                  <p>Umaangkop ang AI sa bilis at pangangailangan ng bawat mag-aaral, base sa kanilang progress.</p>
+                </div>
+                <div className="home-support-card home-fade-in">
+                  <span className="home-support-icon home-support-icon--mint"><FiHeart aria-hidden="true" /></span>
+                  <h3>Supportive</h3>
+                  <p>Nakakapagpalakas-loob na feedback at magiliw na gabay upang makabuo ng tiwala nang unti-unti.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-section home-feature-section">
         <div className="home-shell">
           <div className="home-feature-head">
             <p className="home-section-tag">Mga Tampok ng LinawLetra</p>
@@ -222,6 +337,40 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="home-section home-steps-section">
+        <div className="home-shell">
+          <div className="home-feature-head">
+            <p className="home-section-tag">Paano Gumagana</p>
+            <h2>Paano Gumagana ang LinawLetra</h2>
+            <p className="home-lead">
+              Tatlong simpleng hakbang mula sa pag-aaral hanggang sa pagbuo ng tiwala sa pagbasa.
+            </p>
+          </div>
+          <div className="home-steps-row">
+            <div className="home-step-card home-fade-in">
+              <span className="home-step-number">01</span>
+              <span className="home-step-icon"><FiBookOpen aria-hidden="true" /></span>
+              <h3>Matuto</h3>
+              <p>Galugarin ang structured na Tagalog reading lessons na nakatuon sa mga pantig at salita.</p>
+            </div>
+            <span className="home-step-arrow" aria-hidden="true">&rarr;</span>
+            <div className="home-step-card home-fade-in">
+              <span className="home-step-number">02</span>
+              <span className="home-step-icon"><FiMic aria-hidden="true" /></span>
+              <h3>Magsanay</h3>
+              <p>Magsanay ng mga salita, pantig, at pangungusap sa sarili mong bilis.</p>
+            </div>
+            <span className="home-step-arrow" aria-hidden="true">&rarr;</span>
+            <div className="home-step-card home-fade-in">
+              <span className="home-step-number">03</span>
+              <span className="home-step-icon"><FiZap aria-hidden="true" /></span>
+              <h3>Kumuha ng AI Feedback</h3>
+              <p>Tumanggap ng real-time na AI-assisted na pagbigkas feedback at kapaki-pakinabang na tips.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="home-section home-role-section" id="roles">
         <div className="home-shell">
           <p className="home-section-tag">Para Kanino ang LinawLetra?</p>
@@ -259,6 +408,60 @@ export default function Home() {
                 <li>Matutunan kung paano tumulong</li>
               </ul>
               <button type="button" className="home-card-btn" onClick={() => navigate('/register')}>Para sa Magulang</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-section home-audience-section">
+        <div className="home-shell">
+          <div className="home-feature-head">
+            <p className="home-section-tag">Lumago Kasama ang LinawLetra</p>
+            <h2>Maliit na Hakbang, Mas Malinaw na Pagbasa</h2>
+          </div>
+          <div className="home-audience-grid">
+            <div className="home-mini-dashboard home-fade-in">
+              <p className="home-mini-dashboard-title">Parent Dashboard</p>
+              <p className="home-mini-dashboard-sub">Welcome, Parent of Marco</p>
+              <div className="home-mini-dashboard-chart" aria-hidden="true">
+                <span style={{ height: '40%' }} />
+                <span style={{ height: '65%' }} />
+                <span style={{ height: '50%' }} />
+                <span style={{ height: '80%' }} />
+                <span style={{ height: '72%' }} />
+              </div>
+              <div className="home-mini-dashboard-stats">
+                <div>
+                  <strong>12/18</strong>
+                  <span>Aralin</span>
+                </div>
+                <div>
+                  <strong>85%</strong>
+                  <span>Bigkas</span>
+                </div>
+              </div>
+            </div>
+            <div className="home-audience-badges">
+              <div className="home-audience-badge home-fade-in">
+                <span className="home-audience-icon" aria-hidden="true">🇵🇭</span>
+                <h3>Nakatuon sa Filipino</h3>
+                <p>Ginawa partikular para sa wikang Tagalog at mga Pilipinong mag-aaral.</p>
+              </div>
+              <div className="home-audience-badge home-fade-in">
+                <span className="home-audience-icon"><FiHeart aria-hidden="true" /></span>
+                <h3>Dyslexia-Friendly</h3>
+                <p>Maalalahaning disenyo na may reading accommodations para sa mga batang may dyslexia.</p>
+              </div>
+              <div className="home-audience-badge home-fade-in">
+                <span className="home-audience-icon"><FiZap aria-hidden="true" /></span>
+                <h3>May AI Support</h3>
+                <p>Real-time na feedback na pinapagana ng responsableng AI para sa pagkatuto.</p>
+              </div>
+              <div className="home-audience-badge home-fade-in">
+                <span className="home-audience-icon"><FiUsers aria-hidden="true" /></span>
+                <h3>Para sa Buong Pamilya</h3>
+                <p>Mga tool na dinisenyo upang isali ang magulang, tagapag-alaga, at guro.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -311,6 +514,20 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="home-cta-bar">
+        <div className="home-shell home-cta-bar-inner">
+          <h2>Handa ka na bang subukan ang LinawLetra?</h2>
+          <div className="home-cta-bar-actions">
+            <button type="button" className="home-cta-bar-btn-primary" onClick={() => navigate('/register')}>
+              Magsimula
+            </button>
+            <button type="button" className="home-cta-bar-btn-ghost" onClick={() => handleNav('features')}>
+              Alamin Pa
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* FOOTER */}
       <footer className="home-footer" id="contact">
         <div className="home-shell">
@@ -353,6 +570,15 @@ export default function Home() {
                 <button type="button" className="home-footer-link-button" onClick={() => navigate('/register')}>
                   Magsimula
                 </button>
+              </div>
+            </div>
+
+            <div className="home-footer-column">
+              <h3 className="home-footer-heading">Kumonekta</h3>
+              <div className="home-footer-social">
+                <a href="mailto:linawletra@gmail.com" aria-label="Email LinawLetra"><FiMail aria-hidden="true" /></a>
+                <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="LinawLetra on Facebook"><FaFacebookF aria-hidden="true" /></a>
+                <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="LinawLetra on Instagram"><FaInstagram aria-hidden="true" /></a>
               </div>
             </div>
           </div>

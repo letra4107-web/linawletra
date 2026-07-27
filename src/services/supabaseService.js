@@ -1,7 +1,7 @@
 /**
  * Supabase Database Service
  * Wrapper functions for Supabase database operations
- * Replaces Firebase Firestore operations
+ * Handles Supabase database operations
  */
 
 import { supabase } from '../config/supabase';
