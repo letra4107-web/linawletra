@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
-import { supabase } from '../config/supabase';
-import { onAuthStateChanged } from '../services/supabaseAuth';
 import { AuthContext } from '../context/AuthContext';
-import { speechService, studentService } from '../services/api';
+import { speechService, studentService, practiceWordService } from '../services/api';
 import {
   FiBell,
   FiLogOut,
@@ -13,6 +11,7 @@ import {
   FiTrendingUp,
   FiSettings,
   FiZap,
+  FiUser,
 } from 'react-icons/fi';
 import { subscribeToTeacherUploadsByGradeLevel } from '../services/supabaseService';
 import { ACHIEVEMENTS, getUnlockedAchievementIds, getAchievementById } from '../services/achievementService';
@@ -20,7 +19,6 @@ import AchievementBadge from '../components/AchievementBadge';
 import AchievementUnlockModal from '../components/AchievementUnlockModal';
 import './StudentDashboard.css';
 
-const auth = supabase.auth;
 // ============================================================================
 // CONSTANTS: Activity & Gamification
 // ============================================================================
@@ -191,7 +189,7 @@ const calculateStreak = async (params) => {
 };
 // Educational feedback messages for incorrect pronunciations
 const StudentDashboard = () => {
-  const { logout } = useContext(AuthContext);
+  const { user: authUser, logout } = useContext(AuthContext);
   const [dateTime, setDateTime] = useState(new Date());
   const [accessibilitySettings, setAccessibilitySettings] = useState({
     darkMode: false,
@@ -204,7 +202,6 @@ const StudentDashboard = () => {
   });
   const [userRole, setUserRole] = useState('student');
   const [activeSection, setActiveSection] = useState('home');
-  const [showAccessibilityMenu, setShowAccessibilityMenu] = useState(false);
   const [progress, setProgress] = useState({
     completed: 0,
     accuracy: 0,
@@ -220,6 +217,9 @@ const StudentDashboard = () => {
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [expectedText, setExpectedText] = useState('aso');
+  const [practiceWords, setPracticeWords] = useState([]);
+  const [activePracticeWord, setActivePracticeWord] = useState(null);
+  const [homographPanelOpenId, setHomographPanelOpenId] = useState(null);
   const [transcribedText, setTranscribedText] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [recognitionResult, setRecognitionResult] = useState('neutral');
@@ -251,6 +251,12 @@ const StudentDashboard = () => {
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
+  // Gates the save effect (and the achievement recompute) so neither runs
+  // against default/zeroed state while the real saved progress is still
+  // being fetched on load. Must be real state, not a ref: the achievement
+  // effect needs this flip to actually re-trigger it once loading finishes,
+  // not just be readable the next time something else happens to change.
+  const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
   const fontFamilies = {
     'Comic Sans': '"Comic Sans MS", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
@@ -261,14 +267,16 @@ const StudentDashboard = () => {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        setFeedback('Please log in to use your learning dashboard.');
-        return;
-      }
+    if (!authUser) {
+      setFeedback('Please log in to use your learning dashboard.');
+      return;
+    }
+    const userId = authUser.uid || authUser.id;
+    setHasLoadedProgress(false);
+    const loadStudentDashboard = async () => {
       try {
         // Fetch user data via API
-        const userResponse = await studentService.getStudent(user.uid);
+        const userResponse = await studentService.getStudent(userId);
         const userData = userResponse?.data?.student || userResponse?.data || userResponse || {};
         const profile = userData.user || userData.users || {};
         const profileMetadata = profile.metadata || userData.metadata || {};
@@ -288,9 +296,16 @@ const StudentDashboard = () => {
           letterSpacing: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.letterSpacing || 'normal',
           wordHighlighting: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.wordHighlighting ?? true,
         });
-        // Fetch progress data via API
-        const dashboardResponse = await studentService.getDashboardData?.(user.uid);
-        const dashboardData = dashboardResponse?.data?.data ?? dashboardResponse?.data ?? dashboardResponse ?? {};
+        // Fetch supplementary dashboard data via API. This call is best-effort:
+        // it must never block restoring xp/badges/level, which already live in
+        // profileMetadata and are the real source of truth for a student's progress.
+        let dashboardData = {};
+        try {
+          const dashboardResponse = await studentService.getDashboardData?.(userId);
+          dashboardData = dashboardResponse?.data?.data ?? dashboardResponse?.data ?? dashboardResponse ?? {};
+        } catch (dashboardError) {
+          console.warn('Dashboard summary fetch failed (non-fatal):', dashboardError);
+        }
         const progressData = {
           ...(profileMetadata || {}),
           ...(dashboardData || {}),
@@ -324,7 +339,7 @@ const StudentDashboard = () => {
         // =====================================================================
         const currentStreak = progressData?.streak || 0;
         const streakResult = await calculateStreak({
-          userId: user.uid,
+          userId,
           currentStreak,
         });
         if (streakResult) {
@@ -354,13 +369,17 @@ const StudentDashboard = () => {
         const initialPhoneticLevel = progressData?.currentPhoneticLevel || 'Easy';
         const initialProgressCount = progressData?.progressInCurrentLevel || 0;
         setExpectedText(getPhoneticWordForProgress(initialPhoneticLevel, initialProgressCount));
+        // Only now is it safe to let the save effect write to the backend, and
+        // for the achievement check to run -- every real saved value has been
+        // restored into state at this point.
+        setHasLoadedProgress(true);
       } catch (error) {
         console.error('Student dashboard load error:', error);
         setFeedback('Cannot load progress right now. Please refresh the page.');
       }
-    });
-    return () => unsubscribe();
-  }, []);
+    };
+    loadStudentDashboard();
+  }, [authUser]);
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
@@ -370,49 +389,80 @@ const StudentDashboard = () => {
     };
   }, []);
   useEffect(() => {
-    const persistProgress = async () => {
-      if (!auth.currentUser) {
+    let isMounted = true;
+    practiceWordService.getPracticeWords().then((words) => {
+      if (isMounted) setPracticeWords(words);
+    }).catch((error) => {
+      console.error('Failed to load practice words:', error);
+    });
+    return () => { isMounted = false; };
+  }, []);
+  const buildProgressSnapshot = () => ({
+    xp,
+    wordsCompleted,
+    achievements,
+    completedWords,
+    practiceLevel,
+    completed: progress.completed || 0,
+    accuracy: progress.accuracy || 0,
+    streak: progress.streak || 0,
+    totalLessons: progress.totalLessons || 7,
+    history: progress.history || [],
+    currentPhoneticLevel,
+    progressInCurrentLevel,
+    highestPhoneticLevel,
+    hardCyclesCompleted,
+    hadStreakBreak,
+    unlockedAchievementIds,
+  });
+  // A save request can take longer than the gap between two rapid state
+  // changes (e.g. pronunciation evaluation updates xp, then wordsCompleted,
+  // then completedWords across separate renders). Firing an independent
+  // request per change lets them resolve OUT OF ORDER, so an older request
+  // finishing last can silently overwrite a newer one's data. Chaining every
+  // save onto this single ref forces them to run strictly one-at-a-time, and
+  // each step reads state fresh at ITS OWN turn, so the final queued save
+  // (whichever it is) always reflects the true latest state.
+  const saveChainRef = useRef(Promise.resolve());
+  const queuePersist = () => {
+    saveChainRef.current = saveChainRef.current.catch(() => {}).then(async () => {
+      if (!authUser) {
         console.warn('Cannot save progress: user not authenticated');
         return;
       }
-      const progressData = {
-        xp,
-        wordsCompleted,
-        achievements,
-        completedWords,
-        practiceLevel,
-        completed: progress.completed || 0,
-        accuracy: progress.accuracy || 0,
-        streak: progress.streak || 0,
-        totalLessons: progress.totalLessons || 7,
-        history: progress.history || [],
-        currentPhoneticLevel,
-        progressInCurrentLevel,
-        highestPhoneticLevel,
-        hardCyclesCompleted,
-        hadStreakBreak,
-        unlockedAchievementIds,
-      };
+      if (!hasLoadedProgress || !currentStudentId) {
+        // Initial load for this user hasn't finished restoring saved
+        // progress yet -- saving now would overwrite it with defaults.
+        return;
+      }
+      const progressData = buildProgressSnapshot();
       try {
-        // Save progress via API
-        if (currentStudentId) {
-          await studentService.updateStudent(currentStudentId, progressData).catch((error) => {
-            console.warn('Failed to save progress via API:', error);
-          });
-          console.log('Progress saved to backend for student:', currentStudentId);
-        }
-        // Backup to localStorage
-        const userId = currentStudentId || 'unknown';
-        localStorage.setItem(`linawletra_progress_${userId}`, JSON.stringify(progressData));
+        await studentService.updateStudent(currentStudentId, progressData).catch((error) => {
+          console.warn('Failed to save progress via API:', error);
+        });
+        console.log('Progress saved to backend for student:', currentStudentId);
+        localStorage.setItem(`linawletra_progress_${currentStudentId}`, JSON.stringify(progressData));
       } catch (error) {
         console.error('Failed to save progress:', error);
       }
-    };
-    persistProgress();
-  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, currentStudentId]);
+    });
+    return saveChainRef.current;
+  };
+  useEffect(() => {
+    queuePersist();
+  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, currentStudentId, authUser, hasLoadedProgress]);
 
   // Recompute unlocked achievements whenever the underlying stats change.
+  // This only ever ADDS badge ids (a union with what's already unlocked) --
+  // a badge earned in the past must never disappear just because a
+  // moment-in-time check (like an improving-streak window) no longer holds.
   useEffect(() => {
+    if (!hasLoadedProgress) {
+      // Don't evaluate against default/zeroed stats before the real saved
+      // achievements have been restored -- that would both wipe real badges
+      // and fire a bogus "newly unlocked" celebration for Unang Hakbang.
+      return;
+    }
     const stats = {
       xp,
       streak: progress.streak || 0,
@@ -426,13 +476,13 @@ const StudentDashboard = () => {
     const unlockedNow = getUnlockedAchievementIds(stats);
     setUnlockedAchievementIds((prev) => {
       const newlyUnlockedIds = unlockedNow.filter((id) => !prev.includes(id));
-      if (newlyUnlockedIds.length > 0) {
-        setNewlyUnlockedAchievements(newlyUnlockedIds.map(getAchievementById).filter(Boolean));
-        return unlockedNow;
+      if (newlyUnlockedIds.length === 0) {
+        return prev;
       }
-      return prev;
+      setNewlyUnlockedAchievements(newlyUnlockedIds.map(getAchievementById).filter(Boolean));
+      return [...prev, ...newlyUnlockedIds];
     });
-  }, [xp, progress.streak, progress.accuracy, progress.completed, progress.history, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak]);
+  }, [xp, progress.streak, progress.accuracy, progress.completed, progress.history, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, hasLoadedProgress]);
   useEffect(() => {
     if (!studentGrade || userRole !== 'student') {
       setTeacherUploads([]);
@@ -470,7 +520,19 @@ const StudentDashboard = () => {
     }
   };
   const handleLogout = async () => {
+    console.log('[Logout] clicked. currentStudentId:', currentStudentId, 'hasLoadedProgress:', hasLoadedProgress);
     try {
+      // Flush any pending progress to the backend BEFORE the auth token is
+      // cleared, and queue it onto the SAME ordered chain as every other
+      // save -- so it's guaranteed to run after (not race against) any save
+      // still pending from a recent action, and be the true final write.
+      if (currentStudentId && hasLoadedProgress) {
+        console.log('[Logout] flushing progress snapshot:', buildProgressSnapshot());
+        await queuePersist();
+        console.log('[Logout] flush call finished.');
+      } else {
+        console.log('[Logout] SKIPPED flush -- guard was false.');
+      }
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
@@ -574,7 +636,9 @@ const StudentDashboard = () => {
     try {
       const response = await speechService.textToSpeech(formatForTagalogSpeech(text), {
         speed: options.speed || options.rate || 0.82,
-        instructions: options.instructions || 'Pronounce this Filipino/Tagalog reading-practice word slowly and clearly for a child. Emphasize correct Tagalog vowels and syllables.',
+        // Omit instructions unless the caller overrides them, so the server's
+        // more detailed Tagalog-specific default (TAGALOG_TTS_INSTRUCTIONS) is used.
+        ...(options.instructions ? { instructions: options.instructions } : {}),
       });
       const audioUrl = URL.createObjectURL(response.data);
       const audio = new Audio(audioUrl);
@@ -1023,6 +1087,22 @@ const StudentDashboard = () => {
     fontSize: `${accessibilitySettings.textSize}px`,
     letterSpacing: accessibilitySettings.letterSpacing === 'wide' ? '0.08em' : 'normal',
   };
+  const dayOfYear = Math.floor(
+    (dateTime - new Date(dateTime.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24)
+  );
+  const wordOfTheDay = practiceWords.length > 0
+    ? practiceWords[dayOfYear % practiceWords.length]
+    : null;
+  const selectPracticeWord = (practiceWord) => {
+    setActivePracticeWord(practiceWord);
+    setHomographPanelOpenId(null);
+    setExpectedText(practiceWord.word);
+    setStatus('idle');
+    setAccuracy(null);
+    setAccuracyExplanation('');
+    setTranscribedText('');
+    setStatusMessage('');
+  };
   return (
     <div
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
@@ -1071,82 +1151,17 @@ const StudentDashboard = () => {
             >
               <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span> Settings
             </button>
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'profile' ? 'active' : ''}`}
+              onClick={() => handleNav('profile')}
+            >
+              <span className="student-sidebar-link-icon"><FiUser aria-hidden="true" /></span> Profile
+            </button>
           </nav>
         </div>
         <div className="student-sidebar-bottom">
-          <div className="student-sidebar-user">
-            <span className="student-sidebar-user-avatar">{studentName?.charAt(0) || 'S'}</span>
-            <div>
-              <div className="student-sidebar-user-name">{studentName}</div>
-              <div className="student-sidebar-user-meta">
-                {studentGrade}{studentRoom ? ` · ${studentRoom}` : ''}
-              </div>
-            </div>
-          </div>
-          <div className="accessibility-dropdown-wrapper">
-            <button
-              className="student-sidebar-action"
-              type="button"
-              onClick={() => setShowAccessibilityMenu((open) => !open)}
-            >
-              Accessibility
-            </button>
-            {showAccessibilityMenu && (
-              <div className="accessibility-dropdown">
-                <div className="dropdown-row">
-                  <label>Font</label>
-                  <select
-                    value={accessibilitySettings.fontFamily}
-                    onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.value })}
-                  >
-                    <option value="Comic Sans">Comic Sans</option>
-                    <option value="DM Sans">DM Sans</option>
-                    <option value="Josefin Sans">Josefin Sans</option>
-                  </select>
-                </div>
-                <div className="dropdown-row">
-                  <label>Text size</label>
-                  <input
-                    type="range"
-                    min="12"
-                    max="28"
-                    value={accessibilitySettings.textSize}
-                    onChange={(e) => persistAccessibilitySettings({ textSize: Number(e.target.value) })}
-                  />
-                  <span>{accessibilitySettings.textSize}px</span>
-                </div>
-                <div className="dropdown-row checkbox-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={accessibilitySettings.letterSpacing === 'wide'}
-                      onChange={(e) => persistAccessibilitySettings({ letterSpacing: e.target.checked ? 'wide' : 'normal' })}
-                    />
-                    Wide letter spacing
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={accessibilitySettings.wordHighlighting}
-                      onChange={(e) => persistAccessibilitySettings({ wordHighlighting: e.target.checked })}
-                    />
-                    Word highlighting
-                  </label>
-                </div>
-                <div className="preview-box dropdown-preview">
-                  <p>Preview</p>
-                  <div className={`preview-text ${accessibilitySettings.wordHighlighting ? 'preview-highlight' : ''}`}>
-                    {previewSentence.split(' ').map((word, index) => (
-                      <span key={`${word}-${index}`} className="preview-word">
-                        {word}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          <button className="student-sidebar-action logout" type="button" onClick={handleLogout}>
+          <button className="student-sidebar-logout" type="button" onClick={handleLogout}>
             <FiLogOut aria-hidden="true" /> Logout
           </button>
         </div>
@@ -1212,6 +1227,17 @@ const StudentDashboard = () => {
                 <FiMic aria-hidden="true" /> Start Reading
               </button>
             </div>
+            {wordOfTheDay && (
+              <button
+                type="button"
+                className="word-of-the-day-card"
+                onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
+              >
+                <span className="word-of-the-day-kicker">Salita Ngayon</span>
+                <span className="word-of-the-day-word">{wordOfTheDay.accentedSpelling}</span>
+                <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
+              </button>
+            )}
             <section className="detail-block">
               <div className="detail-block-title">Your reading path</div>
               <div className="winding-path">
@@ -1349,11 +1375,61 @@ const StudentDashboard = () => {
                 <span>Achievements: {Number(achievements) || 0}</span>
               </div>
             </div>
+            {practiceWords.length > 0 && (
+              <div className="vocabulary-bank">
+                <h4>Talasalitaan</h4>
+                <div className="vocabulary-grid">
+                  {practiceWords.map((practiceWord) => (
+                    <button
+                      key={practiceWord.id}
+                      type="button"
+                      className={`vocabulary-chip ${activePracticeWord?.id === practiceWord.id ? 'is-active' : ''}`}
+                      onClick={() => selectPracticeWord(practiceWord)}
+                    >
+                      {practiceWord.accentedSpelling}
+                      {practiceWord.isHomograph && <span className="vocabulary-chip-badge">2 kahulugan</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="practice-grid">
               <div className="word-card">
                 <div className="word-display">
-                  <div className="practice-word">{expectedText}</div>
-                  <div className="word-hint">{`${levelNames[practiceLevel]} level practice`}</div>
+                  <div className="practice-word">{activePracticeWord ? activePracticeWord.accentedSpelling : expectedText}</div>
+                  {activePracticeWord ? (
+                    <>
+                      <p className="word-meaning">{activePracticeWord.meaning}</p>
+                      {activePracticeWord.isHomograph && (
+                        <>
+                          <button
+                            type="button"
+                            className="homograph-toggle"
+                            onClick={() => setHomographPanelOpenId(
+                              homographPanelOpenId === activePracticeWord.id ? null : activePracticeWord.id
+                            )}
+                          >
+                            <span className={`homograph-toggle-chevron ${homographPanelOpenId === activePracticeWord.id ? 'is-open' : ''}`} aria-hidden="true">▸</span>
+                            {' '}Ano ang ibig sabihin?
+                          </button>
+                          {homographPanelOpenId === activePracticeWord.id && (
+                            <div className="homograph-panel">
+                              {activePracticeWord.example && (
+                                <p className="homograph-example">Halimbawa: "{activePracticeWord.example}"</p>
+                              )}
+                              <p className="homograph-note">
+                                Pareho ang baybay ng salitang ito pero iba ang ibig sabihin.
+                                Tingnan ang marka sa itaas ng salita para malaman kung alin
+                                ang ginagamit dito.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div className="word-hint">{`${levelNames[practiceLevel]} level practice`}</div>
+                  )}
                 </div>
                 <div className="word-actions">
                   <button
@@ -1363,13 +1439,23 @@ const StudentDashboard = () => {
                   >
                     {status === 'listening' ? 'Listening�' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
                   </button>
-                  <button className="button-large button-secondary" type="button" onClick={() => speakTagalog(expectedText)}>
+                  <button
+                    className="button-large button-secondary"
+                    type="button"
+                    onClick={() => speakTagalog(activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)}
+                  >
                     Listen
                   </button>
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
                     Replay Voice
                   </button>
                 </div>
+                {activePracticeWord?.isHomograph && (
+                  <p className="tts-caveat">
+                    Baka magkatunog ang dalawa kapag pinindot ang "Listen". Ang marka sa itaas
+                    ng salita ang gabay mo kung alin ang tama.
+                  </p>
+                )}
               </div>
               <div className="feedback-panel">
                 <h4>Pronunciation feedback</h4>
@@ -1400,18 +1486,6 @@ const StudentDashboard = () => {
             </div>
             <div className="highlight-row">{renderWordHighlight()}</div>
             {isProcessing && <div className="loading-text">Checking your voice...</div>}
-            <div className="achievements-section">
-              <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
-              <div className="achievement-badge-grid">
-                {ACHIEVEMENTS.map((achievement) => (
-                  <AchievementBadge
-                    key={achievement.id}
-                    achievement={achievement}
-                    unlocked={unlockedAchievementIds.includes(achievement.id)}
-                  />
-                ))}
-              </div>
-            </div>
           </section>
         )}
         {activeSection === 'content' && (
@@ -1532,6 +1606,18 @@ const StudentDashboard = () => {
                 )}
               </div>
             </div>
+            <div className="achievements-section">
+              <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
+              <div className="achievement-badge-grid">
+                {ACHIEVEMENTS.map((achievement) => (
+                  <AchievementBadge
+                    key={achievement.id}
+                    achievement={achievement}
+                    unlocked={unlockedAchievementIds.includes(achievement.id)}
+                  />
+                ))}
+              </div>
+            </div>
           </section>
         )}
         {activeSection === 'settings' && (
@@ -1589,6 +1675,50 @@ const StudentDashboard = () => {
                     </span>
                   ))}
                 </div>
+              </div>
+            </div>
+          </section>
+        )}
+        {activeSection === 'profile' && (
+          <section id="profile-section" className="detail-block">
+            <div className="profile-header">
+              <span className="profile-avatar">{studentName?.charAt(0) || 'S'}</span>
+              <div>
+                <h2 className="profile-name">{studentName}</h2>
+                <p className="profile-meta">
+                  {studentGrade}{studentRoom ? ` · ${studentRoom}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="detail-block-title">Statistics</div>
+            <div className="home-summary-grid">
+              <article className="stat-card">
+                <p className="stat-title">Activities</p>
+                <p className="stat-value">{activitiesCompleted}</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">Total XP</p>
+                <p className="stat-value">{xp}</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">Streak</p>
+                <p className="stat-value">{streakDays} days</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">Learning tier</p>
+                <p className="stat-value">{tier}</p>
+              </article>
+            </div>
+            <div className="achievements-section">
+              <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
+              <div className="achievement-badge-grid">
+                {ACHIEVEMENTS.map((achievement) => (
+                  <AchievementBadge
+                    key={achievement.id}
+                    achievement={achievement}
+                    unlocked={unlockedAchievementIds.includes(achievement.id)}
+                  />
+                ))}
               </div>
             </div>
           </section>

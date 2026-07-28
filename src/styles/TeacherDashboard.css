@@ -47,6 +47,7 @@
   padding: 28px 20px;
   gap: 28px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .teacher-content {
@@ -195,14 +196,6 @@
 
 .sidebar-logout:hover {
   color: #FFFFFF;
-}
-
-.teacher-content {
-  margin-left: 260px;
-  padding: 32px 40px;
-  min-height: 100vh;
-  background: #FDFAF5;
-  flex: 1;
 }
 
 .top-nav {
@@ -380,6 +373,10 @@
   grid-template-columns: 320px 1fr;
   gap: 22px;
   align-items: start;
+}
+
+.body-grid--single {
+  grid-template-columns: 1fr;
 }
 
 .list-panel,

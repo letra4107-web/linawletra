@@ -261,6 +261,48 @@ export const speechService = {
   }),
 };
 
+// Practice Words Service
+const PRACTICE_WORDS_CACHE_KEY = 'linawletra_practice_words_cache';
+
+const toCamelCasePracticeWord = (row = {}) => ({
+  id: row.id,
+  word: row.word,
+  accentedSpelling: row.accented_spelling ?? row.accentedSpelling ?? row.word,
+  meaning: row.meaning,
+  example: row.example ?? null,
+  isHomograph: Boolean(row.is_homograph ?? row.isHomograph),
+  homographGroup: row.homograph_group ?? row.homographGroup ?? null,
+  difficulty: row.difficulty || 'madali',
+  tags: row.tags || [],
+});
+
+export const practiceWordService = {
+  // Fetches from Supabase (via backend); falls back to the last-known cache,
+  // then to the bundled offline snapshot if this is the very first load
+  // without a connection. See docs/practice_words_sources.md for content notes.
+  getPracticeWords: async () => {
+    try {
+      const response = await axiosInstance.get('/practice-words');
+      const words = (response.data?.words || []).map(toCamelCasePracticeWord);
+      if (words.length > 0) {
+        localStorage.setItem(PRACTICE_WORDS_CACHE_KEY, JSON.stringify(words));
+        return words;
+      }
+      throw new Error('Empty practice word list from server');
+    } catch (error) {
+      console.warn('Falling back to cached/offline practice words:', error.message);
+      try {
+        const cached = localStorage.getItem(PRACTICE_WORDS_CACHE_KEY);
+        if (cached) return JSON.parse(cached);
+      } catch (cacheError) {
+        console.warn('Practice word cache read failed:', cacheError.message);
+      }
+      const offlineSnapshot = await import('../data/practiceWords.json');
+      return (offlineSnapshot.default || []).map(toCamelCasePracticeWord);
+    }
+  },
+};
+
 // Reading Assistant Service
 export const readingService = {
   previewMaterial: (formData) => axiosInstance.post('/reading/preview', formData, {

@@ -9,9 +9,9 @@
 .parent-dashboard-page{
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 280px 1fr;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
 }
 
 /* Mobile drawer toggle */
@@ -33,9 +33,11 @@
 
 /* Sidebar */
 .parent-sidebar{
-  position: sticky;
-  top: 0;
+  width: 280px;
+  flex-shrink: 0;
   height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: #fff;
   border-right: 1px solid rgba(31,41,55,0.10);
   padding: 18px 16px;
@@ -94,6 +96,10 @@
 
 /* Main */
 .parent-main{
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 26px;
   display: flex;
   flex-direction: column;
@@ -535,11 +541,11 @@
 }
 
 @media (max-width: 760px){
-  .parent-dashboard-page{grid-template-columns: 1fr;}
+  .parent-dashboard-page{flex-direction: column; height: auto; overflow: visible;}
   .parent-sidebar{display:none;}
   .parent-sidebar-toggle{display:flex;}
   .parent-sidebar.is-mobile-open{display:block; position:fixed; left:0; top:0; bottom:0; width:min(84vw,320px); z-index: 65;}
-  .parent-main{padding: 78px 16px 16px;}
+  .parent-main{height: auto; overflow: visible; padding: 78px 16px 16px;}
   .parent-child-detail__grid{grid-template-columns: repeat(2, minmax(0,1fr));}
 }
 

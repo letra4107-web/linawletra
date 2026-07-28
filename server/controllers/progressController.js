@@ -3,7 +3,7 @@ import Student from '../models/Student.js';
 import { supabase } from '../config/supabase.js';
 
 async function assertParentOwnsStudent(req, studentId) {
-  if (req.user?.role !== 'parent') return;
+  if (req.user?.role !== 'parent') return true;
   const student = await Student.findById(studentId).select('parentId');
   if (!student) return false;
   return student.parentId?.toString() === req.user.id;

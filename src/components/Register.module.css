@@ -245,13 +245,19 @@ body {
 }
 
 .tabItem:hover {
-  color: var(--color-indigo-600);
+  background: rgba(79, 70, 229, 0.08);
+  color: var(--color-slate-900);
 }
 
 .activeTab {
   background: var(--color-indigo-600);
   color: white;
   border-color: transparent;
+}
+
+.activeTab:hover {
+  background: var(--color-indigo-600);
+  color: white;
 }
 
 .formActions {

@@ -14,14 +14,6 @@ const fetchStudent = async (studentId) => {
   return Student.findById(studentId);
 };
 
-const fetchUser = async (userId) => {
-  const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
-  if (error) {
-    return null;
-  }
-  return data;
-};
-
 const isAuthorizedForStudent = async (req, student) => {
   if (!student) return false;
 
@@ -30,8 +22,10 @@ const isAuthorizedForStudent = async (req, student) => {
   }
 
   if (req.user.role === 'student') {
-    const user = await fetchUser(req.user.id);
-    return user?.studentId === student.id || user?.student_id === student.id;
+    // A student is linked to their own record via students.user_id, not the
+    // other way around -- users has no student_id column, so the previous
+    // check (user?.studentId === student.id) could never be true.
+    return student.userId === req.user.id || student.user_id === req.user.id;
   }
 
   return false;

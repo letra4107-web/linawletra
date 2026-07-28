@@ -475,29 +475,47 @@ export const updateStudent =async (req, res) => {
       ...(unlockedAchievementIds !== undefined ? { unlockedAchievementIds } : {}),
     };
 
+    let progressSaveError = null;
     if (Object.keys(progressMetadata).length > 0 && existingStudent.user_id) {
+      console.log('[Update Student] Merging progress metadata for user:', existingStudent.user_id, progressMetadata);
       const { data: currentUser, error: userFetchError } = await supabase
         .from('users')
         .select('metadata')
         .eq('id', existingStudent.user_id)
         .single();
 
-      if (!userFetchError) {
-        const { error: userUpdateError } = await supabase
+      if (userFetchError) {
+        console.error('[Update Student] Could not fetch current user metadata, progress NOT saved:', userFetchError.message);
+        progressSaveError = userFetchError.message;
+      } else {
+        const mergedMetadata = {
+          ...(currentUser?.metadata || {}),
+          ...progressMetadata,
+        };
+        const { data: updatedUser, error: userUpdateError } = await supabase
           .from('users')
           .update({
             ...(name !== undefined ? { name } : {}),
-            metadata: {
-              ...(currentUser?.metadata || {}),
-              ...progressMetadata,
-            },
+            metadata: mergedMetadata,
           })
-          .eq('id', existingStudent.user_id);
+          .eq('id', existingStudent.user_id)
+          .select('metadata')
+          .single();
 
         if (userUpdateError) {
-          console.warn('[Update Student] Failed to update user progress metadata:', userUpdateError.message);
+          console.error('[Update Student] Failed to update user progress metadata:', userUpdateError.message);
+          progressSaveError = userUpdateError.message;
+        } else {
+          console.log('[Update Student] Progress metadata saved. Row now reads:', updatedUser?.metadata);
         }
       }
+    }
+
+    if (progressSaveError) {
+      return res.status(500).json({
+        success: false,
+        message: `Student record updated, but progress failed to save: ${progressSaveError}`,
+      });
     }
 
     res.json({

@@ -13,9 +13,9 @@
 }
 
 .admin-dashboard-shell {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  min-height: 100vh;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
@@ -38,10 +38,11 @@
 }
 
 .admin-sidebar {
-  position: sticky;
-  top: 0;
+  width: 280px;
+  flex-shrink: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #fff;
   border-right: 1px solid rgba(31, 41, 55, 0.10);
   padding: 18px 16px;
@@ -216,6 +217,10 @@
 }
 
 .admin-dashboard-main {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 26px;
   display: flex;
   flex-direction: column;
@@ -641,10 +646,15 @@
 
 @media (max-width: 1180px) {
   .admin-dashboard-shell {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
   }
   .admin-dashboard-main {
+    height: auto;
+    overflow: visible;
     padding: 24px 18px 18px;
+    margin-top: 82px;
   }
   .admin-sidebar {
     position: fixed;
@@ -670,9 +680,6 @@
     align-items: center;
     justify-content: center;
     z-index: 30;
-  }
-  .admin-dashboard-main {
-    margin-top: 82px;
   }
 }
 

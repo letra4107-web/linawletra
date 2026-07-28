@@ -1,47 +1,13 @@
 ﻿import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { FileText, Users, BookOpen, CalendarCheck2, Activity, Settings, PlusCircle, Search, LayoutDashboard } from 'lucide-react';
+import { PlusCircle } from 'lucide-react';
 import '../styles/TeacherDashboard.css';
 import { assessmentService, lessonService, progressService, studentService } from '../services/api';
-
-const sidebarSections = [
-  {
-    label: 'Overview',
-    items: [
-      { path: '/teacher-dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { path: '/teacher/assessments', label: 'Assessments', icon: FileText },
-    ],
-  },
-  {
-    label: 'Students',
-    items: [
-      { path: '/teacher/students', label: 'My Students', icon: Users },
-      { path: '/teacher/learning-paths', label: 'Learning paths', icon: BookOpen },
-      { path: '/teacher/lessons', label: 'Lessons', icon: BookOpen },
-      { path: '/teacher/reading', label: 'PDF reading', icon: FileText },
-      { path: '/teacher/schedules', label: 'Schedules', icon: CalendarCheck2 },
-    ],
-  },
-  {
-    label: 'Analytics',
-    items: [
-      { path: '/teacher/progress', label: 'Progress reports', icon: Activity },
-      { path: '/teacher/activities', label: 'Activities', icon: Activity },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { path: '/teacher/settings', label: 'Settings', icon: Settings },
-    ],
-  },
-];
 
 export default function TeacherDashboard() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState('');
   const [stats, setStats] = useState({
     totalStudents: 0,
     lessons: 0,
@@ -114,26 +80,9 @@ export default function TeacherDashboard() {
     return name.split(' ')[0] || 'Teacher';
   }, [user]);
 
-  const filteredLinks = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    if (!query) return sidebarSections.flatMap((section) => section.items);
-    return sidebarSections
-      .flatMap((section) => section.items)
-      .filter((item) => item.label.toLowerCase().includes(query));
-  }, [searchTerm]);
-
   return (
     <main className="teacher-content">
         <div className="top-nav">
-          <div className="top-search">
-            <Search size={18} className="field-icon" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search teacher tools"
-            />
-          </div>
           <div className="top-right">
             <button
               type="button"
@@ -183,68 +132,7 @@ export default function TeacherDashboard() {
             ))}
           </div>
 
-          <div className="body-grid">
-            <section className="list-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Teacher tools</h2>
-                  <p>Find the section you need and go there quickly.</p>
-                </div>
-              </div>
-              <div className="list-controls">
-                <div className="list-search">
-                  <Search size={18} className="field-icon" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search tools"
-                  />
-                </div>
-                <div className="filter-tabs">
-                  <button type="button" className="filter-pill active">Overview</button>
-                  <button type="button" className="filter-pill">Students</button>
-                  <button type="button" className="filter-pill">Analytics</button>
-                </div>
-              </div>
-              <div className="student-cards">
-                {filteredLinks.length === 0 ? (
-                  <div className="empty-state">
-                    <div className="empty-illustration">🔍</div>
-                    <div className="empty-title">No matching tool</div>
-                    <p className="empty-copy">Try a different search term to find the right page.</p>
-                  </div>
-                ) : (
-                  filteredLinks.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.path}
-                        type="button"
-                        onClick={() => navigate(item.path)}
-                        className="student-card"
-                      >
-                        <div className="student-card-left">
-                          <div className="student-avatar">
-                            <Icon size={20} />
-                          </div>
-                          <div>
-                            <div className="student-name">{item.label}</div>
-                            <div className="student-meta">Open this section</div>
-                          </div>
-                        </div>
-                        <div className="student-card-right">
-                          <span className="student-score">Go</span>
-                          <span className="tier-pill">Quick access</span>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-              <div className="student-footer">{filteredLinks.length} of {sidebarSections.flatMap((section) => section.items).length} available teacher tools</div>
-            </section>
-
+          <div className="body-grid body-grid--single">
             <section className="detail-panel">
               <div className="detail-header">
                 <div>

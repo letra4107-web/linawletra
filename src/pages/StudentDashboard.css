@@ -209,36 +209,12 @@ a {
   font-size: 0.95rem;
 }
 
-.accessibility-dropdown-wrapper {
-  position: relative;
-}
-
-.accessibility-dropdown {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 14px);
-  width: 320px;
-  padding: 22px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-}
-
-.dropdown-row,
 .settings-block {
   display: grid;
   gap: 10px;
   margin-bottom: 16px;
 }
 
-.dropdown-row label {
-  color: var(--text);
-  font-weight: 700;
-}
-
-.dropdown-row input[type="range"],
-.dropdown-row select,
 .settings-block select,
 .settings-block input[type="range"] {
   width: 100%;
@@ -248,18 +224,6 @@ a {
   border: 1px solid var(--border);
   background: var(--surface-soft);
   color: var(--text);
-}
-
-.checkbox-row {
-  display: grid;
-  gap: 10px;
-}
-
-.checkbox-row label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-secondary);
 }
 
 .preview-box {
@@ -774,6 +738,159 @@ a {
   color: var(--text-secondary);
 }
 
+.word-meaning {
+  margin: 6px 0 0;
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.homograph-toggle {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.homograph-toggle-chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 0.8rem;
+}
+
+.homograph-toggle-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.homograph-panel {
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.homograph-example {
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.homograph-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.tts-caveat {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.vocabulary-bank {
+  margin-bottom: 20px;
+}
+
+.vocabulary-bank h4 {
+  margin: 0 0 10px;
+}
+
+.vocabulary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vocabulary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.vocabulary-chip:hover {
+  border-color: rgba(79, 70, 229, 0.3);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.vocabulary-chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.vocabulary-chip-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.vocabulary-chip:not(.is-active) .vocabulary-chip-badge {
+  background: rgba(79, 70, 229, 0.14);
+  color: var(--accent);
+}
+
+.word-of-the-day-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 18px 22px;
+  margin: 16px 0;
+  border-radius: 20px;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(99, 102, 241, 0.04));
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.word-of-the-day-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.14);
+}
+
+.word-of-the-day-kicker {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.word-of-the-day-word {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.word-of-the-day-meaning {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+}
+
 .feedback-panel {
   padding: 20px;
 }
@@ -1182,17 +1299,18 @@ a {
    Student dashboard shell: sidebar + main + right info panel
    ============================================================================ */
 .student-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
-  min-height: 100vh;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
   background: #f4f6f9;
 }
 
 .student-sidebar {
-  position: sticky;
-  top: 0;
+  width: 260px;
+  flex-shrink: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #ffffff;
   border-right: 1px solid var(--border);
   padding: 20px 16px;
@@ -1266,72 +1384,74 @@ a {
 }
 
 .student-sidebar-bottom {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  justify-content: center;
 }
 
-.student-sidebar-user {
+.student-sidebar-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 75, 75, 0.25);
+  background: transparent;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--danger);
+}
+
+.student-sidebar-logout:hover {
+  background: rgba(220, 75, 75, 0.08);
+}
+
+.profile-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 16px;
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
+  gap: 18px;
+  margin-bottom: 24px;
 }
 
-.student-sidebar-user-avatar {
-  width: 40px;
-  height: 40px;
+.profile-avatar {
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
   display: grid;
   place-items: center;
   font-weight: 800;
+  font-size: 1.8rem;
   flex-shrink: 0;
 }
 
-.student-sidebar-user-name {
-  font-weight: 800;
-  font-size: 0.95rem;
+.profile-name {
+  font-size: 1.4rem;
   color: var(--text);
+  margin-bottom: 4px;
 }
 
-.student-sidebar-user-meta {
-  font-size: 0.8rem;
+.profile-meta {
   color: var(--text-secondary);
   font-weight: 600;
 }
 
-.student-sidebar-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  padding: 11px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: #fff;
-  font-weight: 800;
-  cursor: pointer;
-  color: var(--text);
-}
-
-.student-sidebar-action.logout {
-  border-color: rgba(220, 75, 75, 0.3);
-  background: rgba(220, 75, 75, 0.08);
-  color: var(--danger);
-}
-
 .student-main {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 26px 32px;
-  min-height: 100vh;
 }
 
 .student-side-panel {
+  width: 320px;
+  flex-shrink: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 26px 20px;
   display: flex;
   flex-direction: column;
@@ -1505,8 +1625,8 @@ a {
 }
 
 @media (max-width: 1100px) {
-  .student-shell {
-    grid-template-columns: 240px minmax(0, 1fr);
+  .student-sidebar {
+    width: 240px;
   }
   .student-side-panel {
     display: none;
@@ -1515,10 +1635,26 @@ a {
 
 @media (max-width: 760px) {
   .student-shell {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
   }
   .student-sidebar {
-    position: static;
+    width: auto;
     height: auto;
+    overflow: visible;
+  }
+  .student-main {
+    height: auto;
+    overflow: visible;
+  }
+  /* Hidden entirely at <=1100px; bring it back at phone widths so streak/XP
+     and class updates are still reachable, stacked below the main content
+     instead of squeezed into a third column. */
+  .student-side-panel {
+    display: flex;
+    width: auto;
+    height: auto;
+    overflow: visible;
   }
 }
