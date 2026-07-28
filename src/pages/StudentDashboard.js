@@ -1166,7 +1166,7 @@ const StudentDashboard = () => {
           </button>
         </div>
       </aside>
-      <main className="student-main" style={{ position: 'relative' }}>
+      <main className="student-main" id="main-content" style={{ position: 'relative' }}>
         {newlyUnlockedAchievements.length > 0 && (
           <AchievementUnlockModal
             achievements={newlyUnlockedAchievements}

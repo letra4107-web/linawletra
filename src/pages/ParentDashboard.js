@@ -401,7 +401,7 @@ export default function ParentDashboard() {
     return (
       <div className="parent-dashboard-page">
         <ParentSidebar />
-        <main className="parent-main">
+        <main className="parent-main" id="main-content">
           <div className="parent-topbar">
             <div className="parent-topbar__title">
               <Skeleton h={12} w={180} />
@@ -466,7 +466,7 @@ export default function ParentDashboard() {
     return (
       <div className="parent-dashboard-page">
         <ParentSidebar />
-        <main className="parent-main">
+        <main className="parent-main" id="main-content">
           <div className="parent-error">{error}</div>
         </main>
       </div>
@@ -487,7 +487,7 @@ export default function ParentDashboard() {
   return (
     <div className="parent-dashboard-page">
       <ParentSidebar />
-      <main className="parent-main">
+      <main className="parent-main" id="main-content">
         <header className="parent-topbar">
           <div className="parent-topbar__title">
             <div className="parent-topbar__eyebrow">LinawLetra • Parent</div>

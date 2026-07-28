@@ -120,6 +120,27 @@ function AppRoutes() {
 
   return (
     <>
+      <a
+        href="#main-content"
+        style={{
+          position: 'absolute',
+          top: '-40px',
+          left: 0,
+          background: '#4F46E5',
+          color: '#fff',
+          padding: '8px 16px',
+          borderRadius: '0 0 8px 0',
+          fontWeight: 700,
+          fontSize: '0.875rem',
+          zIndex: 9999,
+          transition: 'top 120ms ease',
+          textDecoration: 'none',
+        }}
+        onFocus={(e) => { e.currentTarget.style.top = '0'; }}
+        onBlur={(e) => { e.currentTarget.style.top = '-40px'; }}
+      >
+        Pumunta sa nilalaman
+      </a>
       <Navigation />
       <Routes>
         <Route path="/" element={<Home />} />

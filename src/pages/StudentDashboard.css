@@ -1372,6 +1372,11 @@ a {
   transform: translateY(-1px);
 }
 
+.student-sidebar-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .student-sidebar-link.active {
   background: var(--accent-soft);
   border-color: rgba(79, 70, 229, 0.35);

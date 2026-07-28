@@ -61,7 +61,7 @@ export default function AdminDashboard() {
             </button>
           </div>
         </header>
-        <main className="admin-dashboard-content">
+        <main className="admin-dashboard-content" id="main-content">
           <Outlet />
         </main>
       </div>

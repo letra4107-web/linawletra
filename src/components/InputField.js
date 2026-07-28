@@ -24,6 +24,9 @@ export default function InputField({
 
   return (
     <div className={styles.field}>
+      <label htmlFor={name} className={`${styles.label} ${isInvalid ? styles.errorLabel : ''}`}>
+        {label}
+      </label>
       <div className={styles.inputWrapper}>
         {icon && <span className={styles.inputIcon}>{icon}</span>}
         <input
@@ -33,15 +36,11 @@ export default function InputField({
           value={value}
           onChange={onChange}
           onBlur={onBlur}
-          placeholder=" "
           disabled={disabled}
           aria-invalid={isInvalid}
           aria-describedby={`${name}-error`}
           className={`${styles.input} ${hasIcon ? styles.withIcon : ''} ${isInvalid ? styles.invalid : ''} ${valid ? styles.valid : ''}`}
         />
-        <label htmlFor={name} className={`${styles.label} ${hasValue ? styles.filled : ''} ${isInvalid ? styles.errorLabel : ''}`}>
-          {label}
-        </label>
         <div className={styles.iconGroup}>
           {showToggle && (
             <button

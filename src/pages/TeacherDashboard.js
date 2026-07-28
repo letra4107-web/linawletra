@@ -81,7 +81,7 @@ export default function TeacherDashboard() {
   }, [user]);
 
   return (
-    <main className="teacher-content">
+    <main className="teacher-content" id="main-content">
         <div className="top-nav">
           <div className="top-right">
             <button

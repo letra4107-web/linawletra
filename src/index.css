@@ -256,7 +256,7 @@ select {
 }
 
 ::selection {
-  background-color: #4ade80;
+  background-color: rgba(79, 70, 229, 0.22);
   color: #0f172a;
 }
 
@@ -267,7 +267,7 @@ svg {
 }
 
 body::-webkit-scrollbar {
-  width: 12px;
+  width: 8px;
 }
 
 body::-webkit-scrollbar-thumb {
@@ -277,6 +277,20 @@ body::-webkit-scrollbar-thumb {
 
 body::-webkit-scrollbar-track {
   background: rgba(148, 163, 184, 0.12);
+}
+
+/* Applies app-wide so pages/components that don't define their own
+   prefers-reduced-motion rule (most of the auth forms and dashboards)
+   still respect the user's OS-level motion setting. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .text-shadow-soft {
