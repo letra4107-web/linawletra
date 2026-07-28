@@ -355,7 +355,20 @@ export const getStudent =async (req, res) => {
 
     res.json({
       success: true,
-      student: studentWithUser,
+      student: {
+        ...studentWithUser,
+        // Progress lives on snake_case columns in Postgres; alias to the
+        // camelCase keys the frontend already reads everywhere else.
+        wordsCompleted: student.words_completed ?? 0,
+        completedWords: student.completed_words ?? [],
+        currentPhoneticLevel: student.current_phonetic_level ?? 'Easy',
+        progressInCurrentLevel: student.progress_in_level ?? 0,
+        highestPhoneticLevel: student.highest_phonetic_level ?? 'Easy',
+        hardCyclesCompleted: student.hard_cycles_completed ?? 0,
+        hadStreakBreak: student.had_streak_break ?? false,
+        unlockedAchievementIds: student.unlocked_achievement_ids ?? [],
+        lastLoginDate: student.last_login_date ?? null,
+      },
     });
   } catch (error) {
     console.error('[Get Student] Error:', error.message, error.stack);
@@ -418,6 +431,7 @@ export const updateStudent =async (req, res) => {
       hardCyclesCompleted,
       hadStreakBreak,
       unlockedAchievementIds,
+      lastLoginDate,
     } = req.body;
 
     if (gradeLevel !== undefined && gradeLevel !== null && !VALID_GRADE_LEVELS.includes(String(gradeLevel).trim())) {
@@ -438,6 +452,24 @@ export const updateStudent =async (req, res) => {
     if (gradeLevel !== undefined) updateData.grade_level = gradeLevel;
     if (readingLevel !== undefined) updateData.reading_level = readingLevel;
 
+    // Game progress now lives on dedicated students columns (see
+    // supabase_migration_student_progress_columns.sql), not users.metadata.
+    if (xp !== undefined) updateData.xp = xp;
+    if (wordsCompleted !== undefined) updateData.words_completed = wordsCompleted;
+    if (completedWords !== undefined) updateData.completed_words = completedWords;
+    if (achievements !== undefined) updateData.achievements = achievements;
+    if (accuracy !== undefined) updateData.accuracy = accuracy;
+    if (completed !== undefined) updateData.completed = completed;
+    if (streak !== undefined) updateData.streak = streak;
+    if (history !== undefined) updateData.history = history;
+    if (currentPhoneticLevel !== undefined) updateData.current_phonetic_level = currentPhoneticLevel;
+    if (progressInCurrentLevel !== undefined) updateData.progress_in_level = progressInCurrentLevel;
+    if (highestPhoneticLevel !== undefined) updateData.highest_phonetic_level = highestPhoneticLevel;
+    if (hardCyclesCompleted !== undefined) updateData.hard_cycles_completed = hardCyclesCompleted;
+    if (hadStreakBreak !== undefined) updateData.had_streak_break = hadStreakBreak;
+    if (unlockedAchievementIds !== undefined) updateData.unlocked_achievement_ids = unlockedAchievementIds;
+    if (lastLoginDate !== undefined) updateData.last_login_date = lastLoginDate;
+
     let updatedStudent = existingStudent;
     if (Object.keys(updateData).length > 0) {
       const { data, error: updateError } = await supabase
@@ -449,73 +481,40 @@ export const updateStudent =async (req, res) => {
 
       if (updateError) {
         console.error('[Update Student] Update error:', updateError);
-        throw updateError;
+        return res.status(500).json({
+          success: false,
+          message: `Failed to save student progress: ${updateError.message}`,
+        });
       }
       updatedStudent = data;
     }
 
-    console.log('[Update Student] âœ“ Student updated successfully');
+    console.log('[Update Student] ✓ Student updated successfully');
 
-    const progressMetadata = {
-      ...(xp !== undefined ? { xp } : {}),
-      ...(wordsCompleted !== undefined ? { wordsCompleted } : {}),
-      ...(completedWords !== undefined ? { completedWords } : {}),
-      ...(achievements !== undefined ? { achievements } : {}),
-      ...(accuracy !== undefined ? { accuracy, progressPercentage: accuracy } : {}),
-      ...(completed !== undefined ? { completedLessons: completed, wordsFinished: completed } : {}),
-      ...(streak !== undefined ? { streak } : {}),
-      ...(history !== undefined ? { history } : {}),
-      ...(currentPhoneticLevel !== undefined ? { currentPhoneticLevel } : {}),
-      ...(progressInCurrentLevel !== undefined ? { progressInCurrentLevel } : {}),
-      ...(accessibilitySettings !== undefined ? { accessibilitySettings } : {}),
-      ...(readingLevel !== undefined ? { readingLevel } : {}),
-      ...(highestPhoneticLevel !== undefined ? { highestPhoneticLevel } : {}),
-      ...(hardCyclesCompleted !== undefined ? { hardCyclesCompleted } : {}),
-      ...(hadStreakBreak !== undefined ? { hadStreakBreak } : {}),
-      ...(unlockedAchievementIds !== undefined ? { unlockedAchievementIds } : {}),
-    };
-
-    let progressSaveError = null;
-    if (Object.keys(progressMetadata).length > 0 && existingStudent.user_id) {
-      console.log('[Update Student] Merging progress metadata for user:', existingStudent.user_id, progressMetadata);
+    // accessibilitySettings is a UI preference, not game progress -- it stays
+    // on users.metadata rather than the students progress columns.
+    if (accessibilitySettings !== undefined && existingStudent.user_id) {
       const { data: currentUser, error: userFetchError } = await supabase
         .from('users')
         .select('metadata')
         .eq('id', existingStudent.user_id)
         .single();
 
-      if (userFetchError) {
-        console.error('[Update Student] Could not fetch current user metadata, progress NOT saved:', userFetchError.message);
-        progressSaveError = userFetchError.message;
-      } else {
-        const mergedMetadata = {
-          ...(currentUser?.metadata || {}),
-          ...progressMetadata,
-        };
-        const { data: updatedUser, error: userUpdateError } = await supabase
+      if (!userFetchError) {
+        const { error: userUpdateError } = await supabase
           .from('users')
           .update({
             ...(name !== undefined ? { name } : {}),
-            metadata: mergedMetadata,
+            metadata: { ...(currentUser?.metadata || {}), accessibilitySettings },
           })
-          .eq('id', existingStudent.user_id)
-          .select('metadata')
-          .single();
+          .eq('id', existingStudent.user_id);
 
         if (userUpdateError) {
-          console.error('[Update Student] Failed to update user progress metadata:', userUpdateError.message);
-          progressSaveError = userUpdateError.message;
-        } else {
-          console.log('[Update Student] Progress metadata saved. Row now reads:', updatedUser?.metadata);
+          console.warn('[Update Student] Failed to save accessibility settings:', userUpdateError.message);
         }
       }
-    }
-
-    if (progressSaveError) {
-      return res.status(500).json({
-        success: false,
-        message: `Student record updated, but progress failed to save: ${progressSaveError}`,
-      });
+    } else if (name !== undefined && existingStudent.user_id) {
+      await supabase.from('users').update({ name }).eq('id', existingStudent.user_id);
     }
 
     res.json({

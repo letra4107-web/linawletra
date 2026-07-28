@@ -95,15 +95,12 @@ const getPhoneticWordForProgress = (level = 'Easy', progressCount = 0) => {
  * @returns {Promise<Object>} - Updated: { streak, lastLoginDate }
  */
 const calculateStreak = async (params) => {
-  const { userId, currentStreak } = params;
-  if (!userId) {
-    console.error('calculateStreak: userId is required');
+  const { currentStudentId, currentStreak, lastLoginDate: lastLoginDateString } = params;
+  if (!currentStudentId) {
+    console.error('calculateStreak: currentStudentId is required');
     return { streak: currentStreak, lastLoginDate: new Date() };
   }
   try {
-    // Fetch user data via API
-    const userData = await studentService.getStudent(userId).catch(() => ({}));
-    const lastLoginDateString = userData?.last_login_date || userData?.lastLoginDate;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let updatedStreak = currentStreak || 0;
@@ -130,10 +127,11 @@ const calculateStreak = async (params) => {
       updatedStreak = 1;
       console.log(`First login: streak initialized to 1`);
     }
-    // Update user via API
-    await studentService.updateStudent(userId, {
+    // Update the students row via API (must use currentStudentId -- updateStudent
+    // looks up by students.id only, not the auth user id).
+    await studentService.updateStudent(currentStudentId, {
       streak: updatedStreak,
-      last_login_date: today.toISOString(),
+      lastLoginDate: today.toISOString().split('T')[0],
     }).catch((error) => {
       console.warn('Failed to update streak via API:', error);
     });
@@ -257,8 +255,8 @@ const StudentDashboard = () => {
           wordHighlighting: (userData.accessibilitySettings || profileMetadata.accessibilitySettings)?.wordHighlighting ?? true,
         });
         // Fetch supplementary dashboard data via API. This call is best-effort:
-        // it must never block restoring xp/badges/level, which already live in
-        // profileMetadata and are the real source of truth for a student's progress.
+        // it must never block restoring xp/badges/level, which live directly on
+        // the students row (userData) and are the real source of truth.
         let dashboardData = {};
         try {
           const dashboardResponse = await studentService.getDashboardData?.(userId);
@@ -267,7 +265,7 @@ const StudentDashboard = () => {
           console.warn('Dashboard summary fetch failed (non-fatal):', dashboardError);
         }
         const progressData = {
-          ...(profileMetadata || {}),
+          ...(userData || {}),
           ...(dashboardData || {}),
         };
         let assignedLevel = 'beginner';
@@ -299,8 +297,9 @@ const StudentDashboard = () => {
         // =====================================================================
         const currentStreak = progressData?.streak || 0;
         const streakResult = await calculateStreak({
-          userId,
+          currentStudentId: userData.studentId || userData.student_id || userData.id || null,
           currentStreak,
+          lastLoginDate: progressData?.lastLoginDate || null,
         });
         if (streakResult) {
           if (currentStreak >= 3 && streakResult.streak === 1) {

@@ -132,29 +132,45 @@ export const getProgressByStudent =async (req, res) => {
 export const getDashboardData =async (req, res) => {
   try {
     const { studentId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
 
-    if (!(await assertParentOwnsStudent(req, studentId))) {
+    const { data: student, error } = await supabase
+      .from('students')
+      .select('*')
+      .or(`id.eq.${studentId},user_id.eq.${studentId}`)
+      .single();
+
+    if (error || !student) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    const isOwnStudent = student.user_id === userId;
+    const isParent = userRole === 'parent' && student.parent_id === userId;
+    const isTeacher = userRole === 'teacher' && student.teacher_id === userId;
+    const isAdmin = userRole === 'admin';
+
+    if (!isOwnStudent && !isParent && !isTeacher && !isAdmin) {
       return res.status(403).json({ message: 'You do not have permission to access this student dashboard data' });
     }
 
-    const totalLessons = await Progress.countDocuments({ studentId });
-    const completedLessons = await Progress.countDocuments({ studentId, status: 'completed' });
-    const averageScore = await Progress.aggregate([
-      { $match: { studentId } },
-      { $group: { _id: null, avgScore: { $avg: '$score' } } },
-    ]);
-
-    const recentProgress = await Progress.find({ studentId })
-      .populate('lessonId', 'title category')
-      .sort({ updatedAt: -1 })
-      .limit(5);
-
     res.json({
-      totalLessons,
-      completedLessons,
-      completionRate: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
-      averageScore: averageScore[0]?.avgScore || 0,
-      recentProgress,
+      xp: student.xp ?? 0,
+      streak: student.streak ?? 0,
+      lastLoginDate: student.last_login_date ?? null,
+      wordsCompleted: student.words_completed ?? 0,
+      completedWords: student.completed_words ?? [],
+      achievements: student.achievements ?? 0,
+      accuracy: student.accuracy ?? 0,
+      completed: student.completed ?? 0,
+      history: student.history ?? [],
+      currentPhoneticLevel: student.current_phonetic_level ?? 'Easy',
+      progressInCurrentLevel: student.progress_in_level ?? 0,
+      highestPhoneticLevel: student.highest_phonetic_level ?? 'Easy',
+      hardCyclesCompleted: student.hard_cycles_completed ?? 0,
+      hadStreakBreak: student.had_streak_break ?? false,
+      unlockedAchievementIds: student.unlocked_achievement_ids ?? [],
+      totalLessons: 7,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
