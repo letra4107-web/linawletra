@@ -22,7 +22,6 @@ import './StudentDashboard.css';
 // ============================================================================
 // CONSTANTS: Activity & Gamification
 // ============================================================================
-const XP_PER_ACTIVITY = 50; // Normalized XP reward per completed activity/lesson
 const PRONUNCIATION_XP = {
   perfect: 50,
   correct: 40,
@@ -85,45 +84,6 @@ const getPhoneticWordForProgress = (level = 'Easy', progressCount = 0) => {
 // ============================================================================
 // GAMIFICATION HELPER FUNCTIONS
 // ============================================================================
-/**
- * completeActivity() - Award XP and update activity counters on lesson/activity completion
- * Called ONLY when a full activity completes, not on every pronunciation evaluation
- * @param {Object} params - { userId, currentXp, currentActivitiesCompleted, currentStreak }
- * @returns {Promise<Object>} - Updated stats: { xp, activitiesCompleted, streak }
- */
-const completeActivity = async (params) => {
-  const { userId, currentXp, currentActivitiesCompleted, currentStreak } = params;
-  if (!userId) {
-    console.error('completeActivity: userId is required');
-    return null;
-  }
-  try {
-    const newXp = currentXp + XP_PER_ACTIVITY;
-    const newActivitiesCompleted = currentActivitiesCompleted + 1;
-    // Update user via Supabase API
-    const { error } = await supabase
-      .from('users')
-      .update({
-        xp: newXp,
-        activities_completed: newActivitiesCompleted,
-        streak: currentStreak,
-        last_activity_date: new Date().toISOString(),
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-    if (error) throw error;
-    console.log(`Activity completed for ${userId}: +${XP_PER_ACTIVITY} XP (Total: ${newXp})`);
-    return {
-      xp: newXp,
-      activitiesCompleted: newActivitiesCompleted,
-      streak: currentStreak,
-    };
-  } catch (error) {
-    console.error('completeActivity: Failed to save activity to Firestore', error);
-    return null;
-  }
-};
 /**
  * calculateStreak() - Compute streak on app load based on lastLoginDate
  * Runs on component mount; compares lastLoginDate with current date
