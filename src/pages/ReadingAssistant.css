@@ -408,6 +408,19 @@ textarea:focus-visible {
 .syllable-part {
   display: inline-block;
   padding: 0 2px;
+  border-radius: 4px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.syllable-part.syllable-active {
+  background: #ffe38f;
+  transform: scale(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .syllable-part.syllable-active {
+    transform: none;
+  }
 }
 
 .syllable-divider {

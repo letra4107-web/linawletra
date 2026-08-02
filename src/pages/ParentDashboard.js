@@ -195,6 +195,8 @@ export default function ParentDashboard() {
   const [progress, setProgress] = useState(null);
   const [activities, setActivities] = useState(null);
   const [notifications, setNotifications] = useState(null);
+  const [wordMastery, setWordMastery] = useState(null);
+  const [confusionPatterns, setConfusionPatterns] = useState([]);
   const [aiInsights, setAiInsights] = useState(null);
 
   const currentSection = (section || 'summary').toLowerCase();
@@ -322,14 +324,20 @@ export default function ParentDashboard() {
 
       setProgress(null);
       setActivities(null);
+      setWordMastery(null);
+      setConfusionPatterns([]);
       try {
-        const [p, a] = await Promise.all([
+        const [p, a, m, c] = await Promise.all([
           parentDashboardApi.getProgressByChildId(childId),
           parentDashboardApi.getActivitiesByChildId(childId),
+          parentDashboardApi.getWordMastery(childId),
+          parentDashboardApi.getConfusionPatterns(childId),
         ]);
         if (cancelled) return;
         setProgress(p);
         setActivities(a);
+        setWordMastery(m);
+        setConfusionPatterns(c);
       } catch (e) {
         if (cancelled) return;
         console.error(e);
@@ -478,10 +486,6 @@ export default function ParentDashboard() {
   const showAnalytics = showProgress;
   const showRecent = showSummary;
   const showChildren = currentSection === 'children';
-  const showMessages = currentSection === 'messages';
-  const showNotifications = currentSection === 'notifications';
-  const showGoals = currentSection === 'goals';
-  const showLessons = currentSection === 'lessons';
   const showSettings = currentSection === 'settings';
 
   return (
@@ -498,9 +502,6 @@ export default function ParentDashboard() {
           <div className="parent-topbar__actions">
             <button type="button" className="parent-btn parent-btn--primary" onClick={() => setShowEnrollModal(true)}>
               Enroll Child
-            </button>
-            <button type="button" className="parent-btn parent-btn--secondary" onClick={() => window.location.assign('/parent/notifications')}>
-              View Notifications
             </button>
             <div className="parent-chip" style={{ background: 'rgba(79,70,229,0.06)' }}>
               <span style={{ fontWeight: 900 }}>Child:</span>
@@ -576,6 +577,45 @@ export default function ParentDashboard() {
                 </div>
               </div>
             </div>
+          </section>
+        )}
+
+        {showAnalytics && (
+          <section className="parent-section">
+            <div className="parent-section__head">
+              <div>
+                <div className="parent-section__title">Word Mastery</div>
+                <div className="parent-section__sub">How many words {selectedChild?.name || 'your child'} has truly mastered vs. still needs practice</div>
+              </div>
+            </div>
+            <div className="parent-grid parent-grid--cards">
+              <div className="parent-card">
+                <div className="parent-card__label">Mastered</div>
+                <div className="parent-card__value">{wordMastery?.counts?.mastered ?? 0}</div>
+              </div>
+              <div className="parent-card">
+                <div className="parent-card__label">Needs Practice</div>
+                <div className="parent-card__value">{wordMastery?.counts?.needsPractice ?? 0}</div>
+              </div>
+              <div className="parent-card">
+                <div className="parent-card__label">Difficult</div>
+                <div className="parent-card__value">{wordMastery?.counts?.difficult ?? 0}</div>
+              </div>
+            </div>
+            {confusionPatterns.length > 0 && (
+              <div className="parent-confusion-block">
+                <div className="parent-section__sub" style={{ marginBottom: 8 }}>
+                  Sound mix-ups that come up most often when reading aloud
+                </div>
+                <div className="parent-confusion-list">
+                  {confusionPatterns.slice(0, 5).map((pattern) => (
+                    <span key={pattern.pattern_type} className="parent-chip parent-chip--warn">
+                      {String(pattern.pattern_type || '').replace(/_/g, ' ')} · {pattern.occurrence_count}x
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -660,68 +700,6 @@ export default function ParentDashboard() {
             ) : (
               <EmptyState title="No children enrolled" subtitle="Contact the classroom/admin to enroll your child." />
             )}
-          </section>
-        )}
-
-        {showMessages && (
-          <section className="parent-section">
-            <div className="parent-section__head">
-              <div>
-                <div className="parent-section__title">Messages</div>
-                <div className="parent-section__sub">Communication from teachers/admin</div>
-              </div>
-            </div>
-            <EmptyState title="No message inbox UI yet" subtitle="Hook to /api/parent/messages when available in backend." />
-          </section>
-        )}
-
-        {showNotifications && (
-          <section className="parent-section">
-            <div className="parent-section__head">
-              <div>
-                <div className="parent-section__title">Notifications</div>
-                <div className="parent-section__sub">Alerts & updates</div>
-              </div>
-            </div>
-            {Array.isArray(notifications) && notifications.length ? (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {notifications.slice(0, 10).map((n, i) => (
-                  <div key={i} className="parent-list-row">
-                    <div>
-                      <div className="parent-list-row__title">{n?.title || 'Notification'}</div>
-                      <div className="parent-list-row__meta">{n?.message || n?.body || '—'} • {n?.createdAt || n?.time || '—'}</div>
-                    </div>
-                    <StatusChip variant={n?.type === 'success' ? 'completed' : n?.type === 'alert' ? 'alert' : 'progress'}>{n?.type || 'update'}</StatusChip>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState title="You’re all caught up" subtitle="No notifications right now." />
-            )}
-          </section>
-        )}
-
-        {showGoals && (
-          <section className="parent-section">
-            <div className="parent-section__head">
-              <div>
-                <div className="parent-section__title">Goals & Achievements</div>
-                <div className="parent-section__sub">Progress toward reading milestones</div>
-              </div>
-            </div>
-            <EmptyState title="Goals placeholder" subtitle="Connect this panel to your goals/achievements endpoint when backend is ready." />
-          </section>
-        )}
-
-        {showLessons && (
-          <section className="parent-section">
-            <div className="parent-section__head">
-              <div>
-                <div className="parent-section__title">Lessons & Activities</div>
-                <div className="parent-section__sub">Recommended activities & completion history</div>
-              </div>
-            </div>
-            <EmptyState title="Lessons UI placeholder" subtitle="This panel will be populated once backend provides /api/parent/lessons or within activities payload." />
           </section>
         )}
 

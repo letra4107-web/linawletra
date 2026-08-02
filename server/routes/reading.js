@@ -4,7 +4,9 @@ import { createRequire } from 'module';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { supabase } from '../config/supabase.js';
 import { compareReadingText } from '../services/readingAccuracy.js';
+import { evaluateWord } from '../services/tagalogPhonetics.js';
 import { VALID_READING_LEVELS, normalizeReadingLevel, getReadingLevelRank } from '../services/readingLevels.js';
+import { recordWordOutcome, getWordMastery, getConfusionPatterns, getPracticeRecommendations, getLevelReadiness } from '../controllers/attemptsController.js';
 
 const router = express.Router();
 const require = createRequire(import.meta.url);
@@ -296,32 +298,44 @@ router.get('/materials/:id', authMiddleware, async (req, res, next) => {
 
 router.post('/attempts', authMiddleware, roleMiddleware('student'), async (req, res, next) => {
   try {
-    const { materialId, sentence, expectedText, spokenText } = req.body;
-    if (!materialId || !expectedText || !spokenText) {
-      return res.status(400).json({ message: 'materialId, expectedText, and spokenText are required.' });
+    const { materialId, sentence, expectedText, spokenText, mode, wordTarget, activityType } = req.body;
+    if (!expectedText || !spokenText) {
+      return res.status(400).json({ message: 'expectedText and spokenText are required.' });
+    }
+    if (!materialId && !wordTarget) {
+      return res.status(400).json({ message: 'materialId or wordTarget is required.' });
     }
 
-    const { data: material, error: materialError } = await supabase
-      .from('reading_materials')
-      .select('*')
-      .eq('id', materialId)
-      .single();
-    if (materialError || !material) return res.status(404).json({ message: 'Reading material not found.' });
+    if (materialId) {
+      const { data: material, error: materialError } = await supabase
+        .from('reading_materials')
+        .select('*')
+        .eq('id', materialId)
+        .single();
+      if (materialError || !material) return res.status(404).json({ message: 'Reading material not found.' });
 
-    const allowed = await userCanAccessMaterial(req, material);
-    if (!allowed) return res.status(403).json({ message: 'This material is not assigned to you.' });
+      const allowed = await userCanAccessMaterial(req, material);
+      if (!allowed) return res.status(403).json({ message: 'This material is not assigned to you.' });
+    }
 
     const student = await getCurrentStudentRecord(req.user.id);
+    const studentId = student?.id || req.user.id;
     const result = compareReadingText(expectedText, spokenText);
     const payload = {
-      student_id: student?.id || req.user.id,
-      material_id: materialId,
+      student_id: studentId,
+      material_id: materialId || null,
       sentence: sentence || expectedText,
       expected_text: expectedText,
       spoken_text: spokenText,
       accuracy_score: result.accuracyScore,
       pronunciation_issues: result,
       completed_at: new Date().toISOString(),
+      word_target: wordTarget || null,
+      mode: mode || 'sentence',
+      activity_type: activityType || (materialId ? 'lesson_material' : 'word_practice'),
+      phoneme_accuracy: result.phonemeAccuracy,
+      syllable_accuracy: result.syllableAccuracy,
+      confusion_tags: result.confusionTags || [],
     };
 
     const { data, error } = await supabase
@@ -331,11 +345,23 @@ router.post('/attempts', authMiddleware, roleMiddleware('student'), async (req, 
       .single();
     if (error) throw error;
 
+    for (const checkedWord of result.checkedWords) {
+      const phonemeEval = checkedWord.phoneme || evaluateWord(checkedWord.expected, checkedWord.spoken || '');
+      await recordWordOutcome(studentId, checkedWord.expected, phonemeEval).catch((e) =>
+        console.warn('[Reading] word mastery update failed:', e.message)
+      );
+    }
+
     return res.status(201).json({ attempt: data, result });
   } catch (error) {
     return next(error);
   }
 });
+
+router.get('/mastery/:studentId', authMiddleware, getWordMastery);
+router.get('/confusions/:studentId', authMiddleware, getConfusionPatterns);
+router.get('/practice-recommendations/:studentId', authMiddleware, getPracticeRecommendations);
+router.post('/level-check/:studentId', authMiddleware, getLevelReadiness);
 
 router.get('/analytics', authMiddleware, roleMiddleware('teacher', 'admin', 'parent'), async (req, res, next) => {
   try {

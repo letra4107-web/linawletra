@@ -1,4 +1,6 @@
-﻿const normalizeReadingText = (text = '') =>
+﻿import { evaluateWord, generateFeedback as generatePhonemeFeedback } from './tagalogPhonetics.js';
+
+const normalizeReadingText = (text = '') =>
   String(text)
     .toLowerCase()
     .normalize('NFD')
@@ -40,6 +42,50 @@ const wordSimilarity = (expectedWord, spokenWord) => {
   return maxLength === 0 ? 1 : 1 - levenshteinDistance(expected, spoken) / maxLength;
 };
 
+const GAP_PENALTY = -0.4;
+
+// Needleman-Wunsch style global alignment: finds the single best-scoring way to pair up
+// expectedWords/spokenWords (allowing skips on either side), instead of greedily matching each
+// expected word to its best remaining candidate, which lets one bad early match cascade into
+// misaligning everything after it.
+const alignWordSequences = (expectedWords, spokenWords) => {
+  const n = expectedWords.length;
+  const m = spokenWords.length;
+  const score = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i += 1) score[i][0] = i * GAP_PENALTY;
+  for (let j = 1; j <= m; j += 1) score[0][j] = j * GAP_PENALTY;
+
+  for (let i = 1; i <= n; i += 1) {
+    for (let j = 1; j <= m; j += 1) {
+      const diag = score[i - 1][j - 1] + wordSimilarity(expectedWords[i - 1], spokenWords[j - 1]);
+      const up = score[i - 1][j] + GAP_PENALTY;
+      const left = score[i][j - 1] + GAP_PENALTY;
+      score[i][j] = Math.max(diag, up, left);
+    }
+  }
+
+  const ops = [];
+  let i = n;
+  let j = m;
+  while (i > 0 || j > 0) {
+    const diag = i > 0 && j > 0
+      ? score[i - 1][j - 1] + wordSimilarity(expectedWords[i - 1], spokenWords[j - 1])
+      : -Infinity;
+    if (i > 0 && j > 0 && score[i][j] === diag) {
+      ops.push({ type: 'match', expectedIndex: i - 1, spokenIndex: j - 1 });
+      i -= 1;
+      j -= 1;
+    } else if (i > 0 && score[i][j] === score[i - 1][j] + GAP_PENALTY) {
+      ops.push({ type: 'missing', expectedIndex: i - 1 });
+      i -= 1;
+    } else {
+      ops.push({ type: 'extra', spokenIndex: j - 1 });
+      j -= 1;
+    }
+  }
+  return ops.reverse();
+};
+
 const getDisplayWords = (text = '') => String(text).split(/\s+/).map((word) => word.trim()).filter(Boolean);
 
 const getSyllables = (word = '') =>
@@ -59,37 +105,38 @@ const compareReadingText = (expectedText = '', spokenText = '') => {
   const expectedDisplayWords = getDisplayWords(expectedText);
   const expectedWords = normalizeReadingText(expectedText).split(' ').filter(Boolean);
   const spokenWords = normalizeReadingText(spokenText).split(' ').filter(Boolean);
-  const matchedSpokenIndexes = new Set();
   const incorrectWords = [];
   const missingWords = [];
   const pronunciationIssues = [];
   const checkedWords = [];
   const practiceParts = [];
+  const extraWords = [];
   let matched = 0;
   let partial = 0;
 
-  expectedWords.forEach((expectedWord, expectedIndex) => {
-    const displayWord = expectedDisplayWords[expectedIndex] || expectedWord;
-    let best = { index: -1, score: 0, word: '' };
+  const ops = alignWordSequences(expectedWords, spokenWords);
 
-    spokenWords.forEach((spokenWord, spokenIndex) => {
-      if (matchedSpokenIndexes.has(spokenIndex)) return;
-      const distancePenalty = Math.abs(spokenIndex - expectedIndex) * 0.03;
-      const score = Math.max(0, wordSimilarity(expectedWord, spokenWord) - distancePenalty);
-      if (score > best.score) {
-        best = { index: spokenIndex, score, word: spokenWord };
-      }
-    });
+  ops.forEach((op) => {
+    if (op.type === 'extra') {
+      extraWords.push(spokenWords[op.spokenIndex]);
+      return;
+    }
+
+    const expectedIndex = op.expectedIndex;
+    const displayWord = expectedDisplayWords[expectedIndex] || expectedWords[expectedIndex];
+    const best = op.type === 'match'
+      ? { score: wordSimilarity(expectedWords[expectedIndex], spokenWords[op.spokenIndex]), word: spokenWords[op.spokenIndex] }
+      : { score: 0, word: '' };
 
     if (best.score >= 0.82) {
       matched += 1;
-      matchedSpokenIndexes.add(best.index);
-      checkedWords.push({ expected: displayWord, spoken: best.word, status: 'correct', score: Math.round(best.score * 100) });
+      const phoneme = evaluateWord(displayWord, best.word);
+      checkedWords.push({ expected: displayWord, spoken: best.word, status: 'correct', score: Math.round(best.score * 100), phoneme });
       if (best.score < 0.96) {
         pronunciationIssues.push({
           expected: displayWord,
           spoken: best.word,
-          message: `Practice "${displayWord}" again. It sounded like "${best.word}".`,
+          message: generatePhonemeFeedback(phoneme, displayWord),
         });
       }
       return;
@@ -97,16 +144,16 @@ const compareReadingText = (expectedText = '', spokenText = '') => {
 
     if (best.score >= 0.55) {
       partial += best.score;
-      matchedSpokenIndexes.add(best.index);
+      const phoneme = evaluateWord(displayWord, best.word);
       const missedSyllables = getSyllables(displayWord)
         .filter((part) => !normalizeReadingText(best.word).includes(normalizeReadingText(part)));
       practiceParts.push(...(missedSyllables.length ? missedSyllables : [displayWord]));
-      checkedWords.push({ expected: displayWord, spoken: best.word, status: 'practice', score: Math.round(best.score * 100) });
+      checkedWords.push({ expected: displayWord, spoken: best.word, status: 'practice', score: Math.round(best.score * 100), phoneme });
       incorrectWords.push({ expected: displayWord, spoken: best.word });
       pronunciationIssues.push({
         expected: displayWord,
         spoken: best.word,
-        message: `Try "${displayWord}" again.`,
+        message: generatePhonemeFeedback(phoneme, displayWord),
       });
       return;
     }
@@ -119,12 +166,23 @@ const compareReadingText = (expectedText = '', spokenText = '') => {
     }
   });
 
-  const extraWords = spokenWords.filter((_, index) => !matchedSpokenIndexes.has(index));
   const denominator = Math.max(expectedWords.length, spokenWords.length, 1);
   const accuracyScore = Math.max(0, Math.min(100, Math.round(((matched + partial) / denominator) * 100)));
 
+  const wordsWithPhoneme = checkedWords.filter((w) => w.phoneme);
+  const phonemeAccuracy = wordsWithPhoneme.length
+    ? Math.round(wordsWithPhoneme.reduce((sum, w) => sum + w.phoneme.phonemeAccuracy, 0) / wordsWithPhoneme.length)
+    : null;
+  const syllableAccuracy = wordsWithPhoneme.length
+    ? Math.round(wordsWithPhoneme.reduce((sum, w) => sum + w.phoneme.syllableAccuracy, 0) / wordsWithPhoneme.length)
+    : null;
+  const confusionTags = [...new Set(wordsWithPhoneme.flatMap((w) => w.phoneme.confusions))];
+
   return {
     accuracyScore,
+    phonemeAccuracy,
+    syllableAccuracy,
+    confusionTags,
     missingWords,
     incorrectWords,
     extraWords,

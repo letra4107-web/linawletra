@@ -378,7 +378,11 @@
 }
 .parent-chip--ok{background: rgba(16,185,129,0.10); color: rgb(16,185,129);} 
 .parent-chip--warn{background: rgba(79,70,229,0.10); color: var(--primary);} 
-.parent-chip--danger{background: rgba(239,68,68,0.10); color: rgb(239,68,68);} 
+.parent-chip--danger{background: rgba(239,68,68,0.10); color: rgb(239,68,68);}
+
+.parent-confusion-block{margin-top: 16px;}
+.parent-confusion-list{display:flex; flex-wrap:wrap; gap:8px;}
+.parent-confusion-list .parent-chip{text-transform: capitalize;}
 
 .parent-section{
   background:#fff;

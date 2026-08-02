@@ -317,6 +317,10 @@ export const readingService = {
   getMaterial: (id) => axiosInstance.get(`/reading/materials/${id}`),
   saveAttempt: (data) => axiosInstance.post('/reading/attempts', data),
   getAnalytics: () => axiosInstance.get('/reading/analytics'),
+  getWordMastery: (studentId) => axiosInstance.get(`/reading/mastery/${studentId}`),
+  getConfusionPatterns: (studentId) => axiosInstance.get(`/reading/confusions/${studentId}`),
+  getPracticeRecommendations: (studentId) => axiosInstance.get(`/reading/practice-recommendations/${studentId}`),
+  checkLevelReadiness: (studentId, levelWords) => axiosInstance.post(`/reading/level-check/${studentId}`, { levelWords }),
 };
 
 export default axiosInstance;

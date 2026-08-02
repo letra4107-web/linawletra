@@ -5,10 +5,6 @@ import {
   FiGrid,
   FiUsers,
   FiBarChart2,
-  FiBookOpen,
-  FiTarget,
-  FiMessageSquare,
-  FiBell,
   FiSettings,
   FiMenu,
   FiX,
@@ -19,10 +15,6 @@ const sidebarItems = [
   { path: '/parent/summary', label: 'Dashboard Overview', icon: <FiGrid /> },
   { path: '/parent/children', label: 'My Children', icon: <FiUsers /> },
   { path: '/parent/progress', label: 'Progress Report', icon: <FiBarChart2 /> },
-  { path: '/parent/lessons', label: 'Lessons & Activities', icon: <FiBookOpen /> },
-  { path: '/parent/goals', label: 'Goals & Achievements', icon: <FiTarget /> },
-  { path: '/parent/messages', label: 'Messages', icon: <FiMessageSquare /> },
-  { path: '/parent/notifications', label: 'Notifications', icon: <FiBell /> },
   { path: '/parent/settings', label: 'Settings', icon: <FiSettings /> },
 ];
 

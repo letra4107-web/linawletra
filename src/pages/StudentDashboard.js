@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { speechService, studentService, practiceWordService } from '../services/api';
+import { speechService, studentService, practiceWordService, readingService } from '../services/api';
+import { evaluateWord as evaluateWordPhonetics, syllabify } from '../utils/tagalogPhonetics';
+import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import {
   FiBell,
   FiLogOut,
@@ -12,6 +14,15 @@ import {
   FiSettings,
   FiZap,
   FiUser,
+  FiCheck,
+  FiCheckCircle,
+  FiX,
+  FiAlertTriangle,
+  FiAward,
+  FiVolume2,
+  FiRepeat,
+  FiLock,
+  FiTarget,
 } from 'react-icons/fi';
 import { subscribeToTeacherUploadsByGradeLevel } from '../services/supabaseService';
 import { ACHIEVEMENTS, getUnlockedAchievementIds, getAchievementById } from '../services/achievementService';
@@ -84,67 +95,6 @@ const getPhoneticWordForProgress = (level = 'Easy', progressCount = 0) => {
 // ============================================================================
 // GAMIFICATION HELPER FUNCTIONS
 // ============================================================================
-/**
- * calculateStreak() - Compute streak on app load based on lastLoginDate
- * Runs on component mount; compares lastLoginDate with current date
- * Logic:
- *   - lastLoginDate === yesterday ? streak += 1
- *   - lastLoginDate === today ? streak unchanged
- *   - lastLoginDate < yesterday ? reset streak to 1
- * @param {Object} params - { userId, currentStreak }
- * @returns {Promise<Object>} - Updated: { streak, lastLoginDate }
- */
-const calculateStreak = async (params) => {
-  const { currentStudentId, currentStreak, lastLoginDate: lastLoginDateString } = params;
-  if (!currentStudentId) {
-    console.error('calculateStreak: currentStudentId is required');
-    return { streak: currentStreak, lastLoginDate: new Date() };
-  }
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let updatedStreak = currentStreak || 0;
-    if (lastLoginDateString) {
-      const lastLoginDateParsed = new Date(lastLoginDateString);
-      lastLoginDateParsed.setHours(0, 0, 0, 0);
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (lastLoginDateParsed.getTime() === yesterday.getTime()) {
-        // Last login was yesterday ? increment streak
-        updatedStreak = (currentStreak || 0) + 1;
-        console.log(`Streak incremented (yesterday login): ${updatedStreak}`);
-      } else if (lastLoginDateParsed.getTime() === today.getTime()) {
-        // Last login was today ? preserve streak
-        updatedStreak = currentStreak || 0;
-        console.log(`Streak preserved (already logged in today): ${updatedStreak}`);
-      } else if (lastLoginDateParsed.getTime() < yesterday.getTime()) {
-        // Last login was before yesterday ? reset streak
-        updatedStreak = 1;
-        console.log(`Streak reset (gap detected): ${updatedStreak}`);
-      }
-    } else {
-      // First login ever
-      updatedStreak = 1;
-      console.log(`First login: streak initialized to 1`);
-    }
-    // Update the students row via API (must use currentStudentId -- updateStudent
-    // looks up by students.id only, not the auth user id).
-    await studentService.updateStudent(currentStudentId, {
-      streak: updatedStreak,
-      lastLoginDate: today.toISOString().split('T')[0],
-    }).catch((error) => {
-      console.warn('Failed to update streak via API:', error);
-    });
-    console.log(`Streak calculation complete: ${updatedStreak}, lastLoginDate updated`);
-    return {
-      streak: updatedStreak,
-      lastLoginDate: today,
-    };
-  } catch (error) {
-    console.error('calculateStreak: Failed to calculate streak', error);
-    return { streak: currentStreak || 0, lastLoginDate: new Date() };
-  }
-};
 // Educational feedback messages for incorrect pronunciations
 const StudentDashboard = () => {
   const { user: authUser, logout } = useContext(AuthContext);
@@ -209,12 +159,26 @@ const StudentDashboard = () => {
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
+  const {
+    activeSyllableIndex: activePracticeSyllableIndex,
+    prepare: prepareSyllableHighlight,
+    updateFromProgress: updateSyllableHighlight,
+    reset: resetSyllableHighlight,
+  } = useSyllableHighlight(syllabify);
   // Gates the save effect (and the achievement recompute) so neither runs
   // against default/zeroed state while the real saved progress is still
   // being fetched on load. Must be real state, not a ref: the achievement
   // effect needs this flip to actually re-trigger it once loading finishes,
   // not just be readable the next time something else happens to change.
   const [hasLoadedProgress, setHasLoadedProgress] = useState(false);
+  // Date (YYYY-MM-DD) the student last successfully pronounced the Word of
+  // the Day. The streak only increments off this, not off merely opening
+  // the app -- see completeWordOfDayStreak().
+  const [wordOfDayCompletedDate, setWordOfDayCompletedDate] = useState(null);
+  const [wordMasterySummary, setWordMasterySummary] = useState({ mastered: 0, needsPractice: 0, difficult: 0 });
+  const [wordMasteryDetail, setWordMasteryDetail] = useState({ mastered: [], needsPractice: [], difficult: [] });
+  const [topConfusions, setTopConfusions] = useState([]);
+  const [recommendedPracticeWords, setRecommendedPracticeWords] = useState([]);
   const fontFamilies = {
     'Comic Sans': '"Comic Sans MS", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
@@ -291,26 +255,11 @@ const StudentDashboard = () => {
           setHardCyclesCompleted(progressData.hardCyclesCompleted || 0);
           setHadStreakBreak(Boolean(progressData.hadStreakBreak));
           setUnlockedAchievementIds(progressData.unlockedAchievementIds || []);
+          // Streak is driven entirely by Word of the Day completions (see
+          // completeWordOfDayStreak) -- just restore the saved streak value
+          // and the last completed date, no recalculation on mount.
+          setWordOfDayCompletedDate(progressData.wordOfDayCompletedDate || progressData.word_of_day_completed_date || null);
         }
-        // =====================================================================
-        // STREAK CALCULATION ON MOUNT
-        // =====================================================================
-        const currentStreak = progressData?.streak || 0;
-        const streakResult = await calculateStreak({
-          currentStudentId: userData.studentId || userData.student_id || userData.id || null,
-          currentStreak,
-          lastLoginDate: progressData?.lastLoginDate || null,
-        });
-        if (streakResult) {
-          if (currentStreak >= 3 && streakResult.streak === 1) {
-            setHadStreakBreak(true);
-          }
-          setProgress((prev) => ({
-            ...prev,
-            streak: streakResult.streak,
-          }));
-        }
-        // =====================================================================
         const studentRecordId = userData.studentId || userData.student_id || userData.id;
         if (studentRecordId) {
           try {
@@ -373,6 +322,7 @@ const StudentDashboard = () => {
     hardCyclesCompleted,
     hadStreakBreak,
     unlockedAchievementIds,
+    wordOfDayCompletedDate,
   });
   // A save request can take longer than the gap between two rapid state
   // changes (e.g. pronunciation evaluation updates xp, then wordsCompleted,
@@ -409,7 +359,7 @@ const StudentDashboard = () => {
   };
   useEffect(() => {
     queuePersist();
-  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, currentStudentId, authUser, hasLoadedProgress]);
+  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, currentStudentId, authUser, hasLoadedProgress]);
 
   // Recompute unlocked achievements whenever the underlying stats change.
   // This only ever ADDS badge ids (a union with what's already unlocked) --
@@ -498,22 +448,49 @@ const StudentDashboard = () => {
       setFeedback('Unable to log out right now.');
     }
   };
+  // Word mastery / confusion-pattern summary for the Progress tab. Best
+  // effort -- these tables only start filling in once a student has made
+  // a few attempts, so an empty result just means "not enough data yet".
+  useEffect(() => {
+    if (!hasLoadedProgress || !currentStudentId) return;
+    readingService.getWordMastery(currentStudentId)
+      .then((res) => {
+        const payload = res?.data || res || {};
+        if (payload.counts) setWordMasterySummary(payload.counts);
+        setWordMasteryDetail({
+          mastered: payload.mastered || [],
+          needsPractice: payload.needsPractice || [],
+          difficult: payload.difficult || [],
+        });
+      })
+      .catch((error) => console.warn('Failed to load word mastery summary:', error.message));
+    readingService.getConfusionPatterns(currentStudentId)
+      .then((res) => {
+        const patterns = res?.data?.patterns || res?.patterns || [];
+        setTopConfusions(patterns.slice(0, 3));
+      })
+      .catch((error) => console.warn('Failed to load confusion patterns:', error.message));
+    readingService.getPracticeRecommendations(currentStudentId)
+      .then((res) => {
+        const words = res?.data?.words || res?.words || [];
+        setRecommendedPracticeWords(words.slice(0, 5));
+      })
+      .catch((error) => console.warn('Failed to load practice recommendations:', error.message));
+  }, [hasLoadedProgress, currentStudentId, wordsCompleted]);
+  // Quick word -> mastery status lookup for the vocabulary grid tiles.
+  const wordMasteryByWord = useMemo(() => {
+    const map = new Map();
+    wordMasteryDetail.mastered.forEach((row) => map.set(row.word?.toLowerCase(), 'mastered'));
+    wordMasteryDetail.needsPractice.forEach((row) => map.set(row.word?.toLowerCase(), 'needs_practice'));
+    wordMasteryDetail.difficult.forEach((row) => map.set(row.word?.toLowerCase(), 'difficult'));
+    return map;
+  }, [wordMasteryDetail]);
   const handleNav = (section) => {
     setActiveSection(section);
     const target = document.getElementById(`${section}-section`);
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  };
-  const startReading = () => {
-    // Reset evaluation state before starting new attempt
-    setAccuracy(null);
-    setAccuracyExplanation('');
-    setIsEvaluating(false);
-    setFeedback('Basahin ang salita at gawin ang pagbigkas.');
-    setTranscribedText('');
-    setStatusMessage('Nagre-record na. Magsalita nang malinaw.');
-    handleMicClick();
   };
   const isParentUser = userRole === 'parent';
   const canEditPracticeLevel = isParentUser && !!currentStudentId;
@@ -591,6 +568,8 @@ const StudentDashboard = () => {
 
     ttsAudioRef.current?.pause?.();
     window.speechSynthesis?.cancel?.();
+    if (options.trackSyllables) prepareSyllableHighlight(text, 0);
+    else resetSyllableHighlight();
 
     try {
       const response = await speechService.textToSpeech(formatForTagalogSpeech(text), {
@@ -602,7 +581,13 @@ const StudentDashboard = () => {
       const audioUrl = URL.createObjectURL(response.data);
       const audio = new Audio(audioUrl);
       ttsAudioRef.current = audio;
-      audio.onended = () => URL.revokeObjectURL(audioUrl);
+      if (options.trackSyllables) {
+        audio.ontimeupdate = () => updateSyllableHighlight(audio.currentTime, audio.duration);
+      }
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (options.trackSyllables) resetSyllableHighlight();
+      };
       audio.onerror = () => {
         URL.revokeObjectURL(audioUrl);
         speakTagalogFallback(text, options);
@@ -665,7 +650,20 @@ const StudentDashboard = () => {
       .replace(/\s+/g, ' ')
       .trim();
   // AI-style accuracy scoring system (0-100%)
-  const getTagalogPronunciationFeedback = (score, spoken, target) => {
+  const getTagalogPronunciationFeedback = (score, spoken, target, phoneme) => {
+    if (score === 100) {
+      return 'Magaling! Tama ang bigkas mo.';
+    }
+    const badSyllable = phoneme?.syllableBreakdown?.find((s) => s.status !== 'correct');
+    if (badSyllable) {
+      const subOp = badSyllable.phonemeOps?.find((op) => op.type === 'substitute' && op.confusion);
+      if (subOp) {
+        return `Napalitan ang tunog na "${subOp.expected}" ng "${subOp.spoken}". Subukan ulit ang "${target}".`;
+      }
+      if (badSyllable.status === 'skipped') {
+        return `Kulang ang pantig na "${badSyllable.syllable}". Sabihin nang buo ang "${target}".`;
+      }
+    }
     const normalizedSpoken = normalizeForEvaluation(spoken);
     const normalizedTarget = normalizeForEvaluation(target);
     const targetTokens = normalizedTarget.split(' ').filter(Boolean);
@@ -673,9 +671,6 @@ const StudentDashboard = () => {
     const missingToken = targetTokens.find((token) =>
       !spokenTokens.some((word) => word.includes(token) || token.includes(word))
     );
-    if (score === 100) {
-      return 'Magaling! Tama ang bigkas mo.';
-    }
     if (score >= 70) {
       return missingToken
         ? `Malapit na! Kulang ang '${missingToken}' na tunog.`
@@ -689,19 +684,13 @@ const StudentDashboard = () => {
     return 'Mali ang bigkas. Pakinggan at ulitin.';
   };
   const evaluatePronunciation = (spoken, target) => {
-    const normalizedSpoken = normalizeForEvaluation(spoken);
-    const normalizedTarget = normalizeForEvaluation(target);
-    const distance = calculateLevenshteinDistance(normalizedSpoken, normalizedTarget);
-    const maxLength = Math.max(normalizedSpoken.length, normalizedTarget.length);
-    const score = normalizedSpoken === normalizedTarget
-      ? 100
-      : maxLength === 0
-        ? 100
-        : Math.max(0, Math.min(99, Math.round(((maxLength - distance) / maxLength) * 100)));
+    const phoneme = evaluateWordPhonetics(target, spoken);
+    const score = phoneme.pronunciationScore;
     return {
       score,
-      feedback: getTagalogPronunciationFeedback(score, spoken, target),
-      distance,
+      feedback: getTagalogPronunciationFeedback(score, spoken, target, phoneme),
+      distance: null,
+      phoneme,
     };
   };
   // Get accuracy explanation based on score
@@ -720,26 +709,6 @@ const StudentDashboard = () => {
       return "Listen carefully and try again";
     }
   };
-  const calculateLevenshteinDistance = (a = '', b = '') => {
-    const normalizedA = a.toLowerCase().trim();
-    const normalizedB = b.toLowerCase().trim();
-    const matrix = Array.from({ length: normalizedA.length + 1 }, () =>
-      Array(normalizedB.length + 1).fill(0)
-    );
-    for (let i = 0; i <= normalizedA.length; i += 1) matrix[i][0] = i;
-    for (let j = 0; j <= normalizedB.length; j += 1) matrix[0][j] = j;
-    for (let i = 1; i <= normalizedA.length; i += 1) {
-      for (let j = 1; j <= normalizedB.length; j += 1) {
-        const cost = normalizedA[i - 1] === normalizedB[j - 1] ? 0 : 1;
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
-        );
-      }
-    }
-    return matrix[normalizedA.length][normalizedB.length];
-  };
   // Level progression logic
   const advanceLevel = () => {
     const levels = ['Easy', 'Medium', 'Hard'];
@@ -757,6 +726,61 @@ const StudentDashboard = () => {
     }
     return nextLevel;
   };
+  // Count threshold alone no longer advances the level -- the student must
+  // also have met real mastery/accuracy criteria (level_requirements table,
+  // checked server-side against word_mastery). Called once progressInCurrentLevel
+  // hits the count threshold; may fire again on later attempts if not ready yet.
+  const attemptLevelAdvance = async () => {
+    try {
+      const levelWords = TAGALOG_PHONETIC_LEVELS[currentPhoneticLevel] || [];
+      const response = await readingService.checkLevelReadiness(currentStudentId, levelWords);
+      const result = response?.data || response || {};
+      if (result.ready) {
+        const nextLevel = advanceLevel();
+        setExpectedText(getPhoneticWordForProgress(nextLevel, 0));
+        showReassurance('LEVEL UP!', 'perfect');
+        showConfetti();
+        playClapSound();
+        setFeedback(`Level up! Ngayon ay ${nextLevel}.`);
+      } else {
+        const failedCheck = Object.entries(result.checks || {}).find(([, check]) => !check.pass);
+        const hint = failedCheck?.[0] === 'difficultWords'
+          ? 'May ilang salitang kailangan mo pang paghusayin bago tumaas ng level.'
+          : failedCheck?.[0] === 'avgAccuracy'
+            ? 'Subukang bigkasin nang mas malinaw ang mga salita para tumaas ang iyong accuracy.'
+            : 'Magsanay pa ng ilang salita hanggang ganap mong ma-master ang mga ito.';
+        setFeedback(hint);
+      }
+    } catch (error) {
+      console.warn('Level readiness check failed:', error.message);
+    }
+  };
+  // Only successfully pronouncing the Word of the Day advances the streak --
+  // opening the app, listening to it, or reading it does not count. Called
+  // from comparePronunciation only when the word just answered correctly
+  // was actually today's Word of the Day.
+  const completeWordOfDayStreak = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+    if (wordOfDayCompletedDate === todayStr) return; // already counted today
+
+    let updatedStreak = 1;
+    if (wordOfDayCompletedDate) {
+      const lastCompleted = new Date(wordOfDayCompletedDate);
+      lastCompleted.setHours(0, 0, 0, 0);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      if (lastCompleted.getTime() === yesterday.getTime()) {
+        updatedStreak = (progress.streak || 0) + 1;
+      } else if (lastCompleted.getTime() < yesterday.getTime()) {
+        if ((progress.streak || 0) >= 3) setHadStreakBreak(true);
+        updatedStreak = 1;
+      }
+    }
+    setWordOfDayCompletedDate(todayStr);
+    setProgress((prev) => ({ ...prev, streak: updatedStreak }));
+  };
   const comparePronunciation = (spoken) => {
     if (isEvaluating) return;
     setIsEvaluating(true);
@@ -764,6 +788,14 @@ const StudentDashboard = () => {
     const evaluation = evaluatePronunciation(spoken, expected);
     const { score, feedback: tagalogFeedback, distance } = evaluation;
     const isCorrect = score >= 80;
+    const isWordOfDayAttempt = Boolean(wordOfTheDay) && activePracticeWord?.id === wordOfTheDay?.id;
+    readingService.saveAttempt({
+      wordTarget: expected,
+      expectedText: expected,
+      spokenText: spoken,
+      mode: 'word',
+      activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
+    }).catch((error) => console.warn('Failed to record word attempt:', error.message));
     const isClose = score >= 70 && score < 80;
     const attemptXp = score === 100
       ? PRONUNCIATION_XP.perfect
@@ -795,10 +827,11 @@ const StudentDashboard = () => {
       const encouragement = ENCOURAGEMENT_MESSAGES[Math.floor(Math.random() * ENCOURAGEMENT_MESSAGES.length)];
       showReassurance(encouragement, 'encourage');
       playYeheySound();
-      setTimeout(() => speakTagalog(expected), 900);
+      setTimeout(() => speakTagalog(expected, { trackSyllables: true }), 900);
       setFeedback(`${tagalogFeedback} Pakinggan mo ito.`);
     }
     if (isCorrect) {
+      if (isWordOfDayAttempt) completeWordOfDayStreak();
       setStatus('correct');
       setRecognitionResult('success');
       if (score === 100) {
@@ -810,10 +843,11 @@ const StudentDashboard = () => {
       }
       const newProgress = progressInCurrentLevel + 1;
       const threshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
-      const willAdvance = newProgress >= threshold;
-      const nextLevel = willAdvance ? advanceLevel() : currentPhoneticLevel;
-      if (!willAdvance) {
-        setProgressInCurrentLevel(newProgress);
+      const eligibleToAdvance = newProgress >= threshold;
+      const cappedProgress = Math.min(newProgress, threshold);
+      setProgressInCurrentLevel(cappedProgress);
+      if (eligibleToAdvance) {
+        attemptLevelAdvance();
       }
       setWordsCompleted((prev) => {
         const newCount = prev + 1;
@@ -828,8 +862,8 @@ const StudentDashboard = () => {
         completed: (prev.completed || 0) + 1,
         accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
       }));
-      setExpectedText(getPhoneticWordForProgress(nextLevel, willAdvance ? 0 : newProgress));
-      setFeedback(willAdvance ? `?? Level up! Ngayon ay ${nextLevel}. ${tagalogFeedback}` : tagalogFeedback);
+      setExpectedText(getPhoneticWordForProgress(currentPhoneticLevel, cappedProgress));
+      setFeedback(eligibleToAdvance ? `Malapit ka nang tumaas ng level! ${tagalogFeedback}` : tagalogFeedback);
       setStatusMessage(`You said: ${spoken}`);
       setTimeout(() => {
         setStatus('idle');
@@ -976,12 +1010,6 @@ const StudentDashboard = () => {
     [searchValue, assessments]
   );
   const nextLesson = filteredLessons[0] || null;
-  const learningPathSteps = filteredLessons.slice(0, 6).map((item, index) => ({
-    id: item.id || `${item.title}-${index}`,
-    title: item.title || `Lesson ${index + 1}`,
-    description: item.description || item.category || 'Continue your learning path.',
-    completed: Boolean(item.completed || (item.status || item.status.toLowerCase().includes('complete'))),
-  }));
   const openNextLesson = () => {
     if (nextLesson?.fileUrl) {
       window.open(nextLesson.fileUrl, '_blank');
@@ -1034,13 +1062,12 @@ const StudentDashboard = () => {
   const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
   const activitiesCompleted = progress.completed || 0;
   const streakDays = progress.streak || 0;
+  const greetingHour = dateTime.getHours();
+  const timeGreeting = greetingHour < 12 ? 'Magandang umaga' : greetingHour < 18 ? 'Magandang hapon' : 'Magandang gabi';
+  const recentAchievement = unlockedAchievementIds.length > 0
+    ? getAchievementById(unlockedAchievementIds[unlockedAchievementIds.length - 1])
+    : null;
   const phoneticThreshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
-  const phoneticPathNodes = Array.from({ length: phoneticThreshold }, (_, index) => {
-    const position = index + 1;
-    if (position <= progressInCurrentLevel) return 'completed';
-    if (position === progressInCurrentLevel + 1) return 'current';
-    return 'locked';
-  });
   const rootStyles = {
     fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['Comic Sans'],
     fontSize: `${accessibilitySettings.textSize}px`,
@@ -1173,61 +1200,59 @@ const StudentDashboard = () => {
         )}
         {activeSection === 'home' && (
           <>
-            <div className="path-hero-banner">
-              <div>
-                <p className="path-hero-banner-kicker">LEVEL: {currentPhoneticLevel.toUpperCase()}</p>
-                <h2>
-                  {nextLesson
-                    ? `Next lesson: ${nextLesson.title}`
-                    : 'Practice your Tagalog pronunciation'}
-                </h2>
-              </div>
-              <button className="path-hero-guidebook" type="button" onClick={startReading}>
-                <FiMic aria-hidden="true" /> Start Reading
-              </button>
+            <div className="home-greeting">
+              <h2>{timeGreeting}, {studentName}!</h2>
+              <p>Keep learning today!</p>
             </div>
+
             {wordOfTheDay && (
-              <button
-                type="button"
-                className="word-of-the-day-card"
-                onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
-              >
+              <article className="word-of-the-day-card word-of-the-day-featured">
                 <span className="word-of-the-day-kicker">Salita Ngayon</span>
                 <span className="word-of-the-day-word">{wordOfTheDay.accentedSpelling}</span>
                 <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
-              </button>
+                {wordOfTheDay.example && (
+                  <span className="word-of-the-day-example">"{wordOfTheDay.example}"</span>
+                )}
+                <div className="word-of-the-day-actions">
+                  <button
+                    type="button"
+                    className="button-large button-secondary"
+                    onClick={() => speakTagalog(wordOfTheDay.accentedSpelling)}
+                  >
+                    <FiVolume2 aria-hidden="true" /> Listen
+                  </button>
+                  <button
+                    type="button"
+                    className="button-large button-primary"
+                    onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
+                  >
+                    <FiTarget aria-hidden="true" /> Start Word of the Day
+                  </button>
+                </div>
+              </article>
             )}
+
             <section className="detail-block">
-              <div className="detail-block-title">Your reading path</div>
-              <div className="winding-path">
-                {phoneticPathNodes.map((state, index) => {
-                  const rowAlign = index % 3 === 1 ? 'align-right' : index % 3 === 2 ? 'align-left' : '';
-                  const isCurrent = state === 'current';
-                  return (
-                    <div key={index} className={`winding-path-node-row ${rowAlign}`}>
-                      <div className="path-node-wrapper">
-                        {isCurrent && <span className="path-node-label">START</span>}
-                        <button
-                          type="button"
-                          className={`path-node ${state}`}
-                          onClick={isCurrent ? startReading : undefined}
-                          disabled={!isCurrent}
-                          aria-label={`Word ${index + 1} of ${phoneticThreshold}, ${state}`}
-                        >
-                          {state === 'completed' ? <FiStar aria-hidden="true" /> : index + 1}
-                        </button>
-                      </div>
-                      {isCurrent && (
-                        <img src="/logo.png" alt="" className="path-mascot" aria-hidden="true" />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px' }}>
-                {progressInCurrentLevel} / {phoneticThreshold} words in {currentPhoneticLevel} level
-              </p>
+              <div className="detail-block-title">Continue Learning</div>
+              {nextLesson ? (
+                <div className="continue-learning-card">
+                  <p className="continue-learning-title">{nextLesson.title}</p>
+                  <p className="continue-learning-copy">{nextLesson.description || nextLesson.category || 'Continue your assigned lesson.'}</p>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${completionPercent}%` }} />
+                  </div>
+                  <button className="button-large button-primary" type="button" onClick={openNextLesson}>
+                    Continue {nextLesson.title}
+                  </button>
+                </div>
+              ) : (
+                <div className="empty-state-card">
+                  <p>No reading path is available yet.</p>
+                  <p>Ask your teacher to assign your first lesson so progress appears here.</p>
+                </div>
+              )}
             </section>
+
             <section className="detail-block">
               <div className="detail-block-title">Today's progress</div>
               <div className="home-summary-grid">
@@ -1245,117 +1270,88 @@ const StudentDashboard = () => {
                   <p className="stat-note">Consecutive days using LinawLetra</p>
                 </article>
                 <article className="stat-card">
-                  <p className="stat-title">Learning tier</p>
-                  <p className="stat-value">{tier}</p>
+                  <p className="stat-title">Words mastered</p>
+                  <p className="stat-value">{wordMasterySummary.mastered}</p>
                 </article>
               </div>
             </section>
+
             <section className="detail-block">
-              <div className="detail-block-title">Assigned lessons</div>
-              {learningPathSteps.length > 0 ? (
-                <div className="path-map">
-                  {learningPathSteps.map((step) => (
-                    <div key={step.id} className="path-step">
-                      <div className={`path-dot ${step.completed ? 'completed' : 'pending'}`}>
-                        {step.completed ? <FiStar aria-hidden="true" /> : '○'}
-                      </div>
-                      <div>
-                        <p className="path-step-title">{step.title}</p>
-                        <p className="path-step-copy">{step.description}</p>
-                      </div>
-                    </div>
-                  ))}
+              <div className="detail-block-title">Achievements</div>
+              {recentAchievement ? (
+                <div className="home-achievement-card">
+                  <AchievementBadge achievement={recentAchievement} unlocked />
+                  <div>
+                    <strong>{recentAchievement.name}</strong>
+                    <p>{recentAchievement.description}</p>
+                  </div>
+                  <button type="button" className="button-secondary button-small" onClick={() => handleNav('progress')}>
+                    View all
+                  </button>
                 </div>
               ) : (
                 <div className="empty-state-card">
-                  <p>No reading path is available yet.</p>
-                  <p>Ask your teacher to assign your first lesson so progress appears here.</p>
+                  <p>No badges yet — keep practicing to earn your first one!</p>
                 </div>
               )}
-              <div className="path-actions">
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${completionPercent}%` }} />
-                </div>
-                <button
-                  className="button-large button-primary"
-                  type="button"
-                  onClick={openNextLesson}
-                  disabled={!nextLesson}
-                >
-                  {nextLesson ? `Continue ${nextLesson.title}` : 'Browse lessons'}
-                </button>
-              </div>
             </section>
           </>
         )}
         {activeSection === 'practice' && (
-          <section id="practice-section" className="detail-block">
-            <div className="detail-block-title">Voice practice</div>
+          <section id="practice-section" className="detail-block practice-page">
             <div className="practice-header">
               <div>
+                <div className="detail-block-title">Voice practice</div>
                 <h3>Practice your reading</h3>
                 <p className="practice-sub">Say the word clearly into your microphone and get instant feedback.</p>
               </div>
-              <span className="tier-pill-large">{levelNames[practiceLevel]}</span>
-            </div>
-            <div className="practice-settings-row">
-              <div className="settings-block">
-                <label htmlFor="practiceLevel">Reading level</label>
-                <select
-                  id="practiceLevel"
-                  value={practiceLevel}
-                  onChange={handlePracticeLevelChange}
-                  disabled={!canEditPracticeLevel || practiceLevelSaving}
-                >
-                  <option value="beginner">Beginner</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
-                </select>
-              </div>
-            </div>
-            <div className="practice-level-note">
-              <span>
-                Assigned reading level: <strong>{levelNames[practiceLevel]}</strong>
-              </span>
-              <span className="note-text">
-                {canEditPracticeLevel
-                  ? 'This level is used for practice sessions.'
-                  : 'Only a parent can change the reading level.'}
-              </span>
-            </div>
-            <div className="practice-stats">
-              <div className="stat-item">
-                <span>XP: {Number(xp) || 0}</span>
-              </div>
-              <div className="stat-item">
-                <span>Words completed: {Number(wordsCompleted) || 0}</span>
-              </div>
-              <div className="stat-item">
-                <span>Achievements: {Number(achievements) || 0}</span>
-              </div>
-            </div>
-            {practiceWords.length > 0 && (
-              <div className="vocabulary-bank">
-                <h4>Talasalitaan</h4>
-                <div className="vocabulary-grid">
-                  {practiceWords.map((practiceWord) => (
-                    <button
-                      key={practiceWord.id}
-                      type="button"
-                      className={`vocabulary-chip ${activePracticeWord?.id === practiceWord.id ? 'is-active' : ''}`}
-                      onClick={() => selectPracticeWord(practiceWord)}
-                    >
-                      {practiceWord.accentedSpelling}
-                      {practiceWord.isHomograph && <span className="vocabulary-chip-badge">2 kahulugan</span>}
-                    </button>
-                  ))}
+              <div className="practice-header-controls">
+                <span className="tier-pill-large">{levelNames[practiceLevel]}</span>
+                <div className="settings-block practice-level-select">
+                  <label htmlFor="practiceLevel">Reading level</label>
+                  <select
+                    id="practiceLevel"
+                    value={practiceLevel}
+                    onChange={handlePracticeLevelChange}
+                    disabled={!canEditPracticeLevel || practiceLevelSaving}
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
                 </div>
               </div>
-            )}
-            <div className="practice-grid">
+            </div>
+            <p className="practice-level-note">
+              {canEditPracticeLevel
+                ? 'This level is used for practice sessions.'
+                : 'Only a parent can change the reading level.'}
+            </p>
+
+            <div className="practice-hero">
               <div className="word-card">
+                <div className="word-card-top">
+                  <span className="word-card-kicker">Current word</span>
+                  <div className="lesson-progress-inline">
+                    <span>{progressInCurrentLevel} / {phoneticThreshold}</span>
+                    <div className="progress-bar progress-bar-compact">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${Math.min(100, (progressInCurrentLevel / phoneticThreshold) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
                 <div className="word-display">
-                  <div className="practice-word">{activePracticeWord ? activePracticeWord.accentedSpelling : expectedText}</div>
+                  <div className={`practice-word ${status === 'listening' ? 'is-listening' : ''}`}>
+                    {syllabify(activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)
+                      .map((syllable, index, arr) => (
+                        <span className={`practice-syllable ${index === activePracticeSyllableIndex ? 'syllable-active' : ''}`} key={`${syllable}-${index}`}>
+                          {syllable}
+                          {index < arr.length - 1 && <span className="syllable-divider" aria-hidden="true">&middot;</span>}
+                        </span>
+                      ))}
+                  </div>
                   {activePracticeWord ? (
                     <>
                       <p className="word-meaning">{activePracticeWord.meaning}</p>
@@ -1396,17 +1392,18 @@ const StudentDashboard = () => {
                     onClick={handleMicClick}
                     disabled={isProcessing}
                   >
-                    {status === 'listening' ? 'Listening�' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
+                    <FiMic aria-hidden="true" />
+                    {status === 'listening' ? 'Listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
                   </button>
                   <button
                     className="button-large button-secondary"
                     type="button"
-                    onClick={() => speakTagalog(activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)}
+                    onClick={() => speakTagalog(activePracticeWord ? activePracticeWord.accentedSpelling : expectedText, { trackSyllables: true })}
                   >
-                    Listen
+                    <FiVolume2 aria-hidden="true" /> Listen
                   </button>
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
-                    Replay Voice
+                    <FiRepeat aria-hidden="true" /> Replay Voice
                   </button>
                 </div>
                 {activePracticeWord?.isHomograph && (
@@ -1417,10 +1414,18 @@ const StudentDashboard = () => {
                 )}
               </div>
               <div className="feedback-panel">
-                <h4>Pronunciation feedback</h4>
+                <h4>Live pronunciation feedback</h4>
                 <div className={`feedback-result ${recognitionResult}`}>
                   <div className="feedback-icon">
-                    {recognitionResult === 'success' ? '?' : recognitionResult === 'almost' ? '!' : '?'}
+                    {recognitionResult === 'success' ? (
+                      <FiCheckCircle aria-hidden="true" />
+                    ) : recognitionResult === 'almost' ? (
+                      <FiAlertTriangle aria-hidden="true" />
+                    ) : recognitionResult === 'error' ? (
+                      <FiX aria-hidden="true" />
+                    ) : (
+                      <FiMic aria-hidden="true" />
+                    )}
                   </div>
                   <div className="feedback-text">
                     <p>{statusMessage || 'Press Say the word and speak the Tagalog word clearly.'}</p>
@@ -1441,10 +1446,87 @@ const StudentDashboard = () => {
                     </span>
                   </div>
                 </div>
+                {status === 'listening' && (
+                  <div className="mic-waveform" role="status" aria-label="Listening">
+                    {Array.from({ length: 7 }).map((_, index) => (
+                      <span key={index} className="mic-waveform-bar" style={{ animationDelay: `${index * 0.08}s` }} />
+                    ))}
+                  </div>
+                )}
+                {isProcessing && (
+                  <div className="processing-row">
+                    <span className="processing-spinner" aria-hidden="true" />
+                    Checking your voice...
+                  </div>
+                )}
               </div>
             </div>
+
             <div className="highlight-row">{renderWordHighlight()}</div>
-            {isProcessing && <div className="loading-text">Checking your voice...</div>}
+
+            {practiceWords.length > 0 && (
+              <div className="vocabulary-bank">
+                <h4>Talasalitaan</h4>
+                <div className="vocabulary-grid">
+                  {practiceWords.map((practiceWord) => {
+                    const isActive = activePracticeWord?.id === practiceWord.id;
+                    const isCompleted = completedWords.includes(practiceWord.word);
+                    const masteryStatus = wordMasteryByWord.get(practiceWord.word?.toLowerCase());
+                    const tileStatus = isActive
+                      ? 'current'
+                      : masteryStatus || (isCompleted ? 'completed' : 'new');
+                    const statusMeta = {
+                      current: { label: 'Current', Icon: FiTarget },
+                      mastered: { label: 'Mastered', Icon: FiAward },
+                      needs_practice: { label: 'Needs practice', Icon: FiRepeat },
+                      difficult: { label: 'Difficult', Icon: FiAlertTriangle },
+                      completed: { label: 'Completed', Icon: FiCheck },
+                      new: { label: '', Icon: null },
+                    }[tileStatus];
+                    return (
+                      <button
+                        key={practiceWord.id}
+                        type="button"
+                        className={`vocabulary-tile status-${tileStatus}`}
+                        onClick={() => selectPracticeWord(practiceWord)}
+                      >
+                        <span className="vocabulary-tile-word">{practiceWord.accentedSpelling}</span>
+                        {practiceWord.isHomograph && <span className="vocabulary-chip-badge">2 kahulugan</span>}
+                        {statusMeta.label && (
+                          <span className="vocabulary-tile-status">
+                            {statusMeta.Icon && <statusMeta.Icon aria-hidden="true" />}
+                            {statusMeta.label}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="practice-stats">
+              <div className="metric-card">
+                <FiStar className="metric-icon" aria-hidden="true" />
+                <strong>{Number(xp) || 0}</strong>
+                <span>XP</span>
+              </div>
+              <div className="metric-card">
+                <FiCheck className="metric-icon" aria-hidden="true" />
+                <strong>{Number(wordsCompleted) || 0}</strong>
+                <span>Words completed</span>
+              </div>
+              <div className="metric-card">
+                <FiAward className="metric-icon" aria-hidden="true" />
+                <strong>{Number(achievements) || 0}</strong>
+                <span>Achievements</span>
+              </div>
+              <div className="metric-card">
+                <FiZap className="metric-icon" aria-hidden="true" />
+                <strong>{streakDays}</strong>
+                <span>Streak</span>
+              </div>
+            </div>
           </section>
         )}
         {activeSection === 'content' && (
@@ -1565,6 +1647,35 @@ const StudentDashboard = () => {
                 )}
               </div>
             </div>
+            <div className="progress-metrics word-mastery-summary">
+              <div className="metric-card">
+                <strong>{wordMasterySummary.mastered}</strong>
+                <span>Mastered words</span>
+              </div>
+              <div className="metric-card">
+                <strong>{wordMasterySummary.needsPractice}</strong>
+                <span>Needs practice</span>
+              </div>
+              <div className="metric-card">
+                <strong>{wordMasterySummary.difficult}</strong>
+                <span>Difficult words</span>
+              </div>
+            </div>
+            {topConfusions.length > 0 && (
+              <div className="chart-card">
+                <div className="detail-block-title">Sounds to work on</div>
+                <p className="confusion-hint">
+                  These are the sound mix-ups that come up most often when you read aloud.
+                </p>
+                <div className="confusion-tag-list">
+                  {topConfusions.map((pattern) => (
+                    <span key={pattern.pattern_type} className="confusion-tag">
+                      {pattern.pattern_type.replace(/_/g, ' ')} · {pattern.occurrence_count}x
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="achievements-section">
               <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
               <div className="achievement-badge-grid">
@@ -1694,42 +1805,94 @@ const StudentDashboard = () => {
             </div>
           </div>
         </div>
-        <div className="student-panel-card">
-          <h4>Phonetic Level Progress</h4>
-          <div className="progress-metrics">
-            <div className="metric-card">
-              <strong>{currentPhoneticLevel}</strong>
-              <span>Current Level</span>
-            </div>
-            <div className="metric-card">
-              <strong>{progressInCurrentLevel}</strong>
-              <span>Progress in Level</span>
-            </div>
-            <div className="metric-card">
-              <strong>{phoneticThreshold}</strong>
-              <span>Required for Next</span>
-            </div>
-          </div>
-          <div className="progress-bar" style={{ marginTop: '16px' }}>
-            <div
-              className="progress-fill"
-              style={{
-                width: `${(progressInCurrentLevel / phoneticThreshold) * 100}%`,
-              }}
-            />
-          </div>
-        </div>
-        <div className="student-panel-card">
-          <h4>Class updates</h4>
-          <div className="notifications-list">
-            {notifications.map((item) => (
-              <div key={item.id} className="notification-item">
-                <h4>{item.title}</h4>
-                <p>{item.message}</p>
+        {activeSection !== 'home' && (
+          <div className="student-panel-card">
+            <h4>Phonetic Level Progress</h4>
+            <div className="progress-metrics">
+              <div className="metric-card">
+                <strong>{currentPhoneticLevel}</strong>
+                <span>Current Level</span>
               </div>
-            ))}
+              <div className="metric-card">
+                <strong>{progressInCurrentLevel}</strong>
+                <span>Progress in Level</span>
+              </div>
+              <div className="metric-card">
+                <strong>{phoneticThreshold}</strong>
+                <span>Required for Next</span>
+              </div>
+            </div>
+            <div className="progress-bar" style={{ marginTop: '16px' }}>
+              <div
+                className="progress-fill"
+                style={{
+                  width: `${(progressInCurrentLevel / phoneticThreshold) * 100}%`,
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
+        {activeSection !== 'home' && wordOfTheDay && (
+          <button
+            type="button"
+            className="word-of-the-day-card"
+            onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
+          >
+            <span className="word-of-the-day-kicker">Word of the day</span>
+            <span className="word-of-the-day-word">{wordOfTheDay.accentedSpelling}</span>
+            <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
+          </button>
+        )}
+        {recommendedPracticeWords.length > 0 && (
+          <div className="student-panel-card">
+            <h4>Recommended practice</h4>
+            <div className="recommended-practice-list">
+              {recommendedPracticeWords.map((row) => {
+                const matchingWord = practiceWords.find(
+                  (word) => word.word?.toLowerCase() === row.word?.toLowerCase()
+                );
+                return (
+                  <button
+                    key={row.word}
+                    type="button"
+                    className="recommended-practice-chip"
+                    onClick={() => {
+                      if (matchingWord) selectPracticeWord(matchingWord);
+                      handleNav('practice');
+                    }}
+                  >
+                    {matchingWord?.accentedSpelling || row.word}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {recentAchievement && (
+          <div className="student-panel-card recent-achievement-card">
+            <h4>Recent achievement</h4>
+            <div className="recent-achievement-body">
+              <AchievementBadge achievement={recentAchievement} unlocked />
+              <div>
+                <strong>{recentAchievement.name}</strong>
+                <p>{recentAchievement.description}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {notifications.length > 0 && (
+          <div className="student-panel-card">
+            <h4>Class updates</h4>
+            <div className="notifications-list">
+              {notifications.map((item) => (
+                <div key={item.id} className="notification-item">
+                  <h4>{item.title}</h4>
+                  <p>{item.message}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </aside>
     </div>
     </div>

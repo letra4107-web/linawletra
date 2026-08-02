@@ -1091,6 +1091,51 @@
   overflow: hidden;
 }
 
+.phonemic-row {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #E7E2DA;
+}
+
+.phonemic-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.mastery-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.mastery-chip--mastered {
+  background: rgba(16, 185, 129, 0.12);
+  color: #0f9d6a;
+}
+
+.mastery-chip--practice {
+  background: rgba(245, 158, 11, 0.14);
+  color: #92670c;
+}
+
+.mastery-chip--difficult {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.phonemic-confusions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.phonemic-confusions .tier-pill {
+  text-transform: capitalize;
+}
+
 .category-fill {
   height: 100%;
   border-radius: 999px;

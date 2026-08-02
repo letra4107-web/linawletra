@@ -154,7 +154,32 @@ export const getDashboardData =async (req, res) => {
       return res.status(403).json({ message: 'You do not have permission to access this student dashboard data' });
     }
 
+    const { data: masteryRows } = await supabase
+      .from('word_mastery')
+      .select('word, mastery_status, avg_phoneme_accuracy, avg_syllable_accuracy, last_attempt_at')
+      .eq('student_id', student.id);
+    const mastered = (masteryRows || []).filter((w) => w.mastery_status === 'mastered');
+    const needsPractice = (masteryRows || []).filter((w) => w.mastery_status === 'needs_practice');
+    const difficult = (masteryRows || []).filter((w) => w.mastery_status === 'difficult');
+    const phonemeAccuracy = masteryRows?.length
+      ? Math.round(masteryRows.reduce((sum, w) => sum + (w.avg_phoneme_accuracy || 0), 0) / masteryRows.length)
+      : null;
+
+    const { data: confusionRows } = await supabase
+      .from('confusion_patterns')
+      .select('pattern_type, occurrence_count')
+      .eq('student_id', student.id)
+      .order('occurrence_count', { ascending: false })
+      .limit(5);
+
     res.json({
+      wordMastery: { mastered: mastered.length, needsPractice: needsPractice.length, difficult: difficult.length },
+      phonemeAccuracy,
+      topConfusions: confusionRows || [],
+      recommendedPracticeWords: [...needsPractice, ...difficult]
+        .sort((a, b) => new Date(b.last_attempt_at || 0) - new Date(a.last_attempt_at || 0))
+        .slice(0, 5)
+        .map((w) => w.word),
       xp: student.xp ?? 0,
       streak: student.streak ?? 0,
       lastLoginDate: student.last_login_date ?? null,

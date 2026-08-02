@@ -1,4 +1,4 @@
-import { studentService, progressService } from './api';
+import { studentService, progressService, readingService } from './api';
 
 const unwrapStudents = (payload) => {
   const data = payload?.data ?? payload;
@@ -93,6 +93,24 @@ export const parentDashboardApi = {
 
   getNotifications: async () => {
     return [];
+  },
+
+  getWordMastery: async (childId) => {
+    try {
+      const res = await readingService.getWordMastery(childId);
+      return res?.data || res || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  getConfusionPatterns: async (childId) => {
+    try {
+      const res = await readingService.getConfusionPatterns(childId);
+      return res?.data?.patterns || res?.patterns || [];
+    } catch (e) {
+      return [];
+    }
   },
 };
 

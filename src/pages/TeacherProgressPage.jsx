@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { progressService } from '../services/api';
+import { progressService, readingService } from '../services/api';
 import PageLayout from '../components/layout/PageLayout';
 import '../styles/TeacherDashboard.css';
 
@@ -21,6 +21,7 @@ export default function TeacherProgressPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const [phonemicById, setPhonemicById] = useState({});
 
   useEffect(() => {
     const loadReports = async () => {
@@ -48,6 +49,24 @@ export default function TeacherProgressPage() {
     const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
     return reports.filter((report) => parseFirestoreDate(report.date).getTime() >= threshold);
   }, [reports, filter]);
+
+  const toggleExpand = async (report) => {
+    const id = report.id;
+    const studentId = report.studentId || report.student_id;
+    setExpandedId((prev) => (prev === id ? null : id));
+    if (!studentId || phonemicById[studentId]) return;
+    try {
+      const [masteryRes, confusionRes] = await Promise.all([
+        readingService.getWordMastery(studentId).catch(() => null),
+        readingService.getConfusionPatterns(studentId).catch(() => null),
+      ]);
+      const counts = masteryRes?.data?.counts || masteryRes?.counts || null;
+      const patterns = confusionRes?.data?.patterns || confusionRes?.patterns || [];
+      setPhonemicById((prev) => ({ ...prev, [studentId]: { counts, patterns } }));
+    } catch (err) {
+      console.warn('Failed to load phonemic data for student:', studentId, err.message);
+    }
+  };
 
   const groupedReports = useMemo(() => {
     return visibleReports.reduce((result, report) => {
@@ -109,11 +128,13 @@ export default function TeacherProgressPage() {
                 <div className="detail-block-title">{date}</div>
                 {reportsByDate.map((report) => {
                   const trend = (report.trend || 'stable').toLowerCase();
+                  const studentId = report.studentId || report.student_id;
+                  const phonemic = phonemicById[studentId];
                   return (
                     <div
                       key={report.id || report._id}
                       className="session-row"
-                      onClick={() => setExpandedId(expandedId === report.id ? null : report.id)}
+                      onClick={() => toggleExpand(report)}
                     >
                       <div>
                         <div className="detail-name">{report.studentName || 'Student'}</div>
@@ -143,6 +164,33 @@ export default function TeacherProgressPage() {
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+                      {expandedId === report.id && (
+                        <div className="phonemic-row">
+                          <div className="detail-block-title">Word mastery &amp; sound patterns</div>
+                          {phonemic ? (
+                            <>
+                              <div className="phonemic-counts">
+                                <span className="mastery-chip mastery-chip--mastered">Mastered: {phonemic.counts?.mastered ?? 0}</span>
+                                <span className="mastery-chip mastery-chip--practice">Needs practice: {phonemic.counts?.needsPractice ?? 0}</span>
+                                <span className="mastery-chip mastery-chip--difficult">Difficult: {phonemic.counts?.difficult ?? 0}</span>
+                              </div>
+                              {phonemic.patterns?.length > 0 ? (
+                                <div className="phonemic-confusions">
+                                  {phonemic.patterns.slice(0, 5).map((pattern) => (
+                                    <span key={pattern.pattern_type} className="tier-pill">
+                                      {String(pattern.pattern_type || '').replace(/_/g, ' ')} · {pattern.occurrence_count}x
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="empty-copy">No recurring sound confusions detected yet.</p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="empty-copy">Loading phonemic data…</p>
+                          )}
                         </div>
                       )}
                     </div>

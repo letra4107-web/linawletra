@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, Loader2, Mic, Pause, Play, RotateCcw, Settings, Volume2 } from 'lucide-react';
 import { readingService, speechService } from '../services/api';
 import { compareReadingText, splitIntoSentences } from '../utils/readingAccuracy';
+import { syllabify } from '../utils/tagalogPhonetics';
+import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import { READING_LEVEL_LABELS, normalizeReadingLevel } from '../constants/readingLevels';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -33,8 +35,6 @@ const getStoredReadingSettings = () => {
   }
 };
 
-const splitSyllables = (word = '') => String(word).split(/([-‐‑‒–—]+)/).filter(Boolean);
-
 export default function StudentReadingAssistant() {
   const navigate = useNavigate();
   const [materials, setMaterials] = useState([]);
@@ -45,7 +45,7 @@ export default function StudentReadingAssistant() {
   const [pageNumber, setPageNumber] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [rate, setRate] = useState(0.85);
-  const [speakingWordIndex, setSpeakingWordIndex] = useState(-1);
+  const { activeWordIndex, activeSyllableIndex, prepare, updateFromProgress, highlightWholeWord, reset: resetHighlight } = useSyllableHighlight(syllabify);
   const [listening, setListening] = useState(false);
   const [spokenText, setSpokenText] = useState('');
   const [feedback, setFeedback] = useState(null);
@@ -111,11 +111,11 @@ export default function StudentReadingAssistant() {
     return voices.find((voice) => /fil|tl|ph/i.test(`${voice.lang} ${voice.name}`)) || voices.find((voice) => /en/i.test(voice.lang)) || null;
   };
 
-  const readWithBrowserVoice = (text = currentSentence) => {
+  const readWithBrowserVoice = (text = currentSentence, wordIndexOffset = 0) => {
     if (!text || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     setAudioPlaying(true);
-    setSpeakingWordIndex(0);
+    highlightWholeWord(wordIndexOffset);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'fil-PH';
     utterance.rate = rate;
@@ -124,21 +124,21 @@ export default function StudentReadingAssistant() {
     utterance.onboundary = (event) => {
       if (event.name !== 'word') return;
       const spokenPrefix = text.slice(0, event.charIndex);
-      setSpeakingWordIndex(spokenPrefix.split(/\s+/).filter(Boolean).length);
+      highlightWholeWord(wordIndexOffset + spokenPrefix.split(/\s+/).filter(Boolean).length);
     };
     utterance.onend = () => {
-      setSpeakingWordIndex(-1);
+      resetHighlight();
       setAudioPlaying(false);
     };
     window.speechSynthesis.speak(utterance);
   };
 
-  const readText = async (text = currentSentence) => {
+  const readText = async (text = currentSentence, wordIndexOffset = 0) => {
     if (!text) return;
 
     audioRef.current?.pause?.();
     window.speechSynthesis?.cancel();
-    setSpeakingWordIndex(-1);
+    resetHighlight();
     setSpeechLoading(true);
     setAudioPlaying(false);
 
@@ -150,27 +150,30 @@ export default function StudentReadingAssistant() {
       const audioUrl = URL.createObjectURL(response.data);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
+      prepare(text, wordIndexOffset);
+      audio.ontimeupdate = () => updateFromProgress(audio.currentTime, audio.duration);
       audio.onplay = () => setAudioPlaying(true);
       audio.onpause = () => setAudioPlaying(false);
       audio.onended = () => {
         setAudioPlaying(false);
+        resetHighlight();
         URL.revokeObjectURL(audioUrl);
       };
       audio.onerror = () => {
         setAudioPlaying(false);
         URL.revokeObjectURL(audioUrl);
-        readWithBrowserVoice(text);
+        readWithBrowserVoice(text, wordIndexOffset);
       };
       await audio.play();
     } catch (error) {
-      readWithBrowserVoice(text);
+      readWithBrowserVoice(text, wordIndexOffset);
     } finally {
       setSpeechLoading(false);
     }
   };
 
-  const readCurrentSentence = () => readText(currentSentence);
-  const readWord = (word) => readText(word);
+  const readCurrentSentence = () => readText(currentSentence, 0);
+  const readWord = (word, index) => readText(word, index);
 
   const pauseSpeech = () => {
     audioRef.current?.pause?.();
@@ -237,7 +240,7 @@ export default function StudentReadingAssistant() {
     setSentenceIndex((current) => Math.max(0, Math.min(sentences.length - 1, current + direction)));
     setFeedback(null);
     setSpokenText('');
-    setSpeakingWordIndex(-1);
+    resetHighlight();
     audioRef.current?.pause?.();
     window.speechSynthesis?.cancel();
   };
@@ -357,14 +360,17 @@ export default function StudentReadingAssistant() {
                 <button
                   type="button"
                   key={`${word}-${index}`}
-                  className={`reading-word ${index === speakingWordIndex ? 'word-active' : ''} ${wordStatusByIndex.get(index) ? `word-${wordStatusByIndex.get(index)}` : ''}`}
-                  onClick={() => readWord(word)}
+                  className={`reading-word ${index === activeWordIndex ? 'word-active' : ''} ${wordStatusByIndex.get(index) ? `word-${wordStatusByIndex.get(index)}` : ''}`}
+                  onClick={() => readWord(word, index)}
                   aria-label={`Read ${word}`}
                 >
-                  {splitSyllables(word).map((part, partIndex) => (
-                    /^[-‐‑‒–—]+$/.test(part)
-                      ? <span key={`${part}-${partIndex}`} className="syllable-divider">{part}</span>
-                      : <span key={`${part}-${partIndex}`} className="syllable-part">{part}</span>
+                  {syllabify(word).map((syllable, syllableIndex, arr) => (
+                    <span key={`${syllable}-${syllableIndex}`}>
+                      <span className={`syllable-part ${index === activeWordIndex && (activeSyllableIndex === -1 || syllableIndex === activeSyllableIndex) ? 'syllable-active' : ''}`}>
+                        {syllable}
+                      </span>
+                      {syllableIndex < arr.length - 1 && <span className="syllable-divider" aria-hidden="true">&middot;</span>}
+                    </span>
                   ))}
                 </button>
               ))}
@@ -402,7 +408,7 @@ export default function StudentReadingAssistant() {
               <div className={`feedback-card ${feedback.accuracyScore >= 90 ? 'great' : feedback.accuracyScore >= 70 ? 'ok' : 'try'}`}>
                 <strong>{feedback.accuracyScore >= 90 ? 'Great reading' : feedback.accuracyScore >= 70 ? 'Good try' : 'Try again'}</strong>
                 <span className="teacher-score">{feedback.accuracyScore}% accuracy</span>
-                <p>{feedback.feedback}</p>
+                <p>{feedback.pronunciationIssues?.[0]?.message || feedback.feedback}</p>
                 {feedback.practiceParts?.length > 0 && <p>Practice: {feedback.practiceParts.join(', ')}</p>}
                 {feedback.checkedWords?.length > 0 && (
                   <div className="word-feedback-list">

@@ -368,6 +368,7 @@ export const getStudent =async (req, res) => {
         hadStreakBreak: student.had_streak_break ?? false,
         unlockedAchievementIds: student.unlocked_achievement_ids ?? [],
         lastLoginDate: student.last_login_date ?? null,
+        wordOfDayCompletedDate: student.word_of_day_completed_date ?? null,
       },
     });
   } catch (error) {
@@ -432,6 +433,7 @@ export const updateStudent =async (req, res) => {
       hadStreakBreak,
       unlockedAchievementIds,
       lastLoginDate,
+      wordOfDayCompletedDate,
     } = req.body;
 
     if (gradeLevel !== undefined && gradeLevel !== null && !VALID_GRADE_LEVELS.includes(String(gradeLevel).trim())) {
@@ -469,6 +471,7 @@ export const updateStudent =async (req, res) => {
     if (hadStreakBreak !== undefined) updateData.had_streak_break = hadStreakBreak;
     if (unlockedAchievementIds !== undefined) updateData.unlocked_achievement_ids = unlockedAchievementIds;
     if (lastLoginDate !== undefined) updateData.last_login_date = lastLoginDate;
+    if (wordOfDayCompletedDate !== undefined) updateData.word_of_day_completed_date = wordOfDayCompletedDate;
 
     let updatedStudent = existingStudent;
     if (Object.keys(updateData).length > 0) {
