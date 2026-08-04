@@ -1,4 +1,5 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +14,11 @@ const __dirname = path.dirname(__filename);
 const supabaseUrl = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || 'https://uwuiinbbrhnwswmtlskp.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+const supabaseClientOptions = {
+  realtime: {
+    transport: ws,
+  },
+};
 
 // ============================================================================
 // IMPORTANT: Service Role Key Configuration
@@ -41,22 +47,23 @@ const getSupabaseServiceClient = () => {
   }
 
   if (!supabaseServiceKey) {
-    console.error('âŒ SUPABASE SERVICE ROLE KEY NOT CONFIGURED');
+    console.error('❌ SUPABASE SERVICE ROLE KEY NOT CONFIGURED');
     console.error('   This is required for user registration to work!');
     console.error('   Add SUPABASE_SERVICE_ROLE_KEY to your .env file');
     console.error('   Get it from: Supabase Dashboard > Settings > API > Service Role Secret Key');
     if (process.env.NODE_ENV === 'production') {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured in .env');
     }
-    console.warn('[Supabase] Running in development without service role key â€” using placeholder client (some features may fail)');
+    console.warn('[Supabase] Running in development without service role key — using placeholder client (some features may fail)');
   } else {
-    console.log('[Supabase] âœ“ Using SERVICE ROLE KEY (bypasses RLS policies)');
+    console.log('[Supabase] ✓ Using SERVICE ROLE KEY (bypasses RLS policies)');
   }
 
   // Create client; if service key is missing in dev we use a placeholder string to allow app startup
   const effectiveServiceKey = supabaseServiceKey || 'dev_service_role_placeholder_key';
 
   supabaseService = createClient(supabaseUrl, effectiveServiceKey, {
+    ...supabaseClientOptions,
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -77,13 +84,14 @@ const getSupabaseAnonClient = () => {
   }
 
   if (!supabaseAnonKey) {
-    console.warn('[Supabase] âš  ANON KEY NOT CONFIGURED - Some features may not work');
+    console.warn('[Supabase] ⚠ ANON KEY NOT CONFIGURED - Some features may not work');
     return null;
   }
 
-  console.log('[Supabase] âœ“ Using ANON KEY (RLS policies apply)');
+  console.log('[Supabase] ✓ Using ANON KEY (RLS policies apply)');
 
   supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
+    ...supabaseClientOptions,
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -115,6 +123,7 @@ const getSupabaseAuthClient = () => {
   }
 
   supabaseAuth = createClient(supabaseUrl, authKey, {
+    ...supabaseClientOptions,
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -135,4 +144,5 @@ export {
   getSupabaseAnonClient,
   getSupabaseAuthClient,
 };
+
 
