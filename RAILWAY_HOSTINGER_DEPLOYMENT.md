@@ -29,8 +29,18 @@ NODE_ENV=production
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key
+EMAIL_PROVIDER=brevo
 BREVO_API_KEY=your_rotated_brevo_api_key
 EMAIL_FROM=LinawLetra <verified-sender@your-domain.com>
+
+# If Brevo accepts emails but inboxes do not receive them, switch to Gmail SMTP:
+# EMAIL_PROVIDER=smtp
+# EMAIL_SERVICE=gmail
+# EMAIL_HOST=smtp.gmail.com
+# EMAIL_PORT=465
+# EMAIL_SECURE=true
+# EMAIL_USER=linawletra@gmail.com
+# EMAIL_PASS=your_gmail_app_password_without_spaces
 CLIENT_URL=https://your-hostinger-domain.com
 CORS_ORIGINS=https://your-hostinger-domain.com,https://www.your-hostinger-domain.com
 ```

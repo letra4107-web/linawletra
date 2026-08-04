@@ -84,6 +84,14 @@ const emailPort = parseInt(process.env.EMAIL_PORT, 10) || 587;
 const emailVerificationMinutes = parseInt(process.env.EMAIL_VERIFICATION_EXP_MINUTES, 10) || 10;
 const emailResendSeconds = parseInt(process.env.EMAIL_VERIFICATION_RESEND_SECONDS, 10) || 60;
 const passwordResetMinutes = parseInt(process.env.PASSWORD_RESET_EXP_MINUTES, 10) || 10;
+const requestedEmailProvider = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+const emailProvider = requestedEmailProvider === 'smtp'
+  ? 'smtp'
+  : requestedEmailProvider === 'brevo'
+    ? 'brevo'
+    : hasBrevoApiKey
+      ? 'brevo'
+      : 'smtp';
 
 const config = {
   // Application
@@ -110,7 +118,7 @@ const config = {
 
   // Email delivery using the official LinawLetra Gmail account
   email: {
-    provider: hasBrevoApiKey ? 'brevo' : 'smtp',
+    provider: emailProvider,
     service: process.env.EMAIL_SERVICE || 'gmail',
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: emailPort,
@@ -119,7 +127,9 @@ const config = {
     password: emailPassword,
     from: process.env.EMAIL_FROM || `LinawLetra <${emailUser}>`,
     brevoApiKey,
-    enabled: Boolean(hasBrevoApiKey || (emailUser && hasRealEmailPassword)),
+    enabled: emailProvider === 'brevo'
+      ? hasBrevoApiKey
+      : Boolean(emailUser && hasRealEmailPassword),
     // Whether to reject unauthorized TLS certificates. Default `true` in production.
     // Set EMAIL_TLS_REJECT_UNAUTHORIZED=false in development only to bypass self-signed certs.
     rejectUnauthorized: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED !== 'false',
