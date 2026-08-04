@@ -155,6 +155,29 @@ const clearSignupVerificationCode = async (user) => {
   if (error && !['PGRST205', '42P01'].includes(error.code)) throw error;
 };
 
+const findAuthUserByEmail = async (email) => {
+  const normalizedEmail = String(email || '').toLowerCase();
+  let page = 1;
+  const perPage = 1000;
+
+  while (page <= 10) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.warn('[authController] Could not check Supabase Auth user by email:', error.message);
+      return null;
+    }
+
+    const users = data?.users || [];
+    const match = users.find((user) => String(user.email || '').toLowerCase() === normalizedEmail);
+    if (match) return match;
+    if (users.length < perPage) return null;
+    page += 1;
+  }
+
+  console.warn('[authController] Auth user lookup stopped after 10 pages:', normalizedEmail);
+  return null;
+};
+
 const buildLoginOtpRecord = (code, session = null) => ({
   code,
   expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -339,54 +362,70 @@ export const register =async (req, res) => {
     if (existingUser) {
       console.log('[Register API] User already exists:', normalizedEmail);
 
-      if (existingUser.email_verified) {
+      const existingAuthUser = await findAuthUserByEmail(normalizedEmail);
+      if (!existingAuthUser) {
+        console.warn('[Register API] Found stale profile without Supabase Auth user; removing profile before re-register:', normalizedEmail);
+        await supabase.from('email_verification_codes').delete().eq('user_id', existingUser.id);
+        const { error: staleDeleteError } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', existingUser.id);
+
+        if (staleDeleteError) {
+          console.error('[Register API] Failed to remove stale user profile:', staleDeleteError);
+          return res.status(500).json({
+            success: false,
+            message: 'A stale account record is blocking registration. Please try again.',
+          });
+        }
+      } else if (existingUser.email_verified) {
         return res.status(409).json({
           success: false,
           message: 'This email is already registered. Please log in instead.',
         });
-      }
+      } else {
+        const verificationCode = generateVerificationCode();
+        const expiresAt = new Date(Date.now() + config.emailVerification.expiresInMinutes * 60 * 1000);
+        const resendAvailableAt = new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000);
 
-      const verificationCode = generateVerificationCode();
-      const expiresAt = new Date(Date.now() + config.emailVerification.expiresInMinutes * 60 * 1000);
-      const resendAvailableAt = new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000);
+        console.log('[Register API] Existing account is unverified; resending verification code:', normalizedEmail);
 
-      console.log('[Register API] Existing account is unverified; resending verification code:', normalizedEmail);
+        try {
+          const storedCode = await storeSignupVerificationCode(
+            existingUser.id,
+            normalizedEmail,
+            verificationCode,
+            expiresAt,
+            resendAvailableAt
+          );
+          console.log('[Register API] Verification code stored for existing unverified user in:', storedCode.source);
+        } catch (codeError) {
+          console.error('[Register API] Failed to store verification code for existing unverified user:', codeError);
+          return res.status(500).json({
+            success: false,
+            message: 'Registration found an unverified account, but the verification code could not be saved. Please try again.',
+          });
+        }
 
-      try {
-        const storedCode = await storeSignupVerificationCode(
-          existingUser.id,
-          normalizedEmail,
-          verificationCode,
-          expiresAt,
-          resendAvailableAt
-        );
-        console.log('[Register API] Verification code stored for existing unverified user in:', storedCode.source);
-      } catch (codeError) {
-        console.error('[Register API] Failed to store verification code for existing unverified user:', codeError);
-        return res.status(500).json({
-          success: false,
-          message: 'Registration found an unverified account, but the verification code could not be saved. Please try again.',
+        try {
+          await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
+          console.log('[Register API] Verification email resent for existing unverified user:', normalizedEmail);
+        } catch (emailError) {
+          console.error('[Register API] Failed to resend verification email for existing unverified user:', emailError.message);
+          return res.status(500).json({
+            success: false,
+            message: 'Registration found an unverified account, but we could not send the verification email. Please try again later.',
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: 'This email already has an unverified account. We sent a new verification code.',
+          email: normalizedEmail,
+          userId: existingUser.id,
+          requiresEmailVerification: true,
         });
       }
-
-      try {
-        await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
-        console.log('[Register API] Verification email resent for existing unverified user:', normalizedEmail);
-      } catch (emailError) {
-        console.error('[Register API] Failed to resend verification email for existing unverified user:', emailError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Registration found an unverified account, but we could not send the verification email. Please try again later.',
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: 'This email already has an unverified account. We sent a new verification code.',
-        email: normalizedEmail,
-        userId: existingUser.id,
-        requiresEmailVerification: true,
-      });
     }
 
     const fullName = `${firstName} ${middleInitial ? middleInitial + ' ' : ''}${lastName}`.trim();
@@ -421,7 +460,7 @@ export const register =async (req, res) => {
 
     // Use admin.createUser instead of signUp to prevent Supabase auto-email
     // We handle email sending via backend SMTP (Nodemailer + Gmail)
-    const { data: { user: authUser }, error: authError } = await supabase.auth.admin.createUser({
+    let { data: authCreateData, error: authError } = await supabase.auth.admin.createUser({
       email: normalizedEmail,
       password: password,
       user_metadata: {
@@ -429,6 +468,7 @@ export const register =async (req, res) => {
       },
       email_confirm: false, // User must verify via backend OTP email
     });
+    let authUser = authCreateData?.user;
 
     if (authError || !authUser) {
       console.error('[Register API] Failed to create auth user:', authError);
@@ -437,12 +477,39 @@ export const register =async (req, res) => {
         authError?.code === 'auth/email-already-in-use' ||
         authError?.code === 'email_exists';
 
-      return res.status(duplicateMessage ? 409 : 400).json({
-        success: false,
-        message: duplicateMessage
-          ? 'This email is already registered. Please log in instead.'
-          : authError?.message || 'Failed to create auth account',
-      });
+      if (duplicateMessage) {
+        const orphanAuthUser = await findAuthUserByEmail(normalizedEmail);
+        if (orphanAuthUser?.id) {
+          console.warn('[Register API] Found orphan Supabase Auth user without profile; deleting and retrying:', normalizedEmail);
+          const { error: deleteOrphanError } = await supabase.auth.admin.deleteUser(orphanAuthUser.id);
+          if (deleteOrphanError) {
+            console.error('[Register API] Failed to delete orphan auth user:', deleteOrphanError);
+          } else {
+            const retryResult = await supabase.auth.admin.createUser({
+              email: normalizedEmail,
+              password,
+              user_metadata: {
+                role: userRole,
+              },
+              email_confirm: false,
+            });
+            authCreateData = retryResult.data;
+            authError = retryResult.error;
+            authUser = authCreateData?.user;
+          }
+        }
+      }
+
+      if (!authError && authUser) {
+        console.log('[Register API] Auth user created after orphan cleanup:', { id: authUser.id, email: normalizedEmail });
+      } else {
+        return res.status(duplicateMessage ? 409 : 400).json({
+          success: false,
+          message: duplicateMessage
+            ? 'This email is already registered. Please log in instead.'
+            : authError?.message || 'Failed to create auth account',
+        });
+      }
     }
 
     console.log('[Register API] Auth user created:', { id: authUser.id, email: normalizedEmail, idType: typeof authUser.id });
