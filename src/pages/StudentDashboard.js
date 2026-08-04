@@ -160,7 +160,6 @@ const StudentDashboard = () => {
   const [xpGainPopup, setXpGainPopup] = useState(null);
   const [reassurancePopup, setReassurancePopup] = useState(null);
   const [confettiPopup, setConfettiPopup] = useState(false);
-  const [revealedVocabularyIds, setRevealedVocabularyIds] = useState(new Set());
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
@@ -893,11 +892,6 @@ const StudentDashboard = () => {
     if (isCorrect) {
       awardPronunciationXp(attemptXp);
       if (isWordOfDayAttempt) completeWordOfDayStreak();
-      setRevealedVocabularyIds((prev) => {
-        const next = new Set(prev);
-        if (activePracticeWord?.id) next.add(activePracticeWord.id);
-        return next;
-      });
       if (score === 100) {
         setPerfectWords((prev) => prev.includes(expected) ? prev : [...prev, expected]);
       }
@@ -1186,26 +1180,7 @@ const StudentDashboard = () => {
     const nextWord = practiceWords[nextIndex];
     if (nextWord) selectPracticeWord(nextWord);
   };
-  const toggleActiveVocabularyReveal = () => {
-    if (!activePracticeWord?.id) return;
-    setRevealedVocabularyIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(activePracticeWord.id)) next.delete(activePracticeWord.id);
-      else next.add(activePracticeWord.id);
-      return next;
-    });
-  };
   const visiblePracticeLabel = activePracticeWord ? activePracticeWord.accentedSpelling : expectedText;
-  const shouldRevealPracticeWord =
-    accuracy !== null ||
-    canAdvanceCurrentWord ||
-    status === 'incorrect' ||
-    status === 'almost' ||
-    (activePracticeWord?.id && revealedVocabularyIds.has(activePracticeWord.id));
-  const hiddenPracticeSyllables = syllabify(visiblePracticeLabel).map((syllable, index) => ({
-    id: `${index}-${syllable.length}`,
-    width: Math.max(2, Math.min(5, syllable.length)),
-  }));
   return (
     <div
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
@@ -1470,35 +1445,20 @@ const StudentDashboard = () => {
                 </div>
                 <div className="word-display">
                   <div
-                    className={`practice-word ${status === 'listening' ? 'is-listening' : ''} ${shouldRevealPracticeWord ? '' : 'practice-word--hidden'}`}
-                    aria-label={shouldRevealPracticeWord ? visiblePracticeLabel : 'Hidden practice word'}
+                    className={`practice-word ${status === 'listening' ? 'is-listening' : ''}`}
+                    aria-label={visiblePracticeLabel}
                   >
-                    {shouldRevealPracticeWord ? (
-                      syllabify(visiblePracticeLabel).map((syllable, index, arr) => (
-                        <span className={`practice-syllable ${index === activePracticeSyllableIndex ? 'syllable-active' : ''}`} key={`${syllable}-${index}`}>
-                          {syllable}
-                          {index < arr.length - 1 && <span className="syllable-divider" aria-hidden="true">&middot;</span>}
-                        </span>
-                      ))
-                    ) : (
-                      hiddenPracticeSyllables.map((placeholder) => (
-                        <span
-                          className="practice-syllable practice-syllable-placeholder"
-                          style={{ '--placeholder-ch': placeholder.width }}
-                          key={placeholder.id}
-                          aria-hidden="true"
-                        />
-                      ))
-                    )}
+                    {syllabify(visiblePracticeLabel).map((syllable, index, arr) => (
+                      <span className={`practice-syllable ${index === activePracticeSyllableIndex ? 'syllable-active' : ''}`} key={`${syllable}-${index}`}>
+                        {syllable}
+                        {index < arr.length - 1 && <span className="syllable-divider" aria-hidden="true">&middot;</span>}
+                      </span>
+                    ))}
                   </div>
                   {activePracticeWord ? (
                     <>
-                      {shouldRevealPracticeWord ? (
-                        <p className="word-meaning">{activePracticeWord.meaning}</p>
-                      ) : (
-                        <p className="word-meaning">Listen first, then say what you hear.</p>
-                      )}
-                      {shouldRevealPracticeWord && activePracticeWord.isHomograph && (
+                      <p className="word-meaning">{activePracticeWord.meaning}</p>
+                      {activePracticeWord.isHomograph && (
                         <>
                           <button
                             type="button"
@@ -1557,13 +1517,6 @@ const StudentDashboard = () => {
                         disabled={activePracticeIndex <= 0}
                       >
                         Back
-                      </button>
-                      <button
-                        className={`button-large ${shouldRevealPracticeWord ? 'button-primary' : 'button-secondary'}`}
-                        type="button"
-                        onClick={toggleActiveVocabularyReveal}
-                      >
-                        {shouldRevealPracticeWord ? 'Hide Word' : 'Show Word'}
                       </button>
                       <button
                         className="button-large button-secondary"
@@ -1655,7 +1608,6 @@ const StudentDashboard = () => {
                     const isActive = activePracticeWord?.id === practiceWord.id;
                     const isCompleted = completedWords.includes(practiceWord.word);
                     const isPerfect = perfectWords.includes(practiceWord.word);
-                    const isRevealed = isActive || revealedVocabularyIds.has(practiceWord.id);
                     const masteryStatus = wordMasteryByWord.get(practiceWord.word?.toLowerCase());
                     const tileStatus = isActive
                       ? 'current'
@@ -1676,16 +1628,12 @@ const StudentDashboard = () => {
                         key={practiceWord.id}
                         type="button"
                         className={`vocabulary-tile status-${tileStatus}`}
-                        onClick={() => {
-                          if (isActive) toggleActiveVocabularyReveal();
-                          else selectPracticeWord(practiceWord);
-                        }}
-                        aria-label={isRevealed ? practiceWord.accentedSpelling : `Hidden word ${practiceWord.id}`}
+                        onClick={() => selectPracticeWord(practiceWord)}
+                        aria-label={`Hidden vocabulary word ${practiceWord.id}`}
                       >
-                        <span className={`vocabulary-tile-word ${isRevealed ? '' : 'is-hidden'}`}>
-                          {isRevealed ? practiceWord.accentedSpelling : (isCompleted ? '••••' : '---')}
+                        <span className="vocabulary-tile-word is-hidden">
+                          {isCompleted ? '••••' : '---'}
                         </span>
-                        {isRevealed && practiceWord.isHomograph && <span className="vocabulary-chip-badge">2 kahulugan</span>}
                         {statusMeta.label && (
                           <span className="vocabulary-tile-status">
                             {statusMeta.Icon && <statusMeta.Icon aria-hidden="true" />}
