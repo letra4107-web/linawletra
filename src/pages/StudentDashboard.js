@@ -33,11 +33,13 @@ import './StudentDashboard.css';
 // ============================================================================
 // CONSTANTS: Activity & Gamification
 // ============================================================================
+const XP_PER_CORRECT_WORD = 50;
+const XP_BONUS_PERFECT_WORD = 25;
 const PRONUNCIATION_XP = {
-  perfect: 50,
-  correct: 40,
-  close: 25,
-  practice: 10,
+  perfect: XP_PER_CORRECT_WORD + XP_BONUS_PERFECT_WORD,
+  correct: XP_PER_CORRECT_WORD,
+  close: 0,
+  practice: 0,
 };
 const ENCOURAGEMENT_MESSAGES = ['YOU DID WELL!', 'GOOD JOB!', 'NICE TRY!', 'KEEP GOING!', 'GREAT EFFORT!'];
 // Phonetic progression system for LinawLetra
@@ -138,6 +140,7 @@ const StudentDashboard = () => {
   const [practiceLevelSaving, setPracticeLevelSaving] = useState(false);
   const [currentStudentId, setCurrentStudentId] = useState(null);
   const [completedWords, setCompletedWords] = useState([]);
+  const [perfectWords, setPerfectWords] = useState([]);
   const [xp, setXp] = useState(0);
   const [achievements, setAchievements] = useState(0);
   const [wordsCompleted, setWordsCompleted] = useState(0);
@@ -157,6 +160,7 @@ const StudentDashboard = () => {
   const [xpGainPopup, setXpGainPopup] = useState(null);
   const [reassurancePopup, setReassurancePopup] = useState(null);
   const [confettiPopup, setConfettiPopup] = useState(false);
+  const [revealedVocabularyIds, setRevealedVocabularyIds] = useState(new Set());
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
@@ -246,6 +250,7 @@ const StudentDashboard = () => {
           });
           assignedLevel = progressData.practiceLevel || progressData.practice_level || progressData.currentLevel || assignedLevel;
           setCompletedWords(progressData.completedWords || progressData.completed_words || []);
+          setPerfectWords(progressData.perfectWords || progressData.perfect_words || []);
           setXp(progressData.xp || 0);
           setWordsCompleted(progressData.wordsCompleted || progressData.completed_words?.length || 0);
           setAchievements(Math.floor((progressData.wordsCompleted || progressData.completedWords?.length || 0) / 5));
@@ -313,6 +318,7 @@ const StudentDashboard = () => {
     wordsCompleted,
     achievements,
     completedWords,
+    perfectWords,
     practiceLevel,
     completed: progress.completed || 0,
     accuracy: progress.accuracy || 0,
@@ -363,7 +369,7 @@ const StudentDashboard = () => {
   };
   useEffect(() => {
     queuePersist();
-  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, longestStreak, currentStudentId, authUser, hasLoadedProgress]);
+  }, [xp, wordsCompleted, achievements, completedWords, perfectWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, longestStreak, currentStudentId, authUser, hasLoadedProgress]);
 
   // Recompute unlocked achievements whenever the underlying stats change.
   // This only ever ADDS badge ids (a union with what's already unlocked) --
@@ -642,9 +648,10 @@ const StudentDashboard = () => {
   };
 
   const awardPronunciationXp = (amount) => {
+    if (!amount) return;
     setXp((prev) => (Number(prev) || 0) + amount);
     setXpGainPopup(amount);
-    setTimeout(() => setXpGainPopup(null), 2000);
+    setTimeout(() => setXpGainPopup(null), 2500);
   };
   const normalizeForEvaluation = (text = '') =>
     text
@@ -859,7 +866,6 @@ const StudentDashboard = () => {
     setAccuracy(score);
     setFeedback(tagalogFeedback);
     setAccuracyExplanation(getAccuracyExplanation(score, spoken, expected));
-    awardPronunciationXp(attemptXp);
     if (score < 80) {
       setCanAdvanceCurrentWord(false);
     }
@@ -869,6 +875,7 @@ const StudentDashboard = () => {
       score,
       correct: isCorrect,
       xp: attemptXp,
+      activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
       playedTTS: score < 80,
       timestamp: Date.now(),
     };
@@ -884,7 +891,16 @@ const StudentDashboard = () => {
       setFeedback(`${tagalogFeedback} Pakinggan mo ito.`);
     }
     if (isCorrect) {
+      awardPronunciationXp(attemptXp);
       if (isWordOfDayAttempt) completeWordOfDayStreak();
+      setRevealedVocabularyIds((prev) => {
+        const next = new Set(prev);
+        if (activePracticeWord?.id) next.add(activePracticeWord.id);
+        return next;
+      });
+      if (score === 100) {
+        setPerfectWords((prev) => prev.includes(expected) ? prev : [...prev, expected]);
+      }
       setStatus('correct');
       setRecognitionResult('success');
       if (score === 100) {
@@ -912,7 +928,10 @@ const StudentDashboard = () => {
         setProgress((prev) => ({
           ...prev,
           completed: (prev.completed || 0) + 1,
-          accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
+          accuracy: Math.round(
+            ((Number(prev.accuracy) || 0) * (prev.completed || 0) + score) /
+            ((prev.completed || 0) + 1)
+          ),
         }));
       } else {
         setProgress((prev) => ({
@@ -1117,10 +1136,7 @@ const StudentDashboard = () => {
   const formattedTime = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric', minute: 'numeric', hour12: true,
   }).format(dateTime);
-  const progressXp = useMemo(
-    () => progress.completed * 10 + progress.accuracy,
-    [progress]
-  );
+  const progressXp = useMemo(() => Number(xp) || 0, [xp]);
   const tier = useMemo(() => getTierFromXp(progressXp), [progressXp]);
   const lessonsGoal = progress.totalLessons || 7;
   const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
@@ -1143,14 +1159,49 @@ const StudentDashboard = () => {
   const wordOfTheDay = practiceWords.length > 0
     ? practiceWords[dayOfYear % practiceWords.length]
     : null;
+  const wordOfTheDayAttempts = useMemo(() => {
+    if (!wordOfTheDay) return [];
+    return (progress.history || []).filter((entry) =>
+      entry.activityType === 'word_of_day' ||
+      String(entry.word || '').toLowerCase() === String(wordOfTheDay.word || '').toLowerCase()
+    );
+  }, [progress.history, wordOfTheDay]);
+  const latestWordOfTheDayAttempt = wordOfTheDayAttempts[wordOfTheDayAttempts.length - 1] || null;
+  const hasPracticedWordOfTheDay = Boolean(latestWordOfTheDayAttempt) || completedWords.includes(wordOfTheDay?.word);
   const selectPracticeWord = (practiceWord) => {
     setActivePracticeWord(practiceWord);
     setHomographPanelOpenId(null);
     setExpectedText(practiceWord.word);
     resetPracticeAttemptState();
   };
+  const activePracticeIndex = activePracticeWord
+    ? practiceWords.findIndex((word) => word.id === activePracticeWord.id)
+    : -1;
+  const navigatePracticeWord = (direction) => {
+    if (practiceWords.length === 0) return;
+    const fallbackIndex = direction > 0 ? 0 : practiceWords.length - 1;
+    const nextIndex = activePracticeIndex < 0
+      ? fallbackIndex
+      : Math.min(practiceWords.length - 1, Math.max(0, activePracticeIndex + direction));
+    const nextWord = practiceWords[nextIndex];
+    if (nextWord) selectPracticeWord(nextWord);
+  };
+  const toggleActiveVocabularyReveal = () => {
+    if (!activePracticeWord?.id) return;
+    setRevealedVocabularyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(activePracticeWord.id)) next.delete(activePracticeWord.id);
+      else next.add(activePracticeWord.id);
+      return next;
+    });
+  };
   const visiblePracticeLabel = activePracticeWord ? activePracticeWord.accentedSpelling : expectedText;
-  const shouldRevealPracticeWord = accuracy !== null || canAdvanceCurrentWord || status === 'incorrect' || status === 'almost';
+  const shouldRevealPracticeWord =
+    accuracy !== null ||
+    canAdvanceCurrentWord ||
+    status === 'incorrect' ||
+    status === 'almost' ||
+    (activePracticeWord?.id && revealedVocabularyIds.has(activePracticeWord.id));
   const hiddenPracticeSyllables = syllabify(visiblePracticeLabel).map((syllable, index) => ({
     id: `${index}-${syllable.length}`,
     width: Math.max(2, Math.min(5, syllable.length)),
@@ -1226,22 +1277,15 @@ const StudentDashboard = () => {
           />
         )}
         {xpGainPopup && (
-          <div style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            backgroundColor: '#4F46E5',
-            color: '#fff',
-            padding: '20px 40px',
-            borderRadius: '12px',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            zIndex: 1000,
-            animation: 'fadeInOut 2s ease-in-out',
-          }}
+          <div
+            className="xp-gain-popup"
+            role="status"
+            aria-live="polite"
           >
-            +{xpGainPopup} XP
+            <span>+{xpGainPopup} XP</span>
+            {xpGainPopup > XP_PER_CORRECT_WORD && (
+              <small>Perfect! Bonus XP!</small>
+            )}
           </div>
         )}
         {reassurancePopup && (
@@ -1274,25 +1318,41 @@ const StudentDashboard = () => {
             {wordOfTheDay && (
               <article className="word-of-the-day-card word-of-the-day-featured">
                 <span className="word-of-the-day-kicker">Salita Ngayon</span>
-                <span className="word-of-the-day-word">{wordOfTheDay.accentedSpelling}</span>
-                <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
-                {wordOfTheDay.example && (
-                  <span className="word-of-the-day-example">"{wordOfTheDay.example}"</span>
+                <span className={`word-of-the-day-word ${hasPracticedWordOfTheDay ? '' : 'is-hidden'}`}>
+                  {hasPracticedWordOfTheDay ? wordOfTheDay.accentedSpelling : '---'}
+                </span>
+                {hasPracticedWordOfTheDay ? (
+                  <>
+                    <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
+                    {latestWordOfTheDayAttempt?.score !== undefined && (
+                      <span className="word-of-the-day-meaning">
+                        Accuracy: {latestWordOfTheDayAttempt.score}%
+                      </span>
+                    )}
+                    {wordOfTheDay.example && (
+                      <span className="word-of-the-day-example">"{wordOfTheDay.example}"</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="word-of-the-day-meaning">Practice today's hidden word to reveal it.</span>
                 )}
                 <div className="word-of-the-day-actions">
-                  <button
-                    type="button"
-                    className="button-large button-secondary"
-                    onClick={() => speakTagalog(wordOfTheDay.accentedSpelling)}
-                  >
-                    <FiVolume2 aria-hidden="true" /> Listen
-                  </button>
+                  {hasPracticedWordOfTheDay && (
+                    <button
+                      type="button"
+                      className="button-large button-secondary"
+                      onClick={() => speakTagalog(wordOfTheDay.accentedSpelling)}
+                    >
+                      <FiVolume2 aria-hidden="true" /> Listen
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="button-large button-primary"
                     onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
                   >
-                    <FiTarget aria-hidden="true" /> Start Word of the Day
+                    <FiTarget aria-hidden="true" />
+                    {hasPracticedWordOfTheDay ? 'Try for 100%' : 'Start Word of the Day'}
                   </button>
                 </div>
               </article>
@@ -1488,6 +1548,33 @@ const StudentDashboard = () => {
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
                     <FiRepeat aria-hidden="true" /> Replay Voice
                   </button>
+                  {activePracticeWord && (
+                    <>
+                      <button
+                        className="button-large button-secondary"
+                        type="button"
+                        onClick={() => navigatePracticeWord(-1)}
+                        disabled={activePracticeIndex <= 0}
+                      >
+                        Back
+                      </button>
+                      <button
+                        className={`button-large ${shouldRevealPracticeWord ? 'button-primary' : 'button-secondary'}`}
+                        type="button"
+                        onClick={toggleActiveVocabularyReveal}
+                      >
+                        {shouldRevealPracticeWord ? 'Hide Word' : 'Show Word'}
+                      </button>
+                      <button
+                        className="button-large button-secondary"
+                        type="button"
+                        onClick={() => navigatePracticeWord(1)}
+                        disabled={activePracticeIndex < 0 || activePracticeIndex >= practiceWords.length - 1}
+                      >
+                        Browse Next
+                      </button>
+                    </>
+                  )}
                   <button
                     className="button-large button-primary"
                     type="button"
@@ -1567,12 +1654,17 @@ const StudentDashboard = () => {
                   {practiceWords.map((practiceWord) => {
                     const isActive = activePracticeWord?.id === practiceWord.id;
                     const isCompleted = completedWords.includes(practiceWord.word);
+                    const isPerfect = perfectWords.includes(practiceWord.word);
+                    const isRevealed = isActive || revealedVocabularyIds.has(practiceWord.id);
                     const masteryStatus = wordMasteryByWord.get(practiceWord.word?.toLowerCase());
                     const tileStatus = isActive
                       ? 'current'
-                      : masteryStatus || (isCompleted ? 'completed' : 'new');
+                      : isPerfect
+                        ? 'perfect'
+                        : masteryStatus || (isCompleted ? 'completed' : 'new');
                     const statusMeta = {
                       current: { label: 'Current', Icon: FiTarget },
+                      perfect: { label: 'Perfect', Icon: FiStar },
                       mastered: { label: 'Mastered', Icon: FiAward },
                       needs_practice: { label: 'Needs practice', Icon: FiRepeat },
                       difficult: { label: 'Difficult', Icon: FiAlertTriangle },
@@ -1584,10 +1676,16 @@ const StudentDashboard = () => {
                         key={practiceWord.id}
                         type="button"
                         className={`vocabulary-tile status-${tileStatus}`}
-                        onClick={() => selectPracticeWord(practiceWord)}
+                        onClick={() => {
+                          if (isActive) toggleActiveVocabularyReveal();
+                          else selectPracticeWord(practiceWord);
+                        }}
+                        aria-label={isRevealed ? practiceWord.accentedSpelling : `Hidden word ${practiceWord.id}`}
                       >
-                        <span className="vocabulary-tile-word">{practiceWord.accentedSpelling}</span>
-                        {practiceWord.isHomograph && <span className="vocabulary-chip-badge">2 kahulugan</span>}
+                        <span className={`vocabulary-tile-word ${isRevealed ? '' : 'is-hidden'}`}>
+                          {isRevealed ? practiceWord.accentedSpelling : (isCompleted ? '••••' : '---')}
+                        </span>
+                        {isRevealed && practiceWord.isHomograph && <span className="vocabulary-chip-badge">2 kahulugan</span>}
                         {statusMeta.label && (
                           <span className="vocabulary-tile-status">
                             {statusMeta.Icon && <statusMeta.Icon aria-hidden="true" />}
@@ -1935,8 +2033,12 @@ const StudentDashboard = () => {
             onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
           >
             <span className="word-of-the-day-kicker">Word of the day</span>
-            <span className="word-of-the-day-word">{wordOfTheDay.accentedSpelling}</span>
-            <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
+            <span className={`word-of-the-day-word ${hasPracticedWordOfTheDay ? '' : 'is-hidden'}`}>
+              {hasPracticedWordOfTheDay ? wordOfTheDay.accentedSpelling : '---'}
+            </span>
+            <span className="word-of-the-day-meaning">
+              {hasPracticedWordOfTheDay ? wordOfTheDay.meaning : 'Practice to reveal'}
+            </span>
           </button>
         )}
         {recommendedPracticeWords.length > 0 && (

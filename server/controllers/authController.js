@@ -13,14 +13,19 @@ import { generateVerificationCode,
   verifyCodeExpiration, } from '../services/emailService.js';
 
 const storeSignupVerificationCode = async (userId, email, code, expiresAt, resendAvailableAt) => {
+  const expiresAtISO = expiresAt instanceof Date ? expiresAt.toISOString() : expiresAt;
+  const resendAvailableAtISO = resendAvailableAt instanceof Date
+    ? resendAvailableAt.toISOString()
+    : resendAvailableAt;
+
   const { error } = await supabase
     .from('email_verification_codes')
     .insert({
       user_id: userId,
-      email,
+      email: String(email || '').toLowerCase().trim(),
       code,
-      expires_at: expiresAt,
-      resend_available_at: resendAvailableAt,
+      expires_at: expiresAtISO,
+      resend_available_at: resendAvailableAtISO,
       attempts: 0,
     });
 
@@ -58,10 +63,10 @@ const storeSignupVerificationCode = async (userId, email, code, expiresAt, resen
         metadata: {
           ...(currentUser?.metadata || {}),
           signupVerification: {
-            email,
+            email: String(email || '').toLowerCase().trim(),
             code,
-            expires_at: expiresAt,
-            resend_available_at: resendAvailableAt,
+            expires_at: expiresAtISO,
+            resend_available_at: resendAvailableAtISO,
             attempts: 0,
             created_at: new Date().toISOString(),
           },
@@ -77,6 +82,7 @@ const storeSignupVerificationCode = async (userId, email, code, expiresAt, resen
     return { source: 'metadata' };
   }
 
+  console.log('[authController] Verification code stored in email_verification_codes table');
   return { source: 'table' };
 };
 
@@ -400,10 +406,17 @@ export const register =async (req, res) => {
           );
           console.log('[Register API] Verification code stored for existing unverified user in:', storedCode.source);
         } catch (codeError) {
-          console.error('[Register API] Failed to store verification code for existing unverified user:', codeError);
+          console.error('[Register API] Failed to store verification code for existing unverified user:', {
+            message: codeError?.message,
+            code: codeError?.code,
+            hint: codeError?.hint,
+            details: codeError?.details,
+          });
           return res.status(500).json({
             success: false,
-            message: 'Registration found an unverified account, but the verification code could not be saved. Please try again.',
+            message: process.env.NODE_ENV === 'development'
+              ? `Registration failed: ${codeError?.message || 'Verification code save error'} (code: ${codeError?.code || 'N/A'}) - check server logs`
+              : 'Registration failed. Please try again or contact support.',
           });
         }
 
@@ -628,12 +641,19 @@ export const register =async (req, res) => {
       );
       console.log('[Register API] Verification code stored in:', storedCode.source);
     } catch (codeError) {
-      console.error('[Register API] Failed to store verification code:', codeError);
+      console.error('[Register API] Failed to store verification code:', {
+        message: codeError?.message,
+        code: codeError?.code,
+        hint: codeError?.hint,
+        details: codeError?.details,
+      });
       await supabase.from('users').delete().eq('id', authUser.id);
       await supabase.auth.admin.deleteUser(authUser.id);
       return res.status(500).json({
         success: false,
-        message: 'Registration failed because the verification code could not be saved. Please try again.',
+        message: process.env.NODE_ENV === 'development'
+          ? `Registration failed: ${codeError?.message || 'Verification code save error'} (code: ${codeError?.code || 'N/A'}) - check server logs`
+          : 'Registration failed. Please try again or contact support.',
       });
     }
 

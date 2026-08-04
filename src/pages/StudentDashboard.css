@@ -944,6 +944,15 @@ a {
   color: var(--text);
 }
 
+.vocabulary-tile-word.is-hidden {
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+}
+
+.vocabulary-tile.status-current .vocabulary-tile-word.is-hidden {
+  color: rgba(255, 255, 255, 0.86);
+}
+
 .vocabulary-tile-status {
   display: inline-flex;
   align-items: center;
@@ -981,6 +990,11 @@ a {
 .vocabulary-tile.status-completed .vocabulary-tile-status {
   background: rgba(35, 164, 85, 0.14);
   color: var(--success);
+}
+
+.vocabulary-tile.status-perfect .vocabulary-tile-status {
+  background: rgba(79, 70, 229, 0.14);
+  color: var(--accent);
 }
 
 .vocabulary-tile.status-needs_practice .vocabulary-tile-status {
@@ -1040,6 +1054,11 @@ a {
   font-size: 1.6rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.word-of-the-day-word.is-hidden {
+  letter-spacing: 0.18em;
+  color: var(--text-secondary);
 }
 
 .word-of-the-day-meaning {
@@ -1416,20 +1435,40 @@ a {
 }
 
 .xp-gain-popup {
-  animation: fadeInOut 2s ease-in-out;
+  animation: xpPopIn 0.3s ease, xpFadeOut 0.5s ease 2s forwards;
   position: fixed;
-  top: 50%;
+  top: 30%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: linear-gradient(135deg, #2a9d8f 0%, #1f7d6f 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #2d9c78, #1a6e52);
   color: white;
-  padding: 16px 32px;
-  border-radius: 12px;
-  font-size: 24px;
-  font-weight: 600;
-  box-shadow: 0 8px 24px rgba(42, 157, 143, 0.3);
+  padding: 20px 40px;
+  border-radius: 24px;
+  font-size: 28px;
+  font-weight: 800;
+  box-shadow: 0 8px 32px rgba(45, 156, 120, 0.35);
   pointer-events: none;
   z-index: 1000;
+}
+
+.xp-gain-popup small {
+  font-size: 0.88rem;
+  font-weight: 700;
+  opacity: 0.92;
+}
+
+@keyframes xpPopIn {
+  from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+@keyframes xpFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translate(-50%, -80%); }
 }
 
 .reassurance-popup {
