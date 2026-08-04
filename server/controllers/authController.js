@@ -327,7 +327,7 @@ export const register =async (req, res) => {
     // Check if user profile already exists
     const { data: existingUser, error: checkError } = await supabase
       .from('users')
-      .select('id, email')
+      .select('id, email, email_verified, metadata')
       .eq('email', normalizedEmail)
       .single();
 
@@ -338,9 +338,54 @@ export const register =async (req, res) => {
 
     if (existingUser) {
       console.log('[Register API] User already exists:', normalizedEmail);
-      return res.status(409).json({
-        success: false,
-        message: 'This email is already registered. Please log in instead.',
+
+      if (existingUser.email_verified) {
+        return res.status(409).json({
+          success: false,
+          message: 'This email is already registered. Please log in instead.',
+        });
+      }
+
+      const verificationCode = generateVerificationCode();
+      const expiresAt = new Date(Date.now() + config.emailVerification.expiresInMinutes * 60 * 1000);
+      const resendAvailableAt = new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000);
+
+      console.log('[Register API] Existing account is unverified; resending verification code:', normalizedEmail);
+
+      try {
+        const storedCode = await storeSignupVerificationCode(
+          existingUser.id,
+          normalizedEmail,
+          verificationCode,
+          expiresAt,
+          resendAvailableAt
+        );
+        console.log('[Register API] Verification code stored for existing unverified user in:', storedCode.source);
+      } catch (codeError) {
+        console.error('[Register API] Failed to store verification code for existing unverified user:', codeError);
+        return res.status(500).json({
+          success: false,
+          message: 'Registration found an unverified account, but the verification code could not be saved. Please try again.',
+        });
+      }
+
+      try {
+        await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
+        console.log('[Register API] Verification email resent for existing unverified user:', normalizedEmail);
+      } catch (emailError) {
+        console.error('[Register API] Failed to resend verification email for existing unverified user:', emailError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Registration found an unverified account, but we could not send the verification email. Please try again later.',
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'This email already has an unverified account. We sent a new verification code.',
+        email: normalizedEmail,
+        userId: existingUser.id,
+        requiresEmailVerification: true,
       });
     }
 
