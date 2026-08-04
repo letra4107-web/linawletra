@@ -763,6 +763,8 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
+  gap: 0.18em;
+  min-height: 1.2em;
   font-size: clamp(2.4rem, 6vw, 4.2rem);
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -802,16 +804,24 @@ a {
 }
 
 .practice-word--hidden {
-  color: var(--text-secondary);
+  align-items: center;
+  gap: 0.28em;
   letter-spacing: 0;
 }
 
 .practice-word--hidden .practice-syllable {
-  min-width: 1.25em;
-  justify-content: center;
-  padding: 0 0.06em;
-  color: transparent;
-  text-shadow: 0 0 0 rgba(85, 107, 133, 0.52);
+  min-width: 0;
+  padding: 0;
+}
+
+.practice-syllable-placeholder {
+  width: calc(var(--placeholder-ch, 3) * 0.64em);
+  height: 0.18em;
+  min-width: 1.2em;
+  max-width: 3.2em;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #a7b3c3, #c8d1dc);
+  box-shadow: 0 0.08em 0 rgba(85, 107, 133, 0.12);
 }
 
 .button-large:disabled,

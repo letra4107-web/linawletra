@@ -768,6 +768,7 @@ const StudentDashboard = () => {
     setStatusMessage('');
     setRecognitionResult('neutral');
     setRecognitionDistance(null);
+    setRecordedAudio(null);
     resetSyllableHighlight();
   };
 
@@ -788,13 +789,20 @@ const StudentDashboard = () => {
         setHomographPanelOpenId(null);
         setExpectedText(nextWord.word);
         resetPracticeAttemptState();
+        setTimeout(() => {
+          speakTagalog(nextWord.accentedSpelling || nextWord.word, { trackSyllables: true });
+        }, 150);
         return;
       }
     }
 
-    setExpectedText(getPhoneticWordForProgress(currentPhoneticLevel, progressInCurrentLevel));
+    const nextExpectedWord = getPhoneticWordForProgress(currentPhoneticLevel, progressInCurrentLevel);
+    setExpectedText(nextExpectedWord);
     setActivePracticeWord(null);
     resetPracticeAttemptState();
+    setTimeout(() => {
+      speakTagalog(nextExpectedWord, { trackSyllables: true });
+    }, 150);
   };
   // Only successfully pronouncing the Word of the Day advances the streak --
   // opening the app, listening to it, or reading it does not count. Called
@@ -1143,7 +1151,10 @@ const StudentDashboard = () => {
   };
   const visiblePracticeLabel = activePracticeWord ? activePracticeWord.accentedSpelling : expectedText;
   const shouldRevealPracticeWord = accuracy !== null || canAdvanceCurrentWord || status === 'incorrect' || status === 'almost';
-  const hiddenPracticeSyllables = syllabify(visiblePracticeLabel).map(() => '___');
+  const hiddenPracticeSyllables = syllabify(visiblePracticeLabel).map((syllable, index) => ({
+    id: `${index}-${syllable.length}`,
+    width: Math.max(2, Math.min(5, syllable.length)),
+  }));
   return (
     <div
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
@@ -1398,14 +1409,27 @@ const StudentDashboard = () => {
                   </div>
                 </div>
                 <div className="word-display">
-                  <div className={`practice-word ${status === 'listening' ? 'is-listening' : ''} ${shouldRevealPracticeWord ? '' : 'practice-word--hidden'}`}>
-                    {(shouldRevealPracticeWord ? syllabify(visiblePracticeLabel) : hiddenPracticeSyllables)
-                      .map((syllable, index, arr) => (
+                  <div
+                    className={`practice-word ${status === 'listening' ? 'is-listening' : ''} ${shouldRevealPracticeWord ? '' : 'practice-word--hidden'}`}
+                    aria-label={shouldRevealPracticeWord ? visiblePracticeLabel : 'Hidden practice word'}
+                  >
+                    {shouldRevealPracticeWord ? (
+                      syllabify(visiblePracticeLabel).map((syllable, index, arr) => (
                         <span className={`practice-syllable ${index === activePracticeSyllableIndex ? 'syllable-active' : ''}`} key={`${syllable}-${index}`}>
                           {syllable}
                           {index < arr.length - 1 && <span className="syllable-divider" aria-hidden="true">&middot;</span>}
                         </span>
-                      ))}
+                      ))
+                    ) : (
+                      hiddenPracticeSyllables.map((placeholder) => (
+                        <span
+                          className="practice-syllable practice-syllable-placeholder"
+                          style={{ '--placeholder-ch': placeholder.width }}
+                          key={placeholder.id}
+                          aria-hidden="true"
+                        />
+                      ))
+                    )}
                   </div>
                   {activePracticeWord ? (
                     <>
