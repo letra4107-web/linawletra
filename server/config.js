@@ -67,7 +67,7 @@ const supabaseUrl = normalizeSupabaseUrl(process.env.SUPABASE_URL || process.env
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || '';
 
 // Config object - Supabase-only
-const emailUser = (process.env.EMAIL_USER || 'linawletra@gmail.com').trim().toLowerCase();
+const emailUser = (process.env.EMAIL_USER || 'letra4107@gmail.com').trim().toLowerCase();
 const rawEmailPassword = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || '';
 const emailPassword = rawEmailPassword
   .trim()

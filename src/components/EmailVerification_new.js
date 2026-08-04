@@ -159,7 +159,7 @@ export default function EmailVerification() {
             <div className={verificationStyles.emailInfoBox}>
               <div className={verificationStyles.emailAddress}>{email || 'Your email address'}</div>
               <div className={verificationStyles.emailSource}>
-                Check for a message from <strong>linawletra@gmail.com</strong>
+                Check for a message from <strong>letra4107@gmail.com</strong>
               </div>
             </div>
 

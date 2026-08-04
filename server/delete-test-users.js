@@ -55,7 +55,7 @@ async function findAndDeleteByEmail(email) {
   try {
     const emails = [
       'lowerperri@gmail.com',
-      'linawletra@gmail.com',
+      'letra4107@gmail.com',
       'test+dev@example.com',
     ];
 

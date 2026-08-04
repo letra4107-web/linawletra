@@ -548,7 +548,7 @@ export default function Home() {
                 Pinagkakatiwalaang tool para sa pagbabasa ng mga batang Pilipino.
               </p>
               <div className="home-footer-contact">
-                <a href="mailto:linawletra@gmail.com">linawletra@gmail.com</a>
+                <a href="mailto:letra4107@gmail.com">letra4107@gmail.com</a>
                 <span>Philippines</span>
               </div>
             </div>
@@ -576,7 +576,7 @@ export default function Home() {
             <div className="home-footer-column">
               <h3 className="home-footer-heading">Kumonekta</h3>
               <div className="home-footer-social">
-                <a href="mailto:linawletra@gmail.com" aria-label="Email LinawLetra"><FiMail aria-hidden="true" /></a>
+                <a href="mailto:letra4107@gmail.com" aria-label="Email LinawLetra"><FiMail aria-hidden="true" /></a>
                 <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="LinawLetra on Facebook"><FaFacebookF aria-hidden="true" /></a>
                 <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="LinawLetra on Instagram"><FaInstagram aria-hidden="true" /></a>
               </div>
