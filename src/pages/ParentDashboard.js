@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import ParentSidebar from '../components/ParentSidebar';
 import ChildOverviewCard from '../components/ChildOverviewCard';
+import StudentSelector from '../components/StudentSelector';
+import StudentOverviewPanel from '../components/StudentOverviewPanel';
 import { parentDashboardApi } from '../services/parentDashboardApi';
 import { studentService } from '../services/api';
 import './ParentDashboard.css';
@@ -197,6 +199,7 @@ export default function ParentDashboard() {
   const [notifications, setNotifications] = useState(null);
   const [wordMastery, setWordMastery] = useState(null);
   const [confusionPatterns, setConfusionPatterns] = useState([]);
+  const [recommendedWords, setRecommendedWords] = useState([]);
   const [aiInsights, setAiInsights] = useState(null);
 
   const currentSection = (section || 'summary').toLowerCase();
@@ -326,18 +329,21 @@ export default function ParentDashboard() {
       setActivities(null);
       setWordMastery(null);
       setConfusionPatterns([]);
+      setRecommendedWords([]);
       try {
-        const [p, a, m, c] = await Promise.all([
+        const [p, a, m, c, r] = await Promise.all([
           parentDashboardApi.getProgressByChildId(childId),
           parentDashboardApi.getActivitiesByChildId(childId),
           parentDashboardApi.getWordMastery(childId),
           parentDashboardApi.getConfusionPatterns(childId),
+          parentDashboardApi.getPracticeRecommendations(childId),
         ]);
         if (cancelled) return;
         setProgress(p);
         setActivities(a);
         setWordMastery(m);
         setConfusionPatterns(c);
+        setRecommendedWords(r);
       } catch (e) {
         if (cancelled) return;
         console.error(e);
@@ -503,12 +509,26 @@ export default function ParentDashboard() {
             <button type="button" className="parent-btn parent-btn--primary" onClick={() => setShowEnrollModal(true)}>
               Enroll Child
             </button>
-            <div className="parent-chip" style={{ background: 'rgba(79,70,229,0.06)' }}>
-              <span style={{ fontWeight: 900 }}>Child:</span>
-              <span style={{ fontWeight: 900 }}>{selectedChild?.name || selectedChild?.full_name || '—'}</span>
-            </div>
           </div>
         </header>
+
+        {Array.isArray(children) && children.length > 0 && (
+          <StudentSelector
+            students={children}
+            selectedId={selectedChild?.id ?? selectedChild?.studentId}
+            onSelect={setSelectedChildId}
+          />
+        )}
+
+        {showSummary && selectedChild && (
+          <StudentOverviewPanel
+            student={selectedChild}
+            wordMastery={wordMastery}
+            confusionPatterns={confusionPatterns}
+            recommendedWords={recommendedWords}
+            recentActivity={activities?.recentActivities ?? activities?.items ?? activities ?? []}
+          />
+        )}
 
         {showChildren && (
           <section className="parent-hero-grid">

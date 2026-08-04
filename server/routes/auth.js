@@ -69,6 +69,17 @@ router.post(
   forgotPassword
 );
 
+// Verify Reset Code (checked before showing the new-password form)
+router.post(
+  '/verify-reset-code',
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('resetCode').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Valid 6-digit code is required'),
+  ],
+  handleValidationErrors,
+  verifyResetCode
+);
+
 // Reset Password (Verify Code and Set New Password)
 router.post(
   '/reset-password',

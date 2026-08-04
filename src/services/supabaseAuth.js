@@ -7,9 +7,7 @@
 import { supabase } from '../config/supabase';
 import { authService } from './api';
 
-const EMAIL_VERIFICATION_EXPIRY_MS = 10 * 60 * 1000;
 const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
-const MAX_EMAIL_VERIFICATION_ATTEMPTS = 5;
 
 const buildDisplayName = (userData = {}) => {
   if (userData.fullName) return userData.fullName;
@@ -19,22 +17,6 @@ const buildDisplayName = (userData = {}) => {
     .filter(Boolean)
     .join(' ')
     .trim();
-};
-
-const generateEmailVerificationCode = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-const getAuthenticatedUser = async () => {
-  const { data: { user }, error } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    const error = new Error('Session expired. Please log in again.');
-    error.code = 'auth/not-authenticated';
-    throw error;
-  }
-
-  return user;
 };
 
 /**

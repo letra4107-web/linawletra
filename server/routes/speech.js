@@ -71,15 +71,23 @@ const upload = multer({
   }
 });
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+let openai = null;
+
+const getOpenAIClient = () => {
+  if (!isOpenAIConfigured()) return null;
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+};
 
 // Speech-to-Text endpoint
 router.post('/stt', upload.single('audio'), async (req, res) => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const openaiClient = getOpenAIClient();
+    if (!openaiClient) {
       return res.status(503).json({ error: 'Speech-to-text is not configured on this server' });
     }
 
@@ -87,7 +95,7 @@ router.post('/stt', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await openaiClient.audio.transcriptions.create({
       file: fs.createReadStream(req.file.path),
       model: STT_MODEL,
       language: 'tl', // Tagalog
@@ -119,7 +127,8 @@ router.post('/tts', async (req, res) => {
 
   if (isOpenAIConfigured()) {
     try {
-      const mp3 = await openai.audio.speech.create({
+      const openaiClient = getOpenAIClient();
+      const mp3 = await openaiClient.audio.speech.create({
         model: TTS_MODEL,
         voice: voice || TTS_VOICE,
         input: formatForTagalogSpeech(text),

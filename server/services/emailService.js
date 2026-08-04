@@ -90,6 +90,14 @@ const config = configModule.default || configModule;
 // cause of ECONNRESET/ESOCKET under Gmail throttling.
 let transporter = null;
 
+const parseEmailAddress = (value = '') => {
+  const input = String(value || '').trim();
+  const match = input.match(/^(.*?)\s*<([^>]+)>$/);
+  if (!match) return { email: input, name: undefined };
+  const name = match[1].trim().replace(/^['"]|['"]$/g, '');
+  return { email: match[2].trim(), name: name || undefined };
+};
+
 const createTransporter = () => {
   const port = config.email.port;
   const secure = Boolean(config.email.secure) || port === 465;
@@ -128,7 +136,58 @@ const isTransientSmtpError = (code) => {
   return ['ECONNRESET', 'ESOCKET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN'].includes(code);
 };
 
+const sendBrevoMail = async (mailOptions, { type, email } = {}) => {
+  const sender = parseEmailAddress(mailOptions.from || config.email.from);
+  const payload = {
+    sender,
+    to: [{ email: mailOptions.to }],
+    subject: mailOptions.subject,
+    htmlContent: mailOptions.html,
+    textContent: mailOptions.text,
+  };
+
+  if (mailOptions.replyTo) {
+    payload.replyTo = parseEmailAddress(mailOptions.replyTo);
+  }
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': config.email.brevoApiKey,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responseText = await response.text();
+  let responseBody = null;
+  try {
+    responseBody = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    responseBody = responseText;
+  }
+
+  if (!response.ok) {
+    const message = typeof responseBody === 'object'
+      ? responseBody?.message || responseBody?.code || response.statusText
+      : responseBody || response.statusText;
+    const error = new Error(`Brevo email send failed: ${message}`);
+    error.status = response.status;
+    error.response = responseBody;
+    throw error;
+  }
+
+  console.log(`✓ ${type || 'email'} email sent to ${email || mailOptions.to} via Brevo`);
+  console.log(`   Message ID: ${responseBody?.messageId || 'N/A'}`);
+  return responseBody;
+};
+
 const sendMailWithRetry = async (mailOptions, { type, email, retries = 2 } = {}) => {
+  if (config.email.provider === 'brevo') {
+    return sendBrevoMail(mailOptions, { type, email });
+  }
+
   let attempt = 0;
 
   while (true) {
@@ -168,6 +227,7 @@ const sendMailWithRetry = async (mailOptions, { type, email, retries = 2 } = {})
 // Improved logging for transporter config
 const logEmailConfig = () => {
   console.log('--- Email Transporter Configuration ---');
+  console.log('Provider:', config.email.provider);
   console.log('Service:', config.email.service);
   console.log('Host:', config.email.host);
   console.log('Port:', config.email.port);
@@ -177,9 +237,13 @@ const logEmailConfig = () => {
   console.log('---------------------------------------');
 };
 
-transporter = createTransporter();
+if (config.email.provider !== 'brevo') {
+  transporter = createTransporter();
+}
 logEmailConfig();
-if (config.email.enabled) {
+if (config.email.enabled && config.email.provider === 'brevo') {
+  console.log('✓ Brevo transactional email is configured - OTP emails will use Brevo');
+} else if (config.email.enabled) {
   transporter.verify((error, success) => {
     if (error) {
       console.error('✗ Email transporter verification failed:', error.message);
@@ -235,7 +299,7 @@ const sendVerificationEmail = async (email, verificationCode, verificationLink =
   }
 
   if (!config.email.enabled) {
-    const disabledMsg = 'Email transport is disabled. Set EMAIL_USER and EMAIL_PASS to a valid Gmail App Password and restart the backend.';
+    const disabledMsg = 'Email transport is disabled. Set BREVO_API_KEY or EMAIL_USER and EMAIL_PASS, then restart the backend.';
     console.error('Email send blocked:', disabledMsg);
     throw new Error(disabledMsg);
   }
@@ -500,5 +564,3 @@ export {
   verifyCodeExpiration,
   transporter,
 };
-
-

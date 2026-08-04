@@ -146,6 +146,7 @@ const StudentDashboard = () => {
   const [accuracy, setAccuracy] = useState(null);
   const [accuracyExplanation, setAccuracyExplanation] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [canAdvanceCurrentWord, setCanAdvanceCurrentWord] = useState(false);
   const [currentPhoneticLevel, setCurrentPhoneticLevel] = useState('Easy');
   const [progressInCurrentLevel, setProgressInCurrentLevel] = useState(0);
   const [highestPhoneticLevel, setHighestPhoneticLevel] = useState('Easy');
@@ -175,6 +176,7 @@ const StudentDashboard = () => {
   // the Day. The streak only increments off this, not off merely opening
   // the app -- see completeWordOfDayStreak().
   const [wordOfDayCompletedDate, setWordOfDayCompletedDate] = useState(null);
+  const [longestStreak, setLongestStreak] = useState(0);
   const [wordMasterySummary, setWordMasterySummary] = useState({ mastered: 0, needsPractice: 0, difficult: 0 });
   const [wordMasteryDetail, setWordMasteryDetail] = useState({ mastered: [], needsPractice: [], difficult: [] });
   const [topConfusions, setTopConfusions] = useState([]);
@@ -259,6 +261,7 @@ const StudentDashboard = () => {
           // completeWordOfDayStreak) -- just restore the saved streak value
           // and the last completed date, no recalculation on mount.
           setWordOfDayCompletedDate(progressData.wordOfDayCompletedDate || progressData.word_of_day_completed_date || null);
+          setLongestStreak(progressData.longestStreak || progressData.longest_streak || progressData.streak || 0);
         }
         const studentRecordId = userData.studentId || userData.student_id || userData.id;
         if (studentRecordId) {
@@ -323,6 +326,7 @@ const StudentDashboard = () => {
     hadStreakBreak,
     unlockedAchievementIds,
     wordOfDayCompletedDate,
+    longestStreak,
   });
   // A save request can take longer than the gap between two rapid state
   // changes (e.g. pronunciation evaluation updates xp, then wordsCompleted,
@@ -359,7 +363,7 @@ const StudentDashboard = () => {
   };
   useEffect(() => {
     queuePersist();
-  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, currentStudentId, authUser, hasLoadedProgress]);
+  }, [xp, wordsCompleted, achievements, completedWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, longestStreak, currentStudentId, authUser, hasLoadedProgress]);
 
   // Recompute unlocked achievements whenever the underlying stats change.
   // This only ever ADDS badge ids (a union with what's already unlocked) --
@@ -755,6 +759,43 @@ const StudentDashboard = () => {
       console.warn('Level readiness check failed:', error.message);
     }
   };
+  const resetPracticeAttemptState = () => {
+    setCanAdvanceCurrentWord(false);
+    setStatus('idle');
+    setAccuracy(null);
+    setAccuracyExplanation('');
+    setTranscribedText('');
+    setStatusMessage('');
+    setRecognitionResult('neutral');
+    setRecognitionDistance(null);
+    resetSyllableHighlight();
+  };
+
+  const moveToNextPracticeWord = async () => {
+    if (!canAdvanceCurrentWord || isEvaluating) return;
+
+    if (progressInCurrentLevel >= phoneticThreshold) {
+      await attemptLevelAdvance();
+      resetPracticeAttemptState();
+      return;
+    }
+
+    if (activePracticeWord && practiceWords.length > 0) {
+      const currentIndex = practiceWords.findIndex((word) => word.id === activePracticeWord.id);
+      const nextWord = practiceWords[(currentIndex + 1 + practiceWords.length) % practiceWords.length];
+      if (nextWord) {
+        setActivePracticeWord(nextWord);
+        setHomographPanelOpenId(null);
+        setExpectedText(nextWord.word);
+        resetPracticeAttemptState();
+        return;
+      }
+    }
+
+    setExpectedText(getPhoneticWordForProgress(currentPhoneticLevel, progressInCurrentLevel));
+    setActivePracticeWord(null);
+    resetPracticeAttemptState();
+  };
   // Only successfully pronouncing the Word of the Day advances the streak --
   // opening the app, listening to it, or reading it does not count. Called
   // from comparePronunciation only when the word just answered correctly
@@ -780,6 +821,7 @@ const StudentDashboard = () => {
     }
     setWordOfDayCompletedDate(todayStr);
     setProgress((prev) => ({ ...prev, streak: updatedStreak }));
+    setLongestStreak((prev) => Math.max(prev, updatedStreak));
   };
   const comparePronunciation = (spoken) => {
     if (isEvaluating) return;
@@ -810,6 +852,9 @@ const StudentDashboard = () => {
     setFeedback(tagalogFeedback);
     setAccuracyExplanation(getAccuracyExplanation(score, spoken, expected));
     awardPronunciationXp(attemptXp);
+    if (score < 80) {
+      setCanAdvanceCurrentWord(false);
+    }
     const attemptRecord = {
       word: expected,
       spoken,
@@ -841,29 +886,40 @@ const StudentDashboard = () => {
       } else {
         showReassurance('GOOD JOB!', 'success');
       }
-      const newProgress = progressInCurrentLevel + 1;
+      const alreadyCompleted = completedWords.includes(expected);
+      const newProgress = alreadyCompleted ? progressInCurrentLevel : progressInCurrentLevel + 1;
       const threshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
       const eligibleToAdvance = newProgress >= threshold;
       const cappedProgress = Math.min(newProgress, threshold);
-      setProgressInCurrentLevel(cappedProgress);
-      if (eligibleToAdvance) {
-        attemptLevelAdvance();
+      if (!alreadyCompleted) {
+        setProgressInCurrentLevel(cappedProgress);
+        setWordsCompleted((prev) => {
+          const newCount = prev + 1;
+          if (newCount % 5 === 0) {
+            setAchievements((prevAch) => prevAch + 1);
+          }
+          return newCount;
+        });
+        setCompletedWords((prev) => [...prev, expected]);
+        setProgress((prev) => ({
+          ...prev,
+          completed: (prev.completed || 0) + 1,
+          accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
+        }));
+      } else {
+        setProgress((prev) => ({
+          ...prev,
+          accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
+        }));
       }
-      setWordsCompleted((prev) => {
-        const newCount = prev + 1;
-        if (newCount % 5 === 0) {
-          setAchievements((prevAch) => prevAch + 1);
-        }
-        return newCount;
-      });
-      setCompletedWords((prev) => [...prev, expected]);
-      setProgress((prev) => ({
-        ...prev,
-        completed: (prev.completed || 0) + 1,
-        accuracy: Math.round(((Number(prev.accuracy) || 0) + score) / 2),
-      }));
-      setExpectedText(getPhoneticWordForProgress(currentPhoneticLevel, cappedProgress));
-      setFeedback(eligibleToAdvance ? `Malapit ka nang tumaas ng level! ${tagalogFeedback}` : tagalogFeedback);
+      setCanAdvanceCurrentWord(true);
+      setFeedback(
+        score === 100
+          ? `${tagalogFeedback} Perfect! You earned extra XP.`
+          : eligibleToAdvance
+            ? `${tagalogFeedback} You can move to the next level, or try again for 100%.`
+            : `${tagalogFeedback} You can go to the next word, or try again for 100%.`
+      );
       setStatusMessage(`You said: ${spoken}`);
       setTimeout(() => {
         setStatus('idle');
@@ -1083,12 +1139,11 @@ const StudentDashboard = () => {
     setActivePracticeWord(practiceWord);
     setHomographPanelOpenId(null);
     setExpectedText(practiceWord.word);
-    setStatus('idle');
-    setAccuracy(null);
-    setAccuracyExplanation('');
-    setTranscribedText('');
-    setStatusMessage('');
+    resetPracticeAttemptState();
   };
+  const visiblePracticeLabel = activePracticeWord ? activePracticeWord.accentedSpelling : expectedText;
+  const shouldRevealPracticeWord = accuracy !== null || canAdvanceCurrentWord || status === 'incorrect' || status === 'almost';
+  const hiddenPracticeSyllables = syllabify(visiblePracticeLabel).map(() => '___');
   return (
     <div
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
@@ -1343,8 +1398,8 @@ const StudentDashboard = () => {
                   </div>
                 </div>
                 <div className="word-display">
-                  <div className={`practice-word ${status === 'listening' ? 'is-listening' : ''}`}>
-                    {syllabify(activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)
+                  <div className={`practice-word ${status === 'listening' ? 'is-listening' : ''} ${shouldRevealPracticeWord ? '' : 'practice-word--hidden'}`}>
+                    {(shouldRevealPracticeWord ? syllabify(visiblePracticeLabel) : hiddenPracticeSyllables)
                       .map((syllable, index, arr) => (
                         <span className={`practice-syllable ${index === activePracticeSyllableIndex ? 'syllable-active' : ''}`} key={`${syllable}-${index}`}>
                           {syllable}
@@ -1354,8 +1409,12 @@ const StudentDashboard = () => {
                   </div>
                   {activePracticeWord ? (
                     <>
-                      <p className="word-meaning">{activePracticeWord.meaning}</p>
-                      {activePracticeWord.isHomograph && (
+                      {shouldRevealPracticeWord ? (
+                        <p className="word-meaning">{activePracticeWord.meaning}</p>
+                      ) : (
+                        <p className="word-meaning">Listen first, then say what you hear.</p>
+                      )}
+                      {shouldRevealPracticeWord && activePracticeWord.isHomograph && (
                         <>
                           <button
                             type="button"
@@ -1405,7 +1464,20 @@ const StudentDashboard = () => {
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
                     <FiRepeat aria-hidden="true" /> Replay Voice
                   </button>
+                  <button
+                    className="button-large button-primary"
+                    type="button"
+                    onClick={moveToNextPracticeWord}
+                    disabled={!canAdvanceCurrentWord || isEvaluating}
+                  >
+                    <FiCheck aria-hidden="true" /> Next Word
+                  </button>
                 </div>
+                {canAdvanceCurrentWord && accuracy < 100 && (
+                  <p className="next-word-note">
+                    You reached 80%. Move on now, or try this word again for 100% and more XP.
+                  </p>
+                )}
                 {activePracticeWord?.isHomograph && (
                   <p className="tts-caveat">
                     Baka magkatunog ang dalawa kapag pinindot ang "Listen". Ang marka sa itaas

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { progressService, readingService } from '../services/api';
+import { progressService, readingService, studentService } from '../services/api';
 import PageLayout from '../components/layout/PageLayout';
+import StudentSelector from '../components/StudentSelector';
+import StudentOverviewPanel from '../components/StudentOverviewPanel';
 import '../styles/TeacherDashboard.css';
 
 const TREND_LABELS = {
@@ -23,6 +25,10 @@ export default function TeacherProgressPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [phonemicById, setPhonemicById] = useState({});
 
+  const [students, setStudents] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const [overview, setOverview] = useState(null);
+
   useEffect(() => {
     const loadReports = async () => {
       setLoading(true);
@@ -43,12 +49,74 @@ export default function TeacherProgressPage() {
     loadReports();
   }, []);
 
+  useEffect(() => {
+    const loadStudents = async () => {
+      try {
+        const response = await studentService.getAllStudents();
+        const list = Array.isArray(response?.data) ? response.data : [];
+        setStudents(list);
+        setSelectedStudentId((prev) => prev ?? (list[0]?.id ?? null));
+      } catch (err) {
+        console.error('Failed to load student roster:', err);
+        setStudents([]);
+      }
+    };
+    loadStudents();
+  }, []);
+
+  const selectedStudent = useMemo(
+    () => students.find((s) => String(s.id) === String(selectedStudentId)) || null,
+    [students, selectedStudentId]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadOverview = async () => {
+      if (!selectedStudentId) {
+        setOverview(null);
+        return;
+      }
+      setOverview(null);
+      try {
+        const [masteryRes, confusionRes, recRes] = await Promise.all([
+          readingService.getWordMastery(selectedStudentId).catch(() => null),
+          readingService.getConfusionPatterns(selectedStudentId).catch(() => null),
+          readingService.getPracticeRecommendations(selectedStudentId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setOverview({
+          counts: masteryRes?.data?.counts || masteryRes?.counts || null,
+          patterns: confusionRes?.data?.patterns || confusionRes?.patterns || [],
+          words: recRes?.data?.words || recRes?.words || [],
+        });
+      } catch (err) {
+        if (!cancelled) console.warn('Failed to load student overview:', err.message);
+      }
+    };
+    loadOverview();
+    return () => { cancelled = true; };
+  }, [selectedStudentId]);
+
   const visibleReports = useMemo(() => {
-    if (filter === 'All Time') return reports;
-    const days = filter === 'This Month' ? 30 : 7;
-    const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
-    return reports.filter((report) => parseFirestoreDate(report.date).getTime() >= threshold);
-  }, [reports, filter]);
+    let list = reports;
+    if (filter !== 'All Time') {
+      const days = filter === 'This Month' ? 30 : 7;
+      const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
+      list = list.filter((report) => parseFirestoreDate(report.date).getTime() >= threshold);
+    }
+    if (selectedStudentId) {
+      list = list.filter((report) => String(report.studentId || report.student_id) === String(selectedStudentId));
+    }
+    return list;
+  }, [reports, filter, selectedStudentId]);
+
+  const recentActivityForOverview = useMemo(
+    () => visibleReports.slice(0, 6).map((report) => ({
+      lessonTitle: Object.keys(report.categories || {})[0] || 'Reading session',
+      completedAt: parseFirestoreDate(report.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    })),
+    [visibleReports]
+  );
 
   const toggleExpand = async (report) => {
     const id = report.id;
@@ -106,6 +174,24 @@ export default function TeacherProgressPage() {
             ))}
           </div>
         </section>
+
+        {students.length > 0 && (
+          <StudentSelector
+            students={students}
+            selectedId={selectedStudentId}
+            onSelect={setSelectedStudentId}
+          />
+        )}
+
+        {selectedStudent && (
+          <StudentOverviewPanel
+            student={selectedStudent}
+            wordMastery={overview ? { counts: overview.counts } : null}
+            confusionPatterns={overview?.patterns || []}
+            recommendedWords={overview?.words || []}
+            recentActivity={recentActivityForOverview}
+          />
+        )}
 
         {loading ? (
           <section className="student-cards">

@@ -81,7 +81,7 @@ async function authorizeStudentAccess(req, studentId) {
 
   const isOwn = student.user_id === req.user.id;
   const isParent = req.user.role === 'parent' && student.parent_id === req.user.id;
-  const isTeacher = req.user.role === 'teacher' && student.teacher_id === req.user.id;
+  const isTeacher = req.user.role === 'teacher';
   const isAdmin = req.user.role === 'admin';
   return (isOwn || isParent || isTeacher || isAdmin) ? student : null;
 }

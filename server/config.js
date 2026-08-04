@@ -50,8 +50,8 @@ const validateConfig = () => {
     console.warn('⚠ Supabase URL is not configured. Database access may fail.');
   }
 
-  if (!hasRealEmailPassword) {
-    console.warn('[Config] EMAIL_PASS is missing, too short, or not a valid Gmail App Password.');
+  if (!hasRealEmailPassword && !hasBrevoApiKey) {
+    console.warn('[Config] Email delivery is not configured. Set BREVO_API_KEY or EMAIL_PASS.');
     console.warn('   Email delivery will be disabled, but auth and database APIs can still start.');
   }
 };
@@ -73,6 +73,10 @@ const emailPassword = rawEmailPassword
   .trim()
   .replace(/^['"]|['"]$/g, '')
   .replace(/[\s-]+/g, '');
+const brevoApiKey = String(process.env.BREVO_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
+const hasBrevoApiKey = Boolean(
+  brevoApiKey.length > 20 && !/replace_with|your_brevo_api_key|api_key_here/i.test(brevoApiKey)
+);
 const hasRealEmailPassword = Boolean(
   emailPassword.length >= 16 && !/replace_with|your_app_password|app_password_here/i.test(emailPassword)
 );
@@ -106,6 +110,7 @@ const config = {
 
   // Email delivery using the official LinawLetra Gmail account
   email: {
+    provider: hasBrevoApiKey ? 'brevo' : 'smtp',
     service: process.env.EMAIL_SERVICE || 'gmail',
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: emailPort,
@@ -113,7 +118,8 @@ const config = {
     user: emailUser,
     password: emailPassword,
     from: process.env.EMAIL_FROM || `LinawLetra <${emailUser}>`,
-    enabled: Boolean(emailUser && hasRealEmailPassword),
+    brevoApiKey,
+    enabled: Boolean(hasBrevoApiKey || (emailUser && hasRealEmailPassword)),
     // Whether to reject unauthorized TLS certificates. Default `true` in production.
     // Set EMAIL_TLS_REJECT_UNAUTHORIZED=false in development only to bypass self-signed certs.
     rejectUnauthorized: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED !== 'false',
@@ -144,7 +150,8 @@ config.logConfig = () => {
   console.log(`Client URL: ${config.urls.client}`);
   console.log(`Server URL: ${config.urls.server}`);
   console.log(`OTP Sender: ${config.email.from}`);
-  console.log(`Email Service Ready: ${config.email.enabled ? 'Yes' : 'No - set EMAIL_PASS'}`);
+  console.log(`Email Provider: ${config.email.provider}`);
+  console.log(`Email Service Ready: ${config.email.enabled ? 'Yes' : 'No - set BREVO_API_KEY or EMAIL_PASS'}`);
   console.log('=====================================\n');
 };
 

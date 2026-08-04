@@ -21,27 +21,36 @@ const __dirname = path.dirname(__filename);
 
 app.use(express.json());
 
-const allowedOrigins =
-  process.env.NODE_ENV === "production"
-    ? [
-        "https://linawletra.com",
-        "https://www.linawletra.com",
-      ]
-    : [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://localhost:8081",
-        "http://192.168.1.107:8081",
-      ];
+const envAllowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+  process.env.HOSTINGER_URL,
+  process.env.CORS_ORIGINS,
+]
+  .filter(Boolean)
+  .flatMap((value) => String(value).split(','))
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+const allowedOrigins = [
+  ...envAllowedOrigins,
+  "https://linawletra.com",
+  "https://www.linawletra.com",
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+  "http://localhost:8081",
+  "http://192.168.1.107:8081",
+];
 
 const isAllowedDevOrigin = (origin) => {
-  if (process.env.NODE_ENV === "production") return false;
-
   try {
     const { protocol, hostname } = new URL(origin);
     const isHttp = protocol === "http:" || protocol === "https:";
+    const isRailway = hostname.endsWith(".up.railway.app") || hostname.endsWith(".railway.app");
+    if (process.env.NODE_ENV === "production") return isHttp && isRailway;
+
     const isLocalHost =
       hostname === "localhost" ||
       hostname === "127.0.0.1" ||

@@ -538,6 +538,204 @@
 
 .parent-error{padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(239,68,68,0.22); background: rgba(239,68,68,0.08); color: rgb(127,29,29); font-weight: 800;}
 
+/* Student selector: one-click switching between children, visible on every tab */
+.student-selector{
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 14px;
+  margin-bottom: 4px;
+}
+
+.student-selector__item{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 8px 14px 8px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(31,41,55,0.12);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.student-selector__item.is-active{
+  border-color: var(--primary);
+  background: rgba(79,70,229,0.08);
+}
+
+.student-selector__avatar{
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.student-selector__meta{
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.student-selector__name{ font-weight: 800; font-size: 14px; }
+.student-selector__level{ font-size: 12px; color: rgba(31,41,55,0.6); text-transform: capitalize; }
+
+/* Student overview panel */
+.student-overview-panel{
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(31,41,55,0.08);
+  box-shadow: 0 12px 30px rgba(15,23,42,0.05);
+  padding: 20px;
+  margin-bottom: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.student-overview-panel__head{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.student-overview-panel__name{ font-size: 20px; font-weight: 900; }
+.student-overview-panel__level{ color: rgba(31,41,55,0.6); font-weight: 600; text-transform: capitalize; }
+
+.student-overview-panel__word-of-day{
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(239,68,68,0.08);
+  color: #B91C1C;
+}
+
+.student-overview-panel__word-of-day.is-done{
+  background: rgba(16,185,129,0.1);
+  color: #047857;
+}
+
+.student-overview-panel__progress-label{
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: rgba(31,41,55,0.75);
+}
+
+.student-overview-panel__progress-track{
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(79,70,229,0.1);
+  overflow: hidden;
+}
+
+.student-overview-panel__progress-fill{
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.student-overview-panel__stats{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0,1fr));
+  gap: 12px;
+}
+
+.student-overview-panel__stat{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(79,70,229,0.05);
+}
+
+.student-overview-panel__stat-value{ font-size: 20px; font-weight: 900; }
+.student-overview-panel__stat-label{ font-size: 12px; color: rgba(31,41,55,0.6); font-weight: 700; }
+
+.student-overview-panel__mastery{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.student-overview-panel__mastery-chip{
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.student-overview-panel__mastery-chip.is-mastered{ background: rgba(16,185,129,0.12); color: #047857; }
+.student-overview-panel__mastery-chip.is-practice{ background: rgba(79,70,229,0.1); color: var(--primary); }
+.student-overview-panel__mastery-chip.is-difficult{ background: rgba(239,68,68,0.1); color: #B91C1C; }
+
+.student-overview-panel__section-title{
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(31,41,55,0.7);
+  margin-bottom: 8px;
+}
+
+.student-overview-panel__word-chips{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.student-overview-panel__word-chip{
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(79,70,229,0.06);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.student-overview-panel__word-chip.is-warn{
+  background: rgba(239,68,68,0.08);
+  color: #B91C1C;
+}
+
+.student-overview-panel__activity-list{
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.student-overview-panel__activity-list li{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(31,41,55,0.03);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.student-overview-panel__activity-time{ color: rgba(31,41,55,0.55); font-weight: 600; }
+.student-overview-panel__empty{ color: rgba(31,41,55,0.55); font-weight: 600; font-size: 13px; }
+
+@media (max-width: 760px){
+  .student-overview-panel__stats{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
 @media (max-width: 1100px){
   .parent-grid--cards{grid-template-columns: repeat(2, minmax(0,1fr));}
   .child-overview-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }

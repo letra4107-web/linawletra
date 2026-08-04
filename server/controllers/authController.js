@@ -25,8 +25,56 @@ const storeSignupVerificationCode = async (userId, email, code, expiresAt, resen
     });
 
   if (error) {
-    console.error('[authController] Failed to store verification code:', error);
-    throw new Error('Could not send verification email. Please try again.');
+    // Log the raw Supabase/PostgREST error distinctly (code/message/details/hint) so a
+    // schema-cache mismatch (e.g. missing table, PGRST205) is diagnosable from server logs
+    // alone — the generic Error thrown below is what the client sees, but it discards this
+    // detail once it reaches the outer catch in register().
+    console.error('[authController] Failed to store verification code:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    const shouldUseMetadataFallback =
+      ['PGRST205', '42P01', '42703'].includes(error.code) ||
+      String(error.message || '').toLowerCase().includes('schema cache') ||
+      String(error.message || '').toLowerCase().includes('does not exist');
+
+    if (!shouldUseMetadataFallback) {
+      throw new Error('Could not send verification email. Please try again.');
+    }
+
+    const { data: currentUser, error: fetchError } = await supabase
+      .from('users')
+      .select('metadata')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) throw new Error('Could not send verification email. Please try again.');
+
+    const { error: fallbackError } = await supabase
+      .from('users')
+      .update({
+        metadata: {
+          ...(currentUser?.metadata || {}),
+          signupVerification: {
+            email,
+            code,
+            expires_at: expiresAt,
+            resend_available_at: resendAvailableAt,
+            attempts: 0,
+            created_at: new Date().toISOString(),
+          },
+        },
+      })
+      .eq('id', userId);
+
+    if (fallbackError) {
+      console.error('[authController] Metadata fallback for verification code failed:', fallbackError);
+      throw new Error('Could not send verification email. Please try again.');
+    }
+
+    return { source: 'metadata' };
   }
 
   return { source: 'table' };
@@ -42,12 +90,42 @@ const getSignupVerificationCode = async (user) => {
     .limit(1)
     .maybeSingle();
 
-  if (error) throw error;
-  if (!tableRecord) return null;
+  if (error) {
+    const fallbackRecord = user.metadata?.signupVerification;
+    if (fallbackRecord?.email === user.email) {
+      return { source: 'metadata', record: fallbackRecord };
+    }
+    throw error;
+  }
+  if (!tableRecord) {
+    const fallbackRecord = user.metadata?.signupVerification;
+    if (fallbackRecord?.email === user.email) {
+      return { source: 'metadata', record: fallbackRecord };
+    }
+    return null;
+  }
   return { source: 'table', record: tableRecord };
 };
 
 const updateSignupVerificationAttempts = async (user, record) => {
+  if (!record?.id) {
+    const metadata = {
+      ...(user.metadata || {}),
+      signupVerification: {
+        ...(record || {}),
+        attempts: (record?.attempts || 0) + 1,
+      },
+    };
+
+    const { error } = await supabase
+      .from('users')
+      .update({ metadata })
+      .eq('id', user.id);
+
+    if (error) throw error;
+    return;
+  }
+
   const { error } = await supabase
     .from('email_verification_codes')
     .update({ attempts: (record.attempts || 0) + 1 })
@@ -58,13 +136,23 @@ const updateSignupVerificationAttempts = async (user, record) => {
 };
 
 const clearSignupVerificationCode = async (user) => {
+  if (user.metadata?.signupVerification) {
+    const metadata = { ...(user.metadata || {}) };
+    delete metadata.signupVerification;
+    const { error } = await supabase
+      .from('users')
+      .update({ metadata })
+      .eq('id', user.id);
+    if (error) throw error;
+  }
+
   const { error } = await supabase
     .from('email_verification_codes')
     .delete()
     .eq('user_id', user.id)
     .eq('email', user.email);
 
-  if (error) throw error;
+  if (error && !['PGRST205', '42P01'].includes(error.code)) throw error;
 };
 
 const buildLoginOtpRecord = (code, session = null) => ({

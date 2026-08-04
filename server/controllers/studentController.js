@@ -434,6 +434,7 @@ export const updateStudent =async (req, res) => {
       unlockedAchievementIds,
       lastLoginDate,
       wordOfDayCompletedDate,
+      longestStreak,
     } = req.body;
 
     if (gradeLevel !== undefined && gradeLevel !== null && !VALID_GRADE_LEVELS.includes(String(gradeLevel).trim())) {
@@ -472,6 +473,7 @@ export const updateStudent =async (req, res) => {
     if (unlockedAchievementIds !== undefined) updateData.unlocked_achievement_ids = unlockedAchievementIds;
     if (lastLoginDate !== undefined) updateData.last_login_date = lastLoginDate;
     if (wordOfDayCompletedDate !== undefined) updateData.word_of_day_completed_date = wordOfDayCompletedDate;
+    if (longestStreak !== undefined) updateData.longest_streak = longestStreak;
 
     let updatedStudent = existingStudent;
     if (Object.keys(updateData).length > 0) {

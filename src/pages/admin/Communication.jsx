@@ -8,7 +8,7 @@ const announcementsSample = [
 
 export default function Communication() {
   const [notifications, setNotifications] = useState(announcementsSample);
-  const [messages, setMessages] = useState([
+  const [messages] = useState([
     { id: 1, from: 'Parent', subject: 'Student progress question', received: 'May 15' },
     { id: 2, from: 'Teacher', subject: 'Lesson content update', received: 'May 14' },
   ]);

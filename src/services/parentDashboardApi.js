@@ -112,5 +112,14 @@ export const parentDashboardApi = {
       return [];
     }
   },
+
+  getPracticeRecommendations: async (childId) => {
+    try {
+      const res = await readingService.getPracticeRecommendations(childId);
+      return res?.data?.words || res?.words || [];
+    } catch (e) {
+      return [];
+    }
+  },
 };
 
