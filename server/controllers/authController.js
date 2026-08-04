@@ -859,6 +859,7 @@ export const sendEmailVerificationCode =async (req, res) => {
     console.log(`[Email Verification] Sending ${type} code to: ${email}`);
 
     const normalizedEmail = email.toLowerCase();
+    const verificationCode = code || generateVerificationCode();
     const expiresAt = new Date(Date.now() + config.emailVerification.expiresInMinutes * 60 * 1000);
 
     const { data: existingUser, error: findError } = await supabase
@@ -879,32 +880,30 @@ export const sendEmailVerificationCode =async (req, res) => {
       });
     }
 
-    // Store verification code in email_verification_codes table
-    const { error: codeError } = await supabase
-      .from('email_verification_codes')
-      .insert({
-        user_id: existingUser.id,
-        email: normalizedEmail,
-        code: code,
-        expires_at: expiresAt,
-        resend_available_at: new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000),
-        attempts: 0,
-      });
-
-    if (codeError) {
+    try {
+      const storedCode = await storeSignupVerificationCode(
+        existingUser.id,
+        normalizedEmail,
+        verificationCode,
+        expiresAt,
+        new Date(Date.now() + config.emailVerification.resendCooldownSeconds * 1000)
+      );
+      console.log('[Email Verification] Verification code stored in:', storedCode.source);
+    } catch (codeError) {
       console.error('[Email Verification] Failed to store code:', codeError);
       throw codeError;
     }
 
-    // Send verification email asynchronously (don't wait for it)
-    setImmediate(async () => {
-      try {
-        await sendVerificationEmail(normalizedEmail, code, null, type);
-        console.log(`[Email Verification] âœ“ ${type} email sent`);
-      } catch (emailError) {
-        console.warn(`[Email Verification] âš  Failed to send ${type} email:`, emailError.message);
-      }
-    });
+    try {
+      await sendVerificationEmail(normalizedEmail, verificationCode, null, type);
+      console.log(`[Email Verification] ${type} email sent`);
+    } catch (emailError) {
+      console.error(`[Email Verification] Failed to send ${type} email:`, emailError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification email. Please try again later.',
+      });
+    }
 
     res.json({
       success: true,

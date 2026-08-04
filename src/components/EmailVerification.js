@@ -103,7 +103,8 @@ export default function EmailVerification() {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-send OTP on component mount if not already sent
+  // Registration and login already send the OTP before navigating here.
+  // Only auto-send as a recovery path when the page is opened directly.
   useEffect(() => {
     const autoSendOTP = async () => {
       const otpAlreadySent = localStorage.getItem('verificationOtpSent');
@@ -115,6 +116,11 @@ export default function EmailVerification() {
         return;
       }
 
+      if (location.state?.email || isLoginFlow) {
+        console.log('[EmailVerification] OTP was sent before navigation, skipping auto resend');
+        return;
+      }
+
       if (!email) {
         setError('Email address is missing. Please go back and try again.');
         return;
@@ -123,11 +129,7 @@ export default function EmailVerification() {
       console.log('[EmailVerification] Auto-sending OTP for:', email);
       try {
         setLoading(true);
-        if (isLoginFlow) {
-          await authService.resendVerificationCode(email.toLowerCase());
-        } else {
-          await authService.resendVerificationCode(email.toLowerCase());
-        }
+        await authService.resendVerificationCode(email.toLowerCase());
         console.log('[EmailVerification] ✓ OTP auto-sent successfully');
         setEmailSent(true);
         setTimeout(() => setEmailSent(false), 5000);
