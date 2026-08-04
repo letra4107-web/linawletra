@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Backend API for LinawLetra - Tagalog literacy platform for children with dyslexia",
   "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
