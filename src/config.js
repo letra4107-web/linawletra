@@ -4,17 +4,18 @@
  */
 
 const getApiBaseUrl = () => {
+  const productionApiUrl = 'https://linawletra-production.up.railway.app/api';
   return process.env.REACT_APP_API_URL ||
     process.env.EXPO_PUBLIC_API_URL ||
     process.env.API_BASE_URL ||
-    (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5002/api');
+    (process.env.NODE_ENV === 'production' ? productionApiUrl : 'http://localhost:5002/api');
 };
 
 const config = {
   // API Configuration
   api: {
     baseURL: getApiBaseUrl(),
-    timeout: 30000,
+    timeout: 10000,
     headers: {
       'Content-Type': 'application/json',
     },

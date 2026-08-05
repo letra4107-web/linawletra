@@ -84,6 +84,15 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+app.use('/api/auth', (req, res, next) => {
+  const startedAt = Date.now();
+  console.log(`[Auth Route] ${req.method} ${req.originalUrl} received`);
+  res.on('finish', () => {
+    console.log(`[Auth Route] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - startedAt}ms)`);
+  });
+  next();
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", env: process.env.NODE_ENV, timestamp: new Date().toISOString() });
 });

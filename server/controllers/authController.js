@@ -184,6 +184,21 @@ const findAuthUserByEmail = async (email) => {
   return null;
 };
 
+const sendEmailFailureResponse = (res, message, emailError) => {
+  const status = emailError?.status === 504 || emailError?.code === 'EMAIL_SEND_TIMEOUT'
+    ? 504
+    : 503;
+  return res.status(status).json({
+    success: false,
+    message,
+    code: emailError?.code || 'EMAIL_SEND_FAILED',
+    providerStatus: emailError?.status,
+    details: process.env.NODE_ENV === 'development'
+      ? (emailError?.response || emailError?.message)
+      : undefined,
+  });
+};
+
 const buildLoginOtpRecord = (code, session = null) => ({
   code,
   expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -424,11 +439,17 @@ export const register =async (req, res) => {
           await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
           console.log('[Register API] Verification email resent for existing unverified user:', normalizedEmail);
         } catch (emailError) {
-          console.error('[Register API] Failed to resend verification email for existing unverified user:', emailError.message);
-          return res.status(500).json({
-            success: false,
-            message: 'Registration found an unverified account, but we could not send the verification email. Please try again later.',
+          console.error('[Register API] Failed to resend verification email for existing unverified user:', {
+            message: emailError.message,
+            code: emailError.code,
+            status: emailError.status,
+            response: emailError.response,
           });
+          return sendEmailFailureResponse(
+            res,
+            'Registration found an unverified account, but the email service did not send the verification code. Please try again later.',
+            emailError
+          );
         }
 
         return res.status(200).json({
@@ -663,15 +684,21 @@ export const register =async (req, res) => {
       await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
       console.log('[Register API] âœ“ Verification email sent successfully');
     } catch (emailError) {
-      console.error('[Register API] âŒ Failed to send verification email:', emailError.message);
+      console.error('[Register API] âŒ Failed to send verification email:', {
+        message: emailError.message,
+        code: emailError.code,
+        status: emailError.status,
+        response: emailError.response,
+      });
       console.error('[Register API] âŒ Cleaning up created user because email delivery failed');
       await supabase.from('email_verification_codes').delete().eq('user_id', authUser.id);
       await supabase.from('users').delete().eq('id', authUser.id);
       await supabase.auth.admin.deleteUser(authUser.id);
-      return res.status(500).json({
-        success: false,
-        message: 'Registration failed because we could not send the verification email. Please try again later.',
-      });
+      return sendEmailFailureResponse(
+        res,
+        'Registration failed because the email service did not send the verification code. Please try again later.',
+        emailError
+      );
     }
 
     console.log('[Register API] âœ“ Registration successful for:', normalizedEmail);
@@ -1246,11 +1273,17 @@ export const resendVerificationCode =async (req, res) => {
       await sendVerificationEmail(normalizedEmail, verificationCode);
       console.log('[Resend Verification] âœ“ Email sent');
     } catch (emailError) {
-      console.error('[Resend Verification] âŒ Failed to send email:', emailError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send verification email. Please try again later.',
+      console.error('[Resend Verification] âŒ Failed to send email:', {
+        message: emailError.message,
+        code: emailError.code,
+        status: emailError.status,
+        response: emailError.response,
       });
+      return sendEmailFailureResponse(
+        res,
+        'Email service did not send the verification code. Please try again later.',
+        emailError
+      );
     }
 
     res.json({

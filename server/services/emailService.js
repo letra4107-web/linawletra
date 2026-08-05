@@ -101,6 +101,7 @@ const parseEmailAddress = (value = '') => {
 const createTransporter = () => {
   const port = config.email.port;
   const secure = Boolean(config.email.secure) || port === 465;
+  const timeout = config.email.sendTimeoutMs || 7000;
 
   // In development allow bypassing TLS verification when necessary
   const tlsReject = config.isDevelopment ? false : (config.email.rejectUnauthorized !== false);
@@ -127,6 +128,9 @@ const createTransporter = () => {
     pool: false,
     maxConnections: 1,
     maxMessages: 1,
+    connectionTimeout: timeout,
+    greetingTimeout: timeout,
+    socketTimeout: timeout,
   });
 };
 
@@ -138,6 +142,9 @@ const isTransientSmtpError = (code) => {
 
 const sendBrevoMail = async (mailOptions, { type, email } = {}) => {
   const sender = parseEmailAddress(mailOptions.from || config.email.from);
+  const timeout = config.email.sendTimeoutMs || 7000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
   const payload = {
     sender,
     to: [{ email: mailOptions.to }],
@@ -150,15 +157,29 @@ const sendBrevoMail = async (mailOptions, { type, email } = {}) => {
     payload.replyTo = parseEmailAddress(mailOptions.replyTo);
   }
 
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'api-key': config.email.brevoApiKey,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  try {
+    response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'api-key': config.email.brevoApiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error(`Brevo email send timed out after ${timeout}ms`);
+      timeoutError.code = 'EMAIL_SEND_TIMEOUT';
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const responseText = await response.text();
   let responseBody = null;

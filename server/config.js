@@ -83,6 +83,7 @@ const hasRealEmailPassword = Boolean(
 const emailPort = parseInt(process.env.EMAIL_PORT, 10) || 587;
 const emailVerificationMinutes = parseInt(process.env.EMAIL_VERIFICATION_EXP_MINUTES, 10) || 10;
 const emailResendSeconds = parseInt(process.env.EMAIL_VERIFICATION_RESEND_SECONDS, 10) || 60;
+const emailSendTimeoutMs = parseInt(process.env.EMAIL_SEND_TIMEOUT_MS, 10) || 7000;
 const passwordResetMinutes = parseInt(process.env.PASSWORD_RESET_EXP_MINUTES, 10) || 10;
 const requestedEmailProvider = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
 const emailProvider = requestedEmailProvider === 'smtp'
@@ -127,6 +128,7 @@ const config = {
     password: emailPassword,
     from: process.env.EMAIL_FROM || `LinawLetra <${emailUser}>`,
     brevoApiKey,
+    sendTimeoutMs: emailSendTimeoutMs,
     enabled: emailProvider === 'brevo'
       ? hasBrevoApiKey
       : Boolean(emailUser && hasRealEmailPassword),

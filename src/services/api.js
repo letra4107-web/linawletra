@@ -1,13 +1,15 @@
 import axios from 'axios';
 
+const PRODUCTION_API_URL = 'https://linawletra-production.up.railway.app/api';
+
 const API_BASE_URL =
   process.env.REACT_APP_API_URL ||
   process.env.EXPO_PUBLIC_API_URL ||
   process.env.API_BASE_URL ||
-  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5002/api');
+  (process.env.NODE_ENV === 'production' ? PRODUCTION_API_URL : 'http://localhost:5002/api');
 
-const DEFAULT_API_TIMEOUT_MS = 30000;
-const AUTH_EMAIL_TIMEOUT_MS = 60000;
+const DEFAULT_API_TIMEOUT_MS = 10000;
+const AUTH_EMAIL_TIMEOUT_MS = 10000;
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -17,6 +19,10 @@ const axiosInstance = axios.create({
 // Add Supabase Auth token to requests
 axiosInstance.interceptors.request.use(async (config) => {
   try {
+    const requestUrl = new URL(config.url || '', config.baseURL || API_BASE_URL).toString();
+    if (requestUrl.includes('/auth/register')) {
+      console.info('[API] Register request URL:', requestUrl);
+    }
     const { supabase } = await import('../config/supabase');
     const { data: { session }, error } = await supabase.auth.getSession();
     if (session?.access_token && !error) {
@@ -101,7 +107,13 @@ axiosInstance.interceptors.response.use(
       }
 
       if (status === 404) {
-        throw createError('Resource not found.', 404);
+        const isAuthEndpoint = config.url && authEndpointPatterns.some((pattern) => config.url.includes(pattern));
+        throw createError(
+          isAuthEndpoint
+            ? 'Registration API route was not found. Check REACT_APP_API_URL and Railway backend deployment.'
+            : 'Resource not found.',
+          404
+        );
       }
 
       if (status === 422) {
