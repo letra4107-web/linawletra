@@ -15,8 +15,12 @@ const API_BASE_URL = normalizeApiBaseUrl(
   (process.env.NODE_ENV === 'production' ? PRODUCTION_API_URL : 'http://localhost:5002/api')
 );
 
+if (typeof window !== 'undefined') {
+  console.info('[API] Base URL:', API_BASE_URL);
+}
+
 const DEFAULT_API_TIMEOUT_MS = 10000;
-const AUTH_EMAIL_TIMEOUT_MS = 10000;
+const AUTH_EMAIL_TIMEOUT_MS = 20000;
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
