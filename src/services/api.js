@@ -2,11 +2,18 @@ import axios from 'axios';
 
 const PRODUCTION_API_URL = 'https://linawletra-production.up.railway.app/api';
 
-const API_BASE_URL =
+const normalizeApiBaseUrl = (baseUrl) => {
+  const trimmedUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!trimmedUrl) return trimmedUrl;
+  return trimmedUrl.endsWith('/api') ? trimmedUrl : `${trimmedUrl}/api`;
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(
   process.env.REACT_APP_API_URL ||
   process.env.EXPO_PUBLIC_API_URL ||
   process.env.API_BASE_URL ||
-  (process.env.NODE_ENV === 'production' ? PRODUCTION_API_URL : 'http://localhost:5002/api');
+  (process.env.NODE_ENV === 'production' ? PRODUCTION_API_URL : 'http://localhost:5002/api')
+);
 
 const DEFAULT_API_TIMEOUT_MS = 10000;
 const AUTH_EMAIL_TIMEOUT_MS = 10000;

@@ -5,10 +5,13 @@
 
 const getApiBaseUrl = () => {
   const productionApiUrl = 'https://linawletra-production.up.railway.app/api';
-  return process.env.REACT_APP_API_URL ||
+  const rawApiUrl = process.env.REACT_APP_API_URL ||
     process.env.EXPO_PUBLIC_API_URL ||
     process.env.API_BASE_URL ||
     (process.env.NODE_ENV === 'production' ? productionApiUrl : 'http://localhost:5002/api');
+
+  const trimmedApiUrl = String(rawApiUrl || '').trim().replace(/\/+$/, '');
+  return trimmedApiUrl.endsWith('/api') ? trimmedApiUrl : `${trimmedApiUrl}/api`;
 };
 
 const config = {
