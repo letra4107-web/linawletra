@@ -199,6 +199,26 @@ const sendEmailFailureResponse = (res, message, emailError) => {
   });
 };
 
+const runTimedRegistrationStep = async (requestId, label, step) => {
+  const startedAt = Date.now();
+  console.log(`[Register API] [${requestId}] ${label} started`);
+  try {
+    const result = await step();
+    console.log(`[Register API] [${requestId}] ${label} completed in ${Date.now() - startedAt}ms`);
+    return result;
+  } catch (error) {
+    console.error(`[Register API] [${requestId}] ${label} failed in ${Date.now() - startedAt}ms`, {
+      message: error?.message,
+      code: error?.code,
+      status: error?.status,
+      details: error?.details,
+      hint: error?.hint,
+      response: error?.response,
+    });
+    throw error;
+  }
+};
+
 const buildLoginOtpRecord = (code, session = null) => ({
   code,
   expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -333,9 +353,13 @@ const normalizeStudentLoginAccount = async (userData) => {
 
 // Register - Creates Supabase Auth user + profile with id set to auth user id
 export const register =async (req, res) => {
+  const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const requestStartedAt = Date.now();
+  const timedStep = (label, step) => runTimedRegistrationStep(requestId, label, step);
+
   try {
-    console.log('[Register API] Request received at:', new Date().toISOString());
-    console.log('[Register API] Request body:', {
+    console.log(`[Register API] [${requestId}] Request received at:`, new Date().toISOString());
+    console.log(`[Register API] [${requestId}] Request body:`, {
       email: req.body.email,
       firstName: req.body.firstName,
       lastName: req.body.lastName,
@@ -366,14 +390,16 @@ export const register =async (req, res) => {
       });
     }
 
-    console.log('[Register API] Checking if user already exists:', normalizedEmail);
+    console.log(`[Register API] [${requestId}] Checking if user already exists:`, normalizedEmail);
     
     // Check if user profile already exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('id, email, email_verified, metadata')
-      .eq('email', normalizedEmail)
-      .single();
+    const { data: existingUser, error: checkError } = await timedStep('profile duplicate lookup', () =>
+      supabase
+        .from('users')
+        .select('id, email, email_verified, metadata')
+        .eq('email', normalizedEmail)
+        .single()
+    );
 
     if (checkError && checkError.code !== 'PGRST116') {
       console.error('[Register API] Error checking existing user:', checkError);
@@ -383,7 +409,7 @@ export const register =async (req, res) => {
     if (existingUser) {
       console.log('[Register API] User already exists:', normalizedEmail);
 
-      const existingAuthUser = await findAuthUserByEmail(normalizedEmail);
+      const existingAuthUser = await timedStep('existing auth user lookup', () => findAuthUserByEmail(normalizedEmail));
       if (!existingAuthUser) {
         console.warn('[Register API] Found stale profile without Supabase Auth user; removing profile before re-register:', normalizedEmail);
         await supabase.from('email_verification_codes').delete().eq('user_id', existingUser.id);
@@ -412,13 +438,13 @@ export const register =async (req, res) => {
         console.log('[Register API] Existing account is unverified; resending verification code:', normalizedEmail);
 
         try {
-          const storedCode = await storeSignupVerificationCode(
+          const storedCode = await timedStep('store existing-user verification code', () => storeSignupVerificationCode(
             existingUser.id,
             normalizedEmail,
             verificationCode,
             expiresAt,
             resendAvailableAt
-          );
+          ));
           console.log('[Register API] Verification code stored for existing unverified user in:', storedCode.source);
         } catch (codeError) {
           console.error('[Register API] Failed to store verification code for existing unverified user:', {
@@ -436,7 +462,9 @@ export const register =async (req, res) => {
         }
 
         try {
-          await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
+          await timedStep('send existing-user verification email', () =>
+            sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup')
+          );
           console.log('[Register API] Verification email resent for existing unverified user:', normalizedEmail);
         } catch (emailError) {
           console.error('[Register API] Failed to resend verification email for existing unverified user:', {
@@ -481,7 +509,7 @@ export const register =async (req, res) => {
       });
     }
 
-    console.log('[Register API] Creating Supabase Auth user via admin.createUser:', normalizedEmail);
+    console.log(`[Register API] [${requestId}] Creating Supabase Auth user via admin.createUser:`, normalizedEmail);
 
     // Check if service role key is configured
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -494,14 +522,14 @@ export const register =async (req, res) => {
 
     // Use admin.createUser instead of signUp to prevent Supabase auto-email
     // We handle email sending via backend SMTP (Nodemailer + Gmail)
-    let { data: authCreateData, error: authError } = await supabase.auth.admin.createUser({
+    let { data: authCreateData, error: authError } = await timedStep('create Supabase auth user', () => supabase.auth.admin.createUser({
       email: normalizedEmail,
       password: password,
       user_metadata: {
         role: userRole,
       },
       email_confirm: false, // User must verify via backend OTP email
-    });
+    }));
     let authUser = authCreateData?.user;
 
     if (authError || !authUser) {
@@ -551,18 +579,20 @@ export const register =async (req, res) => {
     // Step 2: Create user profile with id set to auth user id
     console.log('[Register API] Creating user profile with id:', authUser.id);
 
-    const { data: userProfile, error: insertError } = await supabase
-      .from('users')
-      .upsert({
-        id: authUser.id,
-        email: normalizedEmail,
-        name: fullName,
-        role: userRole,
-        email_verified: false,
-        metadata: profileMetadata,
-      }, { onConflict: 'id' })
-      .select()
-      .single();
+    const { data: userProfile, error: insertError } = await timedStep('upsert user profile', () =>
+      supabase
+        .from('users')
+        .upsert({
+          id: authUser.id,
+          email: normalizedEmail,
+          name: fullName,
+          role: userRole,
+          email_verified: false,
+          metadata: profileMetadata,
+        }, { onConflict: 'id' })
+        .select()
+        .single()
+    );
 
     if (insertError) {
       console.error('[Register API] Failed to create user profile:', {
@@ -653,13 +683,13 @@ export const register =async (req, res) => {
     console.log('[Register API] Storing verification code for:', normalizedEmail);
 
     try {
-      const storedCode = await storeSignupVerificationCode(
+      const storedCode = await timedStep('store verification code', () => storeSignupVerificationCode(
         userProfile.id,
         normalizedEmail,
         verificationCode,
         expiresAt,
         resendAvailableAt
-      );
+      ));
       console.log('[Register API] Verification code stored in:', storedCode.source);
     } catch (codeError) {
       console.error('[Register API] Failed to store verification code:', {
@@ -681,7 +711,9 @@ export const register =async (req, res) => {
     // Send verification email with OTP before returning success
     console.log('[Register API] Sending verification email with OTP');
     try {
-      await sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup');
+      await timedStep('send verification email', () =>
+        sendVerificationEmail(normalizedEmail, verificationCode, null, 'signup')
+      );
       console.log('[Register API] âœ“ Verification email sent successfully');
     } catch (emailError) {
       console.error('[Register API] âŒ Failed to send verification email:', {
@@ -701,7 +733,7 @@ export const register =async (req, res) => {
       );
     }
 
-    console.log('[Register API] âœ“ Registration successful for:', normalizedEmail);
+    console.log(`[Register API] [${requestId}] Registration successful for: ${normalizedEmail} in ${Date.now() - requestStartedAt}ms`);
     res.status(201).json({
       success: true,
       message: 'Registration successful. Please check your email for verification code.',
@@ -710,7 +742,7 @@ export const register =async (req, res) => {
       requiresEmailVerification: true,
     });
   } catch (error) {
-    console.error('[Register API] âŒ Unexpected registration error:', {
+    console.error(`[Register API] [${requestId}] Unexpected registration error after ${Date.now() - requestStartedAt}ms:`, {
       message: error.message,
       stack: error.stack,
     });
