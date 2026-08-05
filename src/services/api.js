@@ -6,9 +6,12 @@ const API_BASE_URL =
   process.env.API_BASE_URL ||
   (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5002/api');
 
+const DEFAULT_API_TIMEOUT_MS = 30000;
+const AUTH_EMAIL_TIMEOUT_MS = 60000;
+
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000, // 10 seconds timeout for API requests
+  timeout: DEFAULT_API_TIMEOUT_MS,
 });
 
 // Add Supabase Auth token to requests
@@ -113,7 +116,7 @@ axiosInstance.interceptors.response.use(
 
       throw createError(data.message || data.error || `Request failed with status ${status}`, status);
     } else if (error.code === 'ECONNABORTED' || (error.message && error.message.toLowerCase().includes('timeout'))) {
-      throw new Error('Server took too long to respond. Please refresh or try again later.');
+      throw new Error('The request is taking longer than expected. Please wait a moment, then try again.');
     } else if (error.request) {
       // Network error
       throw new Error('Network error. Please check your connection and try again.');
@@ -126,17 +129,17 @@ axiosInstance.interceptors.response.use(
 
 // Auth Service
 export const authService = {
-  register: (data) => axiosInstance.post('/auth/register', data),
-  verifyEmail: (data) => axiosInstance.post('/auth/verify-email', data),
-  sendEmailVerificationCode: (data) => axiosInstance.post('/auth/send-email-verification-code', data),
-  sendStudentEnrollmentEmail: (data) => axiosInstance.post('/auth/send-student-enrollment-email', data),
-  resendVerificationCode: (email) => axiosInstance.post('/auth/resend-verification-code', { email }),
+  register: (data) => axiosInstance.post('/auth/register', data, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
+  verifyEmail: (data) => axiosInstance.post('/auth/verify-email', data, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
+  sendEmailVerificationCode: (data) => axiosInstance.post('/auth/send-email-verification-code', data, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
+  sendStudentEnrollmentEmail: (data) => axiosInstance.post('/auth/send-student-enrollment-email', data, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
+  resendVerificationCode: (email) => axiosInstance.post('/auth/resend-verification-code', { email }, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
   login: (data) => axiosInstance.post('/auth/login', data),
-  sendLoginOTP: (data) => axiosInstance.post('/auth/send-login-otp', typeof data === 'string' ? { email: data } : data),
-  verifyLoginOTP: (data) => axiosInstance.post('/auth/verify-login-otp', data),
+  sendLoginOTP: (data) => axiosInstance.post('/auth/send-login-otp', typeof data === 'string' ? { email: data } : data, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
+  verifyLoginOTP: (data) => axiosInstance.post('/auth/verify-login-otp', data, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
   createProfile: (data) => axiosInstance.post('/auth/create-profile', data),
-  resendLoginOTP: (email) => axiosInstance.post('/auth/resend-login-otp', { email }),
-  forgotPassword: (email) => axiosInstance.post('/auth/forgot-password', { email }),
+  resendLoginOTP: (email) => axiosInstance.post('/auth/resend-login-otp', { email }, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
+  forgotPassword: (email) => axiosInstance.post('/auth/forgot-password', { email }, { timeout: AUTH_EMAIL_TIMEOUT_MS }),
   verifyResetCode: (data) => axiosInstance.post('/auth/verify-reset-code', data),
   resetPassword: (data) => axiosInstance.post('/auth/reset-password', data),
   getAdminOverview: () => axiosInstance.get('/admin/overview'),
