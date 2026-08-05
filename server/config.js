@@ -86,13 +86,15 @@ const emailResendSeconds = parseInt(process.env.EMAIL_VERIFICATION_RESEND_SECOND
 const emailSendTimeoutMs = parseInt(process.env.EMAIL_SEND_TIMEOUT_MS, 10) || 7000;
 const passwordResetMinutes = parseInt(process.env.PASSWORD_RESET_EXP_MINUTES, 10) || 10;
 const requestedEmailProvider = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-const emailProvider = requestedEmailProvider === 'smtp'
-  ? 'smtp'
+const emailProvider = hasBrevoApiKey
+  ? 'brevo'
   : requestedEmailProvider === 'brevo'
     ? 'brevo'
-    : hasBrevoApiKey
-      ? 'brevo'
-      : 'smtp';
+    : 'smtp';
+
+if (hasBrevoApiKey && requestedEmailProvider === 'smtp') {
+  console.warn('[Config] EMAIL_PROVIDER=smtp is set, but BREVO_API_KEY is configured. Using Brevo HTTP API for email delivery.');
+}
 
 const config = {
   // Application

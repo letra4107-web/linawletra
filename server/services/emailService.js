@@ -303,7 +303,7 @@ const hashCode = (code) => {
 
 // Send verification email (can be for signup or login OTP)
 const sendVerificationEmail = async (email, verificationCode, verificationLink = null, type = 'signup') => {
-  console.log(`📧 Sending ${type} verification to: ${email} using ${config.email.user}`);
+  console.log(`Sending ${type} verification to: ${email} via ${config.email.provider} from ${config.email.from}`);
 
   let subject = 'LinawLetra: Email Verification';
   let title = 'Welcome to LinawLetra';
