@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase.js';
+import { authorizeStudent } from '../utils/studentAccess.js';
 
 const MIN_ATTEMPTS_FOR_MASTERED = 3;
 const MIN_ATTEMPTS_FOR_DIFFICULT = 2;
@@ -72,18 +73,8 @@ export async function recordWordOutcome(studentId, word, evaluation) {
 }
 
 async function authorizeStudentAccess(req, studentId) {
-  const { data: student } = await supabase
-    .from('students')
-    .select('id, user_id, parent_id, teacher_id')
-    .or(`id.eq.${studentId},user_id.eq.${studentId}`)
-    .maybeSingle();
-  if (!student) return null;
-
-  const isOwn = student.user_id === req.user.id;
-  const isParent = req.user.role === 'parent' && student.parent_id === req.user.id;
-  const isTeacher = req.user.role === 'teacher';
-  const isAdmin = req.user.role === 'admin';
-  return (isOwn || isParent || isTeacher || isAdmin) ? student : null;
+  const { student, allowed } = await authorizeStudent(req, studentId);
+  return allowed ? student : null;
 }
 
 export async function getWordMastery(req, res) {
@@ -146,7 +137,34 @@ export async function getPracticeRecommendations(req, res) {
       .limit(10);
     if (error) throw error;
 
-    res.json({ words: data || [] });
+    if ((data || []).length > 0) {
+      return res.json({ strategy: 'mastery_history', words: data || [] });
+    }
+
+    const levelToDifficulty = {
+      Easy: 'madali',
+      Medium: 'katamtaman',
+      Hard: 'mahirap',
+    };
+    const difficulty = levelToDifficulty[student.current_phonetic_level || 'Easy'] || 'madali';
+    const { data: coldStartWords, error: coldStartError } = await supabase
+      .from('practice_words')
+      .select('*')
+      .eq('difficulty', difficulty)
+      .order('id', { ascending: true })
+      .limit(10);
+    if (coldStartError) throw coldStartError;
+
+    return res.json({
+      strategy: 'cold_start_level_words',
+      words: (coldStartWords || []).map((word) => ({
+        word: word.word,
+        mastery_status: 'new',
+        avg_pronunciation_score: null,
+        source: 'practice_words',
+        ...word,
+      })),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

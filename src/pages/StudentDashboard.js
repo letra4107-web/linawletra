@@ -355,6 +355,10 @@ const StudentDashboard = () => {
       }
       const progressData = buildProgressSnapshot();
       try {
+        if (userRole === 'student') {
+          localStorage.setItem(`linawletra_progress_${currentStudentId}`, JSON.stringify(progressData));
+          return;
+        }
         await studentService.updateStudent(currentStudentId, progressData).catch((error) => {
           console.warn('Failed to save progress via API:', error);
         });
@@ -368,7 +372,7 @@ const StudentDashboard = () => {
   };
   useEffect(() => {
     queuePersist();
-  }, [xp, wordsCompleted, achievements, completedWords, perfectWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, longestStreak, currentStudentId, authUser, hasLoadedProgress]);
+  }, [xp, wordsCompleted, achievements, completedWords, perfectWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, longestStreak, currentStudentId, authUser, hasLoadedProgress, userRole]);
 
   // Recompute unlocked achievements whenever the underlying stats change.
   // This only ever ADDS badge ids (a union with what's already unlocked) --

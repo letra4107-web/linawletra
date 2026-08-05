@@ -7,6 +7,7 @@ import { compareReadingText } from '../services/readingAccuracy.js';
 import { evaluateWord } from '../services/tagalogPhonetics.js';
 import { VALID_READING_LEVELS, normalizeReadingLevel, getReadingLevelRank } from '../services/readingLevels.js';
 import { recordWordOutcome, getWordMastery, getConfusionPatterns, getPracticeRecommendations, getLevelReadiness } from '../controllers/attemptsController.js';
+import { getVisibleStudentIds } from '../utils/studentAccess.js';
 
 const router = express.Router();
 const require = createRequire(import.meta.url);
@@ -36,6 +37,9 @@ const parseAssignedStudents = (value) => {
 const normalizeId = (value) => (value == null ? '' : String(value).trim());
 
 const uniqueIds = (values = []) => [...new Set(values.map(normalizeId).filter(Boolean))];
+const XP_PER_CORRECT_WORD = 50;
+const XP_BONUS_PERFECT_WORD = 25;
+const PHONETIC_LEVEL_THRESHOLDS = { Easy: 5, Medium: 3, Hard: 2 };
 
 const getAssignedIds = (material = {}) => {
   const assigned = material.assigned_students || material.assignedStudents || [];
@@ -103,10 +107,76 @@ const parsePdfBuffer = async (buffer) => {
 const getCurrentStudentRecord = async (userId) => {
   const { data } = await supabase
     .from('students')
-    .select('id,user_id,parent_id,teacher_id,reading_level')
+    .select('*')
     .eq('user_id', userId)
     .maybeSingle();
   return data || null;
+};
+
+const updateStudentPronunciationProgress = async (student, payload, result) => {
+  if (!student?.id) return null;
+
+  const score = Number(result?.accuracyScore || 0);
+  const target = String(payload.word_target || payload.expected_text || '').toLowerCase().trim();
+  if (!target) return null;
+
+  const isCorrect = score >= 80;
+  const isPerfect = score === 100;
+  const currentCompletedWords = Array.isArray(student.completed_words) ? student.completed_words : [];
+  const alreadyCompleted = currentCompletedWords.includes(target);
+  const currentLevel = student.current_phonetic_level || 'Easy';
+  const threshold = PHONETIC_LEVEL_THRESHOLDS[currentLevel] || PHONETIC_LEVEL_THRESHOLDS.Easy;
+  const previousCompleted = Number(student.completed || 0);
+  const previousAccuracy = Number(student.accuracy || 0);
+  const attemptRecord = {
+    word: target,
+    spoken: payload.spoken_text,
+    score,
+    correct: isCorrect,
+    xp: isCorrect ? XP_PER_CORRECT_WORD + (isPerfect ? XP_BONUS_PERFECT_WORD : 0) : 0,
+    activityType: payload.activity_type,
+    timestamp: Date.now(),
+  };
+
+  const history = Array.isArray(student.history) ? student.history : [];
+  const nextHistory = [...history, attemptRecord].slice(-200);
+  const nextCompletedCount = previousCompleted + 1;
+  const updateData = {
+    history: nextHistory,
+    completed: nextCompletedCount,
+    accuracy: Math.round(((previousAccuracy * previousCompleted) + score) / nextCompletedCount),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!isCorrect) {
+    updateData.progress_in_level = 0;
+  } else {
+    updateData.xp = Number(student.xp || 0) + attemptRecord.xp;
+    if (!alreadyCompleted) {
+      const nextWordsCompleted = Number(student.words_completed || 0) + 1;
+      const nextProgressInLevel = Math.min(Number(student.progress_in_level || 0) + 1, threshold);
+      updateData.words_completed = nextWordsCompleted;
+      updateData.completed_words = [...currentCompletedWords, target];
+      updateData.progress_in_level = nextProgressInLevel;
+      if (nextWordsCompleted % 5 === 0) {
+        updateData.achievements = Number(student.achievements || 0) + 1;
+      }
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('students')
+    .update(updateData)
+    .eq('id', student.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.warn('[Reading] student progress update failed:', error.message);
+    return null;
+  }
+
+  return data;
 };
 
 const decorateMaterialForLevel = (material, studentLevel) => {
@@ -352,7 +422,9 @@ router.post('/attempts', authMiddleware, roleMiddleware('student'), async (req, 
       );
     }
 
-    return res.status(201).json({ attempt: data, result });
+    const studentProgress = await updateStudentPronunciationProgress(student, payload, result);
+
+    return res.status(201).json({ attempt: data, result, studentProgress });
   } catch (error) {
     return next(error);
   }
@@ -365,6 +437,7 @@ router.post('/level-check/:studentId', authMiddleware, getLevelReadiness);
 
 router.get('/analytics', authMiddleware, roleMiddleware('teacher', 'admin', 'parent'), async (req, res, next) => {
   try {
+    const visibleStudentIds = await getVisibleStudentIds(req);
     const { data: attempts, error } = await supabase
       .from('reading_attempts')
       .select('*, reading_materials(title, uploaded_by)')
@@ -374,8 +447,7 @@ router.get('/analytics', authMiddleware, roleMiddleware('teacher', 'admin', 'par
 
     const visible = (attempts || []).filter((attempt) => {
       if (req.user.role === 'admin') return true;
-      if (req.user.role === 'teacher') return attempt.reading_materials?.uploaded_by === req.user.id;
-      return true;
+      return visibleStudentIds.includes(attempt.student_id);
     });
 
     const averageAccuracy = visible.length

@@ -1,5 +1,7 @@
 import { supabase } from '../config/supabase.js';
 
+const PROGRESS_TABLE = 'lesson_progress';
+
 class Progress {
   constructor(data = {}) {
     Object.assign(this, data);
@@ -24,7 +26,7 @@ class Progress {
   }
 
   static async findOne(query = {}) {
-    let q = supabase.from('student_progress').select('*');
+    let q = supabase.from(PROGRESS_TABLE).select('*');
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         q = q.eq(Progress._snakeCase(key), value);
@@ -36,7 +38,7 @@ class Progress {
   }
 
   static async find(query = {}) {
-    let q = supabase.from('student_progress').select('*');
+    let q = supabase.from(PROGRESS_TABLE).select('*');
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         q = q.eq(Progress._snakeCase(key), value);
@@ -49,7 +51,7 @@ class Progress {
 
   static async findById(id) {
     const { data, error } = await supabase
-      .from('student_progress')
+      .from(PROGRESS_TABLE)
       .select('*')
       .eq('id', id)
       .single();
@@ -63,7 +65,7 @@ class Progress {
     );
     updateData.updated_at = new Date().toISOString();
     const { data, error } = await supabase
-      .from('student_progress')
+      .from(PROGRESS_TABLE)
       .update(updateData)
       .eq('id', id)
       .select()
@@ -74,7 +76,7 @@ class Progress {
 
   static async findByIdAndDelete(id) {
     const { data, error } = await supabase
-      .from('student_progress')
+      .from(PROGRESS_TABLE)
       .delete()
       .eq('id', id)
       .select()
@@ -90,7 +92,7 @@ class Progress {
     if (!this.id) {
       data.created_at = new Date().toISOString();
       const { data: inserted, error } = await supabase
-        .from('student_progress')
+        .from(PROGRESS_TABLE)
         .insert(data)
         .select()
         .single();
@@ -101,7 +103,7 @@ class Progress {
     }
     data.updated_at = new Date().toISOString();
     const { data: updated, error } = await supabase
-      .from('student_progress')
+      .from(PROGRESS_TABLE)
       .update(data)
       .eq('id', this.id)
       .select()

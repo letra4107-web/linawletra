@@ -1,5 +1,7 @@
 import { supabase } from '../config/supabase.js';
 
+const SCHEDULE_TABLE = 'scheduled_activities';
+
 class Schedule {
   constructor(data = {}) {
     Object.assign(this, data);
@@ -24,7 +26,7 @@ class Schedule {
   }
 
   static async findOne(query = {}) {
-    let q = supabase.from('schedules').select('*');
+    let q = supabase.from(SCHEDULE_TABLE).select('*');
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         q = q.eq(Schedule._snakeCase(key), value);
@@ -36,7 +38,7 @@ class Schedule {
   }
 
   static async find(query = {}) {
-    let q = supabase.from('schedules').select('*');
+    let q = supabase.from(SCHEDULE_TABLE).select('*');
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         q = q.eq(Schedule._snakeCase(key), value);
@@ -49,7 +51,7 @@ class Schedule {
 
   static async findById(id) {
     const { data, error } = await supabase
-      .from('schedules')
+      .from(SCHEDULE_TABLE)
       .select('*')
       .eq('id', id)
       .single();
@@ -63,7 +65,7 @@ class Schedule {
     );
     updateData.updated_at = new Date().toISOString();
     const { data, error } = await supabase
-      .from('schedules')
+      .from(SCHEDULE_TABLE)
       .update(updateData)
       .eq('id', id)
       .select()
@@ -74,7 +76,7 @@ class Schedule {
 
   static async findByIdAndDelete(id) {
     const { data, error } = await supabase
-      .from('schedules')
+      .from(SCHEDULE_TABLE)
       .delete()
       .eq('id', id)
       .select()
@@ -90,7 +92,7 @@ class Schedule {
     if (!this.id) {
       data.created_at = new Date().toISOString();
       const { data: inserted, error } = await supabase
-        .from('schedules')
+        .from(SCHEDULE_TABLE)
         .insert(data)
         .select()
         .single();
@@ -101,7 +103,7 @@ class Schedule {
     }
     data.updated_at = new Date().toISOString();
     const { data: updated, error } = await supabase
-      .from('schedules')
+      .from(SCHEDULE_TABLE)
       .update(data)
       .eq('id', this.id)
       .select()

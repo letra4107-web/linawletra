@@ -65,7 +65,13 @@ const countRows = async (table, filterFn) => {
     query = filterFn(query);
   }
   const { count, error } = await query;
-  if (error) throw error;
+  if (error) {
+    if (error.code === 'PGRST205') {
+      console.warn(`[Admin] Optional table ${table} is not available; using count 0.`);
+      return 0;
+    }
+    throw error;
+  }
   return count || 0;
 };
 
@@ -122,8 +128,8 @@ router.get('/overview', async (req, res) => {
       countRows('users'),
       countRows('lessons'),
       countRows('assessments'),
-      countRows('student_progress'),
-      countRows('student_progress', (query) => query.eq('completed', true)),
+      countRows('lesson_progress'),
+      countRows('lesson_progress', (query) => query.eq('completed', true)),
       0,
     ]);
 
@@ -138,7 +144,7 @@ router.get('/overview', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(6);
 
-    if (recentLogError) {
+    if (recentLogError && recentLogError.code !== 'PGRST205') {
       throw recentLogError;
     }
 
@@ -226,6 +232,9 @@ router.get('/users', async (req, res) => {
 
     const { data, error, count } = await query.range(offset, offset + limit - 1);
     if (error) {
+      if (error.code === 'PGRST205') {
+        return res.json({ logs: [], page, limit });
+      }
       throw error;
     }
 
@@ -261,7 +270,7 @@ router.get('/teachers', async (req, res) => {
 
     if (teacherIds.length) {
       const { data: scheduleRows, error: scheduleError } = await supabase
-        .from('schedules')
+        .from('scheduled_activities')
         .select('teacher_id,student_id,student_name,student_email')
         .in('teacher_id', teacherIds);
 
@@ -766,9 +775,9 @@ router.get('/analytics', async (req, res) => {
 
     const [usersResult, progressCountResult, completedScoreResult, scoresResult] = await Promise.all([
       supabase.from('users').select('created_at').gt('created_at', since),
-      supabase.from('student_progress').select('id', { count: 'exact', head: true }),
-      supabase.from('student_progress').select('id', { count: 'exact', head: true }).eq('completed', true),
-      supabase.from('student_progress').select('score').not('score', 'is', null),
+      supabase.from('lesson_progress').select('id', { count: 'exact', head: true }),
+      supabase.from('lesson_progress').select('id', { count: 'exact', head: true }).eq('completed', true),
+      supabase.from('lesson_progress').select('score').not('score', 'is', null),
     ]);
 
     if (usersResult.error) throw usersResult.error;

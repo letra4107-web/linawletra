@@ -2,6 +2,7 @@
 import { sendStudentEnrollmentEmail } from '../services/emailService.js';
 import { generateStudentCredentials } from '../services/credentialGenerator.js';
 import { VALID_READING_LEVELS, normalizeReadingLevel } from '../services/readingLevels.js';
+import { canAccessStudent } from '../utils/studentAccess.js';
 
 const VALID_GRADE_LEVELS = ['1', '2', '3', '4', '5', '6'];
 
@@ -333,16 +334,7 @@ export const getStudent =async (req, res) => {
       });
     }
 
-    // Parent profile isolation - parents can only see their own children
-    if (userRole === 'parent' && student.parent_id !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have permission to access this student',
-      });
-    }
-
-    // Student profile isolation - students can only see their own profile
-    if (userRole === 'student' && student.user_id !== userId) {
+    if (!canAccessStudent(req, student)) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to access this student',
@@ -403,8 +395,7 @@ export const updateStudent =async (req, res) => {
       });
     }
 
-    // Parent profile isolation - parents can only update their own children
-    if (userRole === 'parent' && existingStudent.parent_id !== userId) {
+    if (!canAccessStudent(req, existingStudent)) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to update this student',
@@ -454,26 +445,29 @@ export const updateStudent =async (req, res) => {
     if (name !== undefined) updateData.name = name;
     if (gradeLevel !== undefined) updateData.grade_level = gradeLevel;
     if (readingLevel !== undefined) updateData.reading_level = readingLevel;
+    const canWriteProgressFields = userRole === 'admin';
 
     // Game progress now lives on dedicated students columns (see
     // supabase_migration_student_progress_columns.sql), not users.metadata.
-    if (xp !== undefined) updateData.xp = xp;
-    if (wordsCompleted !== undefined) updateData.words_completed = wordsCompleted;
-    if (completedWords !== undefined) updateData.completed_words = completedWords;
-    if (achievements !== undefined) updateData.achievements = achievements;
-    if (accuracy !== undefined) updateData.accuracy = accuracy;
-    if (completed !== undefined) updateData.completed = completed;
-    if (streak !== undefined) updateData.streak = streak;
-    if (history !== undefined) updateData.history = history;
-    if (currentPhoneticLevel !== undefined) updateData.current_phonetic_level = currentPhoneticLevel;
-    if (progressInCurrentLevel !== undefined) updateData.progress_in_level = progressInCurrentLevel;
-    if (highestPhoneticLevel !== undefined) updateData.highest_phonetic_level = highestPhoneticLevel;
-    if (hardCyclesCompleted !== undefined) updateData.hard_cycles_completed = hardCyclesCompleted;
-    if (hadStreakBreak !== undefined) updateData.had_streak_break = hadStreakBreak;
-    if (unlockedAchievementIds !== undefined) updateData.unlocked_achievement_ids = unlockedAchievementIds;
-    if (lastLoginDate !== undefined) updateData.last_login_date = lastLoginDate;
-    if (wordOfDayCompletedDate !== undefined) updateData.word_of_day_completed_date = wordOfDayCompletedDate;
-    if (longestStreak !== undefined) updateData.longest_streak = longestStreak;
+    if (canWriteProgressFields) {
+      if (xp !== undefined) updateData.xp = xp;
+      if (wordsCompleted !== undefined) updateData.words_completed = wordsCompleted;
+      if (completedWords !== undefined) updateData.completed_words = completedWords;
+      if (achievements !== undefined) updateData.achievements = achievements;
+      if (accuracy !== undefined) updateData.accuracy = accuracy;
+      if (completed !== undefined) updateData.completed = completed;
+      if (streak !== undefined) updateData.streak = streak;
+      if (history !== undefined) updateData.history = history;
+      if (currentPhoneticLevel !== undefined) updateData.current_phonetic_level = currentPhoneticLevel;
+      if (progressInCurrentLevel !== undefined) updateData.progress_in_level = progressInCurrentLevel;
+      if (highestPhoneticLevel !== undefined) updateData.highest_phonetic_level = highestPhoneticLevel;
+      if (hardCyclesCompleted !== undefined) updateData.hard_cycles_completed = hardCyclesCompleted;
+      if (hadStreakBreak !== undefined) updateData.had_streak_break = hadStreakBreak;
+      if (unlockedAchievementIds !== undefined) updateData.unlocked_achievement_ids = unlockedAchievementIds;
+      if (lastLoginDate !== undefined) updateData.last_login_date = lastLoginDate;
+      if (wordOfDayCompletedDate !== undefined) updateData.word_of_day_completed_date = wordOfDayCompletedDate;
+      if (longestStreak !== undefined) updateData.longest_streak = longestStreak;
+    }
 
     let updatedStudent = existingStudent;
     if (Object.keys(updateData).length > 0) {
@@ -559,8 +553,8 @@ export const deleteStudent =async (req, res) => {
       });
     }
 
-    // Parent profile isolation - parents can only delete their own children
-    if (userRole === 'parent' && student.parent_id !== userId) {
+    const canDeleteStudent = userRole === 'admin' || (userRole === 'parent' && student.parent_id === userId);
+    if (!canDeleteStudent) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to delete this student',

@@ -1,11 +1,10 @@
 ﻿import Schedule from '../models/Schedule.js';
 import Student from '../models/Student.js';
+import { authorizeStudent } from '../utils/studentAccess.js';
 
 async function assertParentOwnsStudent(req, studentId) {
-  if (req.user?.role !== 'parent') return true;
-  const student = await Student.findById(studentId).select('parentId');
-  if (!student) return false;
-  return student.parentId?.toString() === req.user.id;
+  const { allowed } = await authorizeStudent(req, studentId);
+  return allowed;
 }
 
 const sortByScheduledDate = (items = []) =>
@@ -48,6 +47,9 @@ export const createSchedule =async (req, res) => {
     let parentId = null;
 
     if (req.user.role === 'teacher') {
+      if ((student.teacherId || student.teacher_id) !== req.user.id) {
+        return res.status(403).json({ message: 'You can only create schedules for assigned students' });
+      }
       teacherId = req.user.id;
       parentId = student.parentId || student.parent_id || null;
     } else if (req.user.role === 'parent') {

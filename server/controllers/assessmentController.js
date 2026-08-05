@@ -1,12 +1,11 @@
 ﻿import Assessment from '../models/Assessment.js';
 import Student from '../models/Student.js';
 import { supabase } from '../config/supabase.js';
+import { authorizeStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
 
 async function assertParentOwnsStudent(req, studentId) {
-  if (req.user?.role !== 'parent') return true;
-  const student = await Student.findById(studentId).select('parentId');
-  if (!student) return false;
-  return student.parentId?.toString() === req.user.id;
+  const { allowed } = await authorizeStudent(req, studentId);
+  return allowed;
 }
 
 const sortByCreatedDate = (items = []) =>
@@ -182,6 +181,9 @@ export const getAssessments =async (req, res) => {
 
     if (req.user.role === 'parent') {
       assessments = await Assessment.find({ parentId: req.user.id });
+    } else if (req.user.role === 'teacher') {
+      const visibleStudentIds = await getVisibleStudentIds(req);
+      assessments = (await Promise.all(visibleStudentIds.map((studentId) => Assessment.find({ studentId })))).flat();
     } else {
       assessments = await Assessment.find({});
     }

@@ -517,23 +517,23 @@ export const getAdminAnalytics = async () => {
       .select('completed_at, score, max_score')
       .not('completed_at', 'is', null);
 
-    if (assessmentError) throw assessmentError;
+    if (assessmentError && assessmentError.code !== 'PGRST205') throw assessmentError;
 
-    const completedAssessments = assessmentStats.length;
+    const completedAssessments = (assessmentStats || []).length;
     const averageScore = completedAssessments > 0
       ? assessmentStats.reduce((sum, a) => sum + ((a.score / a.max_score) * 100), 0) / completedAssessments
       : 0;
 
     // Get student progress stats
     const { data: progressStats, error: progressError } = await supabase
-      .from('student_progress')
+      .from('lesson_progress')
       .select('progress_percentage, completed')
       .eq('completed', true);
 
-    if (progressError) throw progressError;
+    if (progressError && progressError.code !== 'PGRST205') throw progressError;
 
-    const completedMaterials = progressStats.length;
-    const averageProgress = progressStats.length > 0
+    const completedMaterials = (progressStats || []).length;
+    const averageProgress = (progressStats || []).length > 0
       ? progressStats.reduce((sum, p) => sum + (p.progress_percentage || 0), 0) / progressStats.length
       : 0;
 

@@ -1,12 +1,10 @@
 ﻿import Progress from '../models/Progress.js';
-import Student from '../models/Student.js';
 import { supabase } from '../config/supabase.js';
+import { authorizeStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
 
 async function assertParentOwnsStudent(req, studentId) {
-  if (req.user?.role !== 'parent') return true;
-  const student = await Student.findById(studentId).select('parentId');
-  if (!student) return false;
-  return student.parentId?.toString() === req.user.id;
+  const { allowed } = await authorizeStudent(req, studentId);
+  return allowed;
 }
 
 const attachStudentInfo = async (progressRows = []) => {
@@ -204,7 +202,14 @@ export const getDashboardData =async (req, res) => {
 
 export const getProgressReports =async (req, res) => {
   try {
-    const progress = await Progress.find({});
+    const visibleStudentIds = await getVisibleStudentIds(req);
+    if (!visibleStudentIds.length) {
+      return res.json({ reports: [] });
+    }
+
+    const progress = req.user.role === 'admin'
+      ? await Progress.find({})
+      : (await Promise.all(visibleStudentIds.map((studentId) => Progress.find({ studentId })))).flat();
     const reports = await attachStudentInfo(
       [...progress].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
     );

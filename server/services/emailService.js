@@ -635,7 +635,7 @@ const sendStudentEnrollmentEmail = async (
     ? `<li><strong>Grade Level:</strong> ${gradeLevelandReadingLevel}</li>`
     : '';
 
-  const subject = 'LinawLetra: Child Account Successfully Enrolled';
+  const subject = 'LinawLetra: Child Account Successfully Created';
   const html = `
     <div style="font-family: 'Josefin Sans', sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f9fafb; letter-spacing: 0.03em;">
       <div style="background-color: #ffffff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -706,7 +706,7 @@ const sendStudentEnrollmentEmail = async (
     eyebrow: 'Student Account',
     intro: `
       Hello Parent,<br />
-      Great news! The account for <strong style="color: ${BRAND.text};">${escapeHtml(childName)}</strong> has been successfully created and is ready to begin the LinawLetra reading journey.
+      Your child's LinawLetra account has been successfully created and is ready to use.
     `,
     content: `
       ${renderCard('Student Information', `
@@ -719,17 +719,7 @@ const sendStudentEnrollmentEmail = async (
         ${renderCodeBox('Username', childUsername)}
         ${renderCodeBox('Temporary Password', childPassword)}
       `)}
-      ${renderNotice('Important', 'Please save these login credentials securely. Your child will need them to access LinawLetra. If you did not request this account, contact your teacher or administrator immediately.')}
-      ${renderCard('How Your Child Can Get Started', `
-        <ol style="font-family: Arial, Helvetica, sans-serif; color: ${BRAND.muted}; font-size: 15px; line-height: 1.8; padding-left: 20px; margin: 0;">
-          <li>Open the LinawLetra login page.</li>
-          <li>Enter the username and temporary password above.</li>
-          <li>Start learning through lessons, assessments, and reading practice.</li>
-        </ol>
-      `)}
     `,
-    ctaLabel: 'Start Reading',
-    ctaUrl: `${loginUrl}/login`,
   });
 
   const mailOptions = {

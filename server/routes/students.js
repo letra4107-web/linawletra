@@ -6,6 +6,7 @@ import { createStudent,
   updateStudent,
   deleteStudent, } from '../controllers/studentController.js';
 import { supabase } from '../config/supabase.js';
+import { canAccessStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
 
 const router = express.Router();
 
@@ -46,9 +47,17 @@ router.get('/', authMiddleware, roleMiddleware('parent'), getStudentsByParent);
 // Get all students (for teachers/admins)
 router.get('/all', authMiddleware, roleMiddleware('teacher', 'admin'), async (req, res) => {
   try {
-    const { data: students, error } = await supabase
-      .from('students')
-      .select('*');
+    const visibleStudentIds = await getVisibleStudentIds(req);
+    let query = supabase.from('students').select('*');
+
+    if (req.user.role !== 'admin') {
+      if (!visibleStudentIds.length) {
+        return res.json([]);
+      }
+      query = query.in('id', visibleStudentIds);
+    }
+
+    const { data: students, error } = await query;
 
     if (error) {
       console.error('[Get All Students] Error:', error);
@@ -65,8 +74,6 @@ router.get('/all', authMiddleware, roleMiddleware('teacher', 'admin'), async (re
 router.get('/:id/dashboard', authMiddleware, async (req, res) => {
   try {
     const studentId = req.params.id;
-    const userRole = req.user.role;
-    const userId = req.user.id;
 
     // Get student and attach profile separately to avoid depending on FK cache names.
     const { data: student, error } = await supabase
@@ -79,12 +86,7 @@ router.get('/:id/dashboard', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    // Parent or student isolation
-    if (userRole === 'parent' && student.parent_id !== userId) {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    if (userRole === 'student' && student.user_id !== userId) {
+    if (!canAccessStudent(req, student)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 

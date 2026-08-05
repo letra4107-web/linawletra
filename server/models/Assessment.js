@@ -1,5 +1,8 @@
 import { supabase } from '../config/supabase.js';
 
+const ASSESSMENT_TABLE = 'assessments';
+const isMissingTable = (error) => error?.code === 'PGRST205';
+
 class Assessment {
   constructor(data = {}) {
     Object.assign(this, data);
@@ -24,7 +27,7 @@ class Assessment {
   }
 
   static async findOne(query = {}) {
-    let q = supabase.from('assessments').select('*');
+    let q = supabase.from(ASSESSMENT_TABLE).select('*');
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         q = q.eq(Assessment._snakeCase(key), value);
@@ -36,20 +39,25 @@ class Assessment {
   }
 
   static async find(query = {}) {
-    let q = supabase.from('assessments').select('*');
+    let q = supabase.from(ASSESSMENT_TABLE).select('*');
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         q = q.eq(Assessment._snakeCase(key), value);
       }
     });
     const { data, error } = await q;
-    if (error) return [];
+    if (error) {
+      if (isMissingTable(error)) {
+        console.warn('[Assessment] assessments table is missing; returning empty list.');
+      }
+      return [];
+    }
     return (data || []).map((row) => Assessment._normalizeRow(row));
   }
 
   static async findById(id) {
     const { data, error } = await supabase
-      .from('assessments')
+      .from(ASSESSMENT_TABLE)
       .select('*')
       .eq('id', id)
       .single();
@@ -63,7 +71,7 @@ class Assessment {
     );
     updateData.updated_at = new Date().toISOString();
     const { data, error } = await supabase
-      .from('assessments')
+      .from(ASSESSMENT_TABLE)
       .update(updateData)
       .eq('id', id)
       .select()
@@ -74,7 +82,7 @@ class Assessment {
 
   static async findByIdAndDelete(id) {
     const { data, error } = await supabase
-      .from('assessments')
+      .from(ASSESSMENT_TABLE)
       .delete()
       .eq('id', id)
       .select()
@@ -90,7 +98,7 @@ class Assessment {
     if (!this.id) {
       data.created_at = new Date().toISOString();
       const { data: inserted, error } = await supabase
-        .from('assessments')
+        .from(ASSESSMENT_TABLE)
         .insert(data)
         .select()
         .single();
@@ -101,7 +109,7 @@ class Assessment {
     }
     data.updated_at = new Date().toISOString();
     const { data: updated, error } = await supabase
-      .from('assessments')
+      .from(ASSESSMENT_TABLE)
       .update(data)
       .eq('id', this.id)
       .select()
