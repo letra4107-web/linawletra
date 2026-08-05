@@ -725,6 +725,50 @@
   line-height: 1.8;
 }
 
+.learning-tools-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.learning-tool-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid #EDE8DF;
+  border-radius: 18px;
+  background: #FCFBF7;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.learning-tool-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(79, 70, 229, 0.28);
+  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.1);
+}
+
+.learning-tool-card strong,
+.learning-tool-card small {
+  display: block;
+}
+
+.learning-tool-card strong {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.learning-tool-card small {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .active-pill {
   width: fit-content;
   padding: 8px 12px;
@@ -1225,6 +1269,10 @@
   }
 
   .categories-row {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-tools-row {
     grid-template-columns: 1fr;
   }
 }

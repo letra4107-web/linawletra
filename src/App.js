@@ -35,11 +35,11 @@ import AssessmentsPage from './pages/AssessmentsPage';
 import MyStudentsPage from './pages/MyStudentsPage';
 import LearningPathsPage from './pages/LearningPathsPage';
 import TeacherLessonsPage from './pages/TeacherLessonsPage';
-import TeacherSchedulesPage from './pages/TeacherSchedulesPage';
 import TeacherProgressPage from './pages/TeacherProgressPage';
 import TeacherActivitiesPage from './pages/TeacherActivitiesPage';
 import TeacherSettingsPage from './pages/TeacherSettingsPage';
 import TeacherReadingMaterials from './pages/TeacherReadingMaterials';
+import TeacherStudentDetailPage from './pages/TeacherStudentDetailPage';
 import StudentReadingAssistant from './pages/StudentReadingAssistant';
 import './index.css';
 
@@ -190,10 +190,10 @@ function AppRoutes() {
           <Route path="/teacher-dashboard" element={<TeacherDashboard />} />
           <Route path="/teacher/assessments" element={<AssessmentsPage />} />
           <Route path="/teacher/students" element={<MyStudentsPage />} />
+          <Route path="/teacher/students/:studentId" element={<TeacherStudentDetailPage />} />
           <Route path="/teacher/learning-paths" element={<LearningPathsPage />} />
           <Route path="/teacher/learning-paths/:pathId" element={<LearningPathsPage />} />
           <Route path="/teacher/lessons" element={<TeacherLessonsPage />} />
-          <Route path="/teacher/schedules" element={<TeacherSchedulesPage />} />
           <Route path="/teacher/progress" element={<TeacherProgressPage />} />
           <Route path="/teacher/activities" element={<TeacherActivitiesPage />} />
           <Route path="/teacher/reading" element={<TeacherReadingMaterials />} />

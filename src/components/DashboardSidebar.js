@@ -4,7 +4,6 @@ import { AuthContext } from '../context/AuthContext';
 import {
   FiBarChart2,
   FiBookOpen,
-  FiCalendar,
   FiFileText,
   FiGrid,
   FiLogOut,
@@ -60,8 +59,6 @@ export default function DashboardSidebar({
           { path: '/teacher/assessments', label: 'Assessments', icon: <FiFileText /> },
           { path: '/teacher/students', label: 'My Students', icon: <FiUsers /> },
           { path: '/teacher/learning-paths', label: 'Learning Paths', icon: <FiBookOpen /> },
-          { path: '/teacher/lessons', label: 'Lessons', icon: <FiBookOpen /> },
-          { path: '/teacher/schedules', label: 'Schedules', icon: <FiCalendar /> },
           { path: '/teacher/progress', label: 'Progress Reports', icon: <FiBarChart2 /> },
           { path: '/teacher/activities', label: 'Activities', icon: <FiMessageSquare /> },
           { path: '/teacher/settings', label: 'Settings', icon: <FiSettings /> },

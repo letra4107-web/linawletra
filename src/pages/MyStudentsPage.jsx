@@ -116,7 +116,7 @@ export default function MyStudentsPage() {
                 key={student.id || student._id}
                 type="button"
                 className="student-card"
-                onClick={() => navigate(`/students/${student.id || student._id}`)}
+                onClick={() => navigate(`/teacher/students/${student.id || student._id}`)}
               >
                 <div className="student-card-left">
                   <div className="student-avatar">{(student.name || 'S').charAt(0)}</div>

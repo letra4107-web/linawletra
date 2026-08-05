@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { BookOpen, FileText } from 'lucide-react';
 import { readingService, studentService } from '../services/api';
 import FileUploadSection from '../components/ui/FileUploadSection';
 import PageLayout from '../components/layout/PageLayout';
@@ -193,6 +194,25 @@ export default function LearningPathsPage() {
             ))}
           </div>}
         </section>
+
+        {!pathId && (
+          <section className="learning-tools-row" aria-label="Learning path tools">
+            <button type="button" className="learning-tool-card" onClick={() => navigate('/teacher/lessons')}>
+              <BookOpen size={22} />
+              <span>
+                <strong>Lessons</strong>
+                <small>Create, review, and assign lesson materials.</small>
+              </span>
+            </button>
+            <button type="button" className="learning-tool-card" onClick={() => navigate('/teacher/reading')}>
+              <FileText size={22} />
+              <span>
+                <strong>PDF Reading</strong>
+                <small>Upload PDF stories and assign reading practice.</small>
+              </span>
+            </button>
+          </section>
+        )}
 
         <section className="categories-row">
           {pathId ? (

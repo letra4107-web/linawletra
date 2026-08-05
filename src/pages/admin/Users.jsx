@@ -6,18 +6,29 @@ const formatNumber = (value) => {
   return Number(value).toLocaleString();
 };
 
-const defaultUsers = [
-  { id: 1, name: 'Ana Mendoza', email: 'ana@linaw.com', role: 'student', status: 'active' },
-  { id: 2, name: 'Marco Reyes', email: 'marco@linaw.com', role: 'parent', status: 'pending' },
-  { id: 3, name: 'Liza Cruz', email: 'liza@linaw.com', role: 'teacher', status: 'active' },
-];
+const normalizeUser = (user = {}) => {
+  const metadata = user.metadata || {};
+  return {
+    ...user,
+    id: user.id || user.uid || user._id,
+    name:
+      user.name ||
+      user.fullName ||
+      user.full_name ||
+      metadata.displayName ||
+      [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
+      user.email ||
+      'Unnamed user',
+    role: user.role || 'parent',
+    status: user.status || (metadata.isActive === false ? 'disabled' : user.email_verified === false ? 'pending' : 'active'),
+  };
+};
 
 export default function Users() {
-  const [users, setUsers] = useState(defaultUsers);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
-  const [newUser, setNewUser] = useState({ name: '', email: '', role: 'student', status: 'active' });
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -27,11 +38,15 @@ export default function Users() {
       try {
         const response = await adminService.getUsers();
         const payload = response.data || response;
-        if (Array.isArray(payload)) {
-          setUsers(payload);
-        }
+        const list = Array.isArray(payload?.users)
+          ? payload.users
+          : Array.isArray(payload)
+            ? payload
+            : [];
+        setUsers(list.map(normalizeUser));
       } catch (err) {
-        setError('Could not load users. Showing local sample data.');
+        setUsers([]);
+        setError(err?.response?.data?.message || err?.message || 'Could not load users.');
       } finally {
         setLoading(false);
       }
@@ -52,21 +67,25 @@ export default function Users() {
     });
   }, [search, roleFilter, users]);
 
-  const handleCreateUser = (event) => {
-    event.preventDefault();
-    setUsers((prev) => [
-      { ...newUser, id: Date.now(), status: newUser.status || 'active' },
-      ...prev,
-    ]);
-    setNewUser({ name: '', email: '', role: 'student', status: 'active' });
+  const handleDelete = async (id) => {
+    try {
+      setError('');
+      await adminService.deleteUser(id);
+      setUsers((prev) => prev.filter((user) => user.id !== id));
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Could not delete user.');
+    }
   };
 
-  const handleDelete = (id) => {
-    setUsers((prev) => prev.filter((user) => user.id !== id));
-  };
-
-  const handleStatusChange = (id, status) => {
-    setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, status } : user)));
+  const handleStatusChange = async (id, status) => {
+    const nextStatus = status === 'active' ? 'disabled' : 'active';
+    try {
+      setError('');
+      await adminService.updateUser(id, { isActive: nextStatus === 'active' });
+      setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, status: nextStatus } : user)));
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Could not update user status.');
+    }
   };
 
   return (
@@ -81,7 +100,7 @@ export default function Users() {
 
       {error && <div className="dashboard-banner dashboard-banner-error">{error}</div>}
 
-      <div className="panel-grid">
+      <div className="panel-grid panel-grid-single">
         <div className="card-panel">
           <div className="section-heading">
             <div>
@@ -107,57 +126,6 @@ export default function Users() {
           </div>
         </div>
 
-        <div className="card-panel">
-          <div className="section-heading">
-            <div>
-              <h3>Create new user</h3>
-              <p>Add a user account and manage access roles from one panel.</p>
-            </div>
-          </div>
-          <form className="teacher-form" onSubmit={handleCreateUser}>
-            <div className="field-grid">
-              <label>
-                Full name
-                <input
-                  value={newUser.name}
-                  onChange={(e) => setNewUser((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Jane Doe"
-                  required
-                />
-              </label>
-              <label>
-                Email address
-                <input
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser((prev) => ({ ...prev, email: e.target.value }))}
-                  placeholder="jane@example.com"
-                  required
-                />
-              </label>
-            </div>
-            <div className="field-grid">
-              <label>
-                Role
-                <select value={newUser.role} onChange={(e) => setNewUser((prev) => ({ ...prev, role: e.target.value }))}>
-                  <option value="student">Student</option>
-                  <option value="parent">Parent</option>
-                  <option value="teacher">Teacher</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </label>
-              <label>
-                Account status
-                <select value={newUser.status} onChange={(e) => setNewUser((prev) => ({ ...prev, status: e.target.value }))}>
-                  <option value="active">Active</option>
-                  <option value="pending">Pending</option>
-                  <option value="disabled">Disabled</option>
-                </select>
-              </label>
-            </div>
-            <button className="btn-primary" type="submit">Create User</button>
-          </form>
-        </div>
       </div>
 
       <div className="card-panel">
@@ -183,7 +151,11 @@ export default function Users() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((user) => (
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="5">No users found.</td>
+                  </tr>
+                ) : filteredUsers.map((user) => (
                   <tr key={user.id}>
                     <td>{user.name}</td>
                     <td>{user.email}</td>

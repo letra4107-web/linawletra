@@ -221,7 +221,7 @@ router.get('/users', async (req, res) => {
     }
     if (search) {
       const term = `%${search}%`;
-      query = query.or(`full_name.ilike.${term},email.ilike.${term}`);
+      query = query.or(`name.ilike.${term},email.ilike.${term}`);
     }
 
     const { data, error, count } = await query.range(offset, offset + limit - 1);
@@ -597,16 +597,21 @@ router.put('/users/:id', async (req, res) => {
     const { role, isActive, fullName, name, email } = req.body;
     const updateData = {};
 
-    if (role !== undefined) updateData.role = role;
-    if (isActive !== undefined) updateData.isActive = isActive;
-    if (fullName !== undefined) updateData.fullName = fullName;
-    if (name !== undefined) updateData.fullName = name;
-    if (email !== undefined) updateData.email = String(email).toLowerCase();
-
     const existingUser = await User.findById(req.params.id);
     if (!existingUser) {
       return sendError(res, 404, 'User not found');
     }
+
+    if (role !== undefined) updateData.role = role;
+    if (isActive !== undefined) {
+      updateData.metadata = {
+        ...(existingUser?.metadata || {}),
+        isActive: Boolean(isActive),
+      };
+    }
+    if (fullName !== undefined) updateData.name = fullName;
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = String(email).toLowerCase();
 
     const updatedUser = await User.findByIdAndUpdate(req.params.id, updateData);
 
