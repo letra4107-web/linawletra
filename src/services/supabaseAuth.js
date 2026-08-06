@@ -301,6 +301,34 @@ export const updateUserPassword = async (newPassword) => {
   }
 };
 
+export const getCurrentSession = async () => {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error('[SupabaseAuth] getCurrentSession error:', error);
+      throw error;
+    }
+    return session;
+  } catch (error) {
+    console.error('[SupabaseAuth] getCurrentSession failed:', error);
+    throw error;
+  }
+};
+
+export const getRecoverySessionFromUrl = async () => {
+  try {
+    const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
+    if (error) {
+      console.warn('[SupabaseAuth] getSessionFromUrl warning:', error);
+      throw error;
+    }
+    return data?.session || null;
+  } catch (error) {
+    console.error('[SupabaseAuth] getRecoverySessionFromUrl failed:', error);
+    throw error;
+  }
+};
+
 /**
  * Get current user with profile data
  */

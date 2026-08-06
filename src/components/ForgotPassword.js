@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FiArrowRight, FiMail } from 'react-icons/fi';
-import { authService } from '../services/api';
+import { sendPasswordReset } from '../services/supabaseAuth';
 import { validateEmail } from '../services/validation';
 import InputField from './InputField';
 import Alert from './Alert';
@@ -59,23 +59,16 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      const response = await authService.forgotPassword(email);
+      const result = await sendPasswordReset(email.toLowerCase());
 
-      if (response.data?.success) {
+      if (result?.success) {
         setSubmitted(true);
-        setTimeout(() => {
-          navigate('/reset-code-verification', { state: { email } });
-        }, 2000);
       } else {
-        setGlobalError(response.data?.message || 'Unable to send reset link. Please try again.');
+        setGlobalError(result?.message || 'Unable to send reset link. Please try again.');
       }
     } catch (err) {
-      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
-        const errorMessages = err.response.data.errors.map((item) => item.message).join('. ');
-        setGlobalError(errorMessages);
-      } else {
-        setGlobalError(err.response?.data?.message || 'Failed to send reset link. Please try again later.');
-      }
+      console.error('[ForgotPassword] Password reset error:', err);
+      setGlobalError(err.message || 'Failed to send reset link. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -108,9 +101,9 @@ export default function ForgotPassword() {
 
             {submitted ? (
               <div className={styles.successPanel}>
-                <Alert type="success" message="A password reset link has been sent to your email." />
+                <Alert type="success" message="If that email exists, a password reset link has been sent." />
                 <p className={styles.confirmationText}>
-                  Check your inbox for the link and follow the instructions to reset your password. You will be redirected shortly.
+                  Check your inbox for the link and follow the instructions to reset your password.
                 </p>
               </div>
             ) : (

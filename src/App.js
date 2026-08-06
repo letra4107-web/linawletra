@@ -9,8 +9,6 @@ import EmailVerification from './components/EmailVerification';
 import OTPVerification from './components/OTPVerification';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
-import ResetCodeVerification from './components/ResetCodeVerification';
-import NewPassword from './components/NewPassword';
 import ResendVerification from './components/ResendVerification';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import Overview from './pages/admin/Overview';
@@ -152,8 +150,6 @@ function AppRoutes() {
         <Route path="/resend-verification" element={<ResendVerification />} />
         <Route path="/verify-login-otp" element={<OTPVerification />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-code-verification" element={<ResetCodeVerification />} />
-        <Route path="/new-password" element={<NewPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/dashboard" element={<PrivateRoute><RoleBasedRedirect /></PrivateRoute>} />
 

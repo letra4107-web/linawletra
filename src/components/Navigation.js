@@ -24,8 +24,6 @@ export default function Navigation() {
     '/resend-verification',
     '/verify-login-otp',
     '/forgot-password',
-    '/reset-code-verification',
-    '/new-password',
     '/reset-password',
   ];
 
