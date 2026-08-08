@@ -108,11 +108,11 @@ const config = {
 
   // URLs
   urls: {
-    client: process.env.CLIENT_URL || 'http://localhost:3000',
+    client: process.env.CLIENT_URL || (process.env.NODE_ENV === 'production' ? 'https://linawletra.com' : 'http://localhost:3000'),
     server: process.env.SERVER_URL || 'http://localhost:5000',
   },
 
-  frontendUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+  frontendUrl: process.env.CLIENT_URL || (process.env.NODE_ENV === 'production' ? 'https://linawletra.com' : 'http://localhost:3000'),
 
   supabase: {
     url: supabaseUrl,

@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase configuration
-const supabaseUrl = String(process.env.REACT_APP_SUPABASE_URL || '')
+const supabaseUrl = String(process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL || '')
   .trim()
   .replace(/\/rest\/v1\/?$/i, '')
   .replace(/\/+$/, '');
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
