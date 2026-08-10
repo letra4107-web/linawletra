@@ -329,6 +329,12 @@ export const practiceWordService = {
   },
 };
 
+// Canonical Curriculum Service
+export const curriculumService = {
+  getItems: (params = {}) => axiosInstance.get('/curriculum/items', { params }),
+  getRequirements: () => axiosInstance.get('/curriculum/requirements'),
+};
+
 // Reading Assistant Service
 export const readingService = {
   previewMaterial: (formData) => axiosInstance.post('/reading/preview', formData, {

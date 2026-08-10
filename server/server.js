@@ -14,6 +14,7 @@ import studentRoutes from "./routes/students.js";
 import userRoutes from "./routes/users.js";
 import readingRoutes from "./routes/reading.js";
 import practiceWordRoutes from "./routes/practiceWords.js";
+import curriculumRoutes from "./routes/curriculum.js";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -108,6 +109,7 @@ app.use("/api/schedules", scheduleRoutes);
 app.use("/api/speech", speechRoutes);
 app.use("/api/reading", readingRoutes);
 app.use("/api/practice-words", practiceWordRoutes);
+app.use("/api/curriculum", curriculumRoutes);
 app.use("/api/students", studentPracticeRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/users", userRoutes);
