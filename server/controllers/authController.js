@@ -310,6 +310,15 @@ const isEmailNotConfirmedAuthError = (error) => {
 const confirmSupabaseAuthEmail = async (userData, context = 'Login') => {
   if (!userData?.id) return false;
 
+  const { data: currentAuthData, error: currentAuthError } = await supabase.auth.admin.getUserById(userData.id);
+  if (!currentAuthError && currentAuthData?.user?.email_confirmed_at) {
+    return true;
+  }
+
+  if (currentAuthError) {
+    console.warn(`[${context}] Could not read Supabase Auth email confirmation:`, currentAuthError.message);
+  }
+
   const { error } = await supabase.auth.admin.updateUserById(
     userData.id,
     { email_confirm: true }
@@ -322,6 +331,15 @@ const confirmSupabaseAuthEmail = async (userData, context = 'Login') => {
 
   console.log(`[${context}] Supabase Auth email confirmation synchronized for:`, userData.email);
   return true;
+};
+
+const ensureSupabaseAuthEmailConfirmed = async (userData, context = 'Verify Email') => {
+  const confirmed = await confirmSupabaseAuthEmail(userData, context);
+  if (!confirmed) {
+    const error = new Error('Supabase Auth email confirmation failed');
+    error.code = 'AUTH_EMAIL_CONFIRMATION_FAILED';
+    throw error;
+  }
 };
 
 const signInWithVerifiedProfileRetry = async ({ email, password, profile, context = 'Login' }) => {
@@ -1157,7 +1175,23 @@ export const verifyEmail =async (req, res) => {
       });
     }
 
-    // Mark email as verified in database
+    // Confirm Supabase Auth first. If this fails, do not mark the app profile
+    // as verified; both auth systems must agree before verification succeeds.
+    try {
+      await ensureSupabaseAuthEmailConfirmed(user, 'Verify Email');
+    } catch (authConfirmError) {
+      console.error('[Verify Email] Failed to confirm Supabase Auth email:', {
+        message: authConfirmError.message,
+        code: authConfirmError.code,
+      });
+      return res.status(503).json({
+        success: false,
+        message: 'We could not finish email verification right now. Please try again.',
+        code: authConfirmError.code || 'AUTH_EMAIL_CONFIRMATION_FAILED',
+      });
+    }
+
+    // Mark email as verified in database only after Supabase Auth is confirmed.
     console.log('[Verify Email] Marking email verified for:', normalizedEmail);
     const { error: updateError } = await supabase
       .from('users')
@@ -1169,22 +1203,6 @@ export const verifyEmail =async (req, res) => {
     if (updateError) {
       console.error('[Verify Email] Failed to update user:', updateError);
       throw updateError;
-    }
-
-    // Also update Supabase Auth to mark email as confirmed
-    console.log('[Verify Email] Updating Supabase Auth email confirmation');
-    const { error: authUpdateError } = await supabase.auth.admin.updateUserById(
-      user.id,
-      {
-        email_confirm: true,
-      }
-    );
-
-    if (authUpdateError) {
-      console.error('[Verify Email] Failed to update Supabase Auth:', authUpdateError);
-      // Don't throw here - database is updated, auth update is secondary
-    } else {
-      console.log('[Verify Email] âœ“ Supabase Auth email confirmed');
     }
 
     // Delete used verification code
