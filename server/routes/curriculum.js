@@ -1,6 +1,11 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { supabase } from '../config/supabase.js';
+import {
+  getNextCurriculumItemForStudent,
+  getStudentCurriculumSummary,
+  recordCurriculumAttemptForStudent,
+} from '../services/curriculumProgress.js';
 
 const router = express.Router();
 
@@ -57,6 +62,49 @@ router.get('/requirements', authMiddleware, async (_req, res) => {
   } catch (error) {
     console.error('[Curriculum] Failed to fetch requirements:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch curriculum requirements' });
+  }
+});
+
+router.get('/next', authMiddleware, async (req, res) => {
+  try {
+    const studentId = req.query.studentId || req.user.id;
+    const result = await getNextCurriculumItemForStudent(req, studentId);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to fetch next item:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch next curriculum item' });
+  }
+});
+
+router.get('/progress/:studentId', authMiddleware, async (req, res) => {
+  try {
+    const result = await getNextCurriculumItemForStudent(req, req.params.studentId);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+
+    const { summary } = await getStudentCurriculumSummary(req.params.studentId);
+    return res.json({ success: true, summary });
+  } catch (error) {
+    console.error('[Curriculum] Failed to fetch progress:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch curriculum progress' });
+  }
+});
+
+router.post('/attempts', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'student') {
+      return res.status(403).json({ success: false, message: 'Only students can submit curriculum attempts' });
+    }
+
+    const { curriculumItemId, spokenText } = req.body;
+    if (!curriculumItemId || !spokenText) {
+      return res.status(400).json({ success: false, message: 'curriculumItemId and spokenText are required' });
+    }
+
+    const result = await recordCurriculumAttemptForStudent(req, { curriculumItemId, spokenText });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to record attempt:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to record curriculum attempt' });
   }
 });
 

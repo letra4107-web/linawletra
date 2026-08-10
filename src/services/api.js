@@ -333,6 +333,9 @@ export const practiceWordService = {
 export const curriculumService = {
   getItems: (params = {}) => axiosInstance.get('/curriculum/items', { params }),
   getRequirements: () => axiosInstance.get('/curriculum/requirements'),
+  getNextItem: (params = {}) => axiosInstance.get('/curriculum/next', { params }),
+  getProgress: (studentId) => axiosInstance.get(`/curriculum/progress/${studentId}`),
+  submitAttempt: (data) => axiosInstance.post('/curriculum/attempts', data),
 };
 
 // Reading Assistant Service
