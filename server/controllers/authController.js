@@ -552,15 +552,16 @@ export const register =async (req, res) => {
       });
     }
 
-    // Use admin.createUser instead of signUp to prevent Supabase auto-email
-    // We handle email sending via backend SMTP (Nodemailer + Gmail)
+    // Use admin.createUser instead of signUp to prevent Supabase auto-email.
+    // Supabase Auth must be confirmed so password sign-in can validate credentials;
+    // LinawLetra's own OTP gate remains in users.email_verified.
     let { data: authCreateData, error: authError } = await timedStep('create Supabase auth user', () => supabase.auth.admin.createUser({
       email: normalizedEmail,
       password: password,
       user_metadata: {
         role: userRole,
       },
-      email_confirm: false, // User must verify via backend OTP email
+      email_confirm: true,
     }));
     let authUser = authCreateData?.user;
 
@@ -585,7 +586,7 @@ export const register =async (req, res) => {
               user_metadata: {
                 role: userRole,
               },
-              email_confirm: false,
+              email_confirm: true,
             });
             authCreateData = retryResult.data;
             authError = retryResult.error;
@@ -1414,7 +1415,15 @@ export const login =async (req, res) => {
 
     if (authError || !authData?.user) {
       console.error('[Login] Supabase authentication failed:', authError?.message || authError);
-      if (isEmailNotConfirmedAuthError(authError) && existingProfile && !existingProfile.email_verified) {
+      if (isEmailNotConfirmedAuthError(authError) && existingProfile) {
+        if (existingProfile.email_verified) {
+          return res.status(503).json({
+            success: false,
+            message: 'Your account verification is out of sync. Please contact support to repair the account confirmation state.',
+            code: 'AUTH_EMAIL_CONFIRMATION_SYNC_FAILED',
+          });
+        }
+
         return res.status(403).json({
           success: false,
           message: 'Please verify your email before logging in.',
