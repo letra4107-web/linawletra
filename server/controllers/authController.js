@@ -1085,7 +1085,10 @@ export const sendStudentEnrollmentDetails =async (req, res) => {
 // Verify Email
 export const verifyEmail =async (req, res) => {
   try {
-    console.log('[Verify Email] Request body:', req.body);
+    console.log('[Verify Email] Request body:', {
+      email: req.body?.email,
+      hasCode: Boolean(req.body?.code || req.body?.verificationCode),
+    });
     
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
