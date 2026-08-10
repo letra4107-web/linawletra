@@ -1400,6 +1400,10 @@ export const login =async (req, res) => {
       existingProfile = await normalizeStudentLoginAccount(existingProfile);
     }
 
+    if (existingProfile?.email_verified === true) {
+      await confirmSupabaseAuthEmail(existingProfile, 'Login');
+    }
+
     console.log('[Login] Attempting Supabase auth for:', normalizedEmail);
 
     const { data: authData, error: authError } = await signInWithVerifiedProfileRetry({
