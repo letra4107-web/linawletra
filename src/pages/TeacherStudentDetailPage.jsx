@@ -38,8 +38,9 @@ export default function TeacherStudentDetailPage() {
       setLoading(true);
       setError('');
       try {
-        const [studentRes, masteryRes, confusionRes, recRes, progressRes] = await Promise.all([
+        const [studentRes, dashboardRes, masteryRes, confusionRes, recRes, progressRes] = await Promise.all([
           studentService.getStudent(studentId),
+          studentService.getStudentDashboard(studentId).catch(() => null),
           readingService.getWordMastery(studentId).catch(() => null),
           readingService.getConfusionPatterns(studentId).catch(() => null),
           readingService.getPracticeRecommendations(studentId).catch(() => null),
@@ -48,7 +49,8 @@ export default function TeacherStudentDetailPage() {
 
         if (cancelled) return;
         const studentPayload = studentRes?.data?.student || studentRes?.data?.data?.student || studentRes?.data || {};
-        setStudent(normalizeStudent(studentPayload));
+        const dashboardStudent = dashboardRes?.data?.student || dashboardRes?.data?.data?.student || null;
+        setStudent(normalizeStudent({ ...studentPayload, ...(dashboardStudent || {}) }));
         setOverview({
           counts: masteryRes?.data?.counts || masteryRes?.counts || null,
           patterns: confusionRes?.data?.patterns || confusionRes?.patterns || [],

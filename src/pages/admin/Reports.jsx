@@ -1,14 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/api';
 
-const placeholderReports = [
-  { id: 1, label: 'Monthly performance', type: 'PDF' },
-  { id: 2, label: 'Student progress export', type: 'CSV' },
-  { id: 3, label: 'Teacher activity summary', type: 'PDF' },
-];
-
 export default function Reports() {
-  const [reports, setReports] = useState(placeholderReports);
+  const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -19,11 +13,17 @@ export default function Reports() {
       try {
         const response = await adminService.getReports();
         const payload = response.data || response;
-        if (Array.isArray(payload) && payload.length) {
-          setReports(payload);
-        }
+        const list = Array.isArray(payload?.reports)
+          ? payload.reports
+          : Array.isArray(payload?.reportData)
+            ? payload.reportData
+            : Array.isArray(payload)
+              ? payload
+              : [];
+        setReports(list);
       } catch (err) {
-        setError('Reports service is unavailable. Showing default exports.');
+        setReports([]);
+        setError(err?.response?.data?.message || err?.message || 'Reports service is unavailable.');
       } finally {
         setLoading(false);
       }
@@ -50,36 +50,50 @@ export default function Reports() {
           <strong>{reports.length}</strong>
         </div>
         <div>
-          <span>Available formats</span>
-          <strong>CSV, PDF</strong>
+          <span>Source</span>
+          <strong>Lesson Progress</strong>
         </div>
         <div>
-          <span>Last generated</span>
-          <strong>Today</strong>
+          <span>Completed</span>
+          <strong>{reports.filter((report) => String(report.status || '').toLowerCase() === 'completed').length}</strong>
         </div>
         <div>
-          <span>Report quality</span>
-          <strong>Premium</strong>
+          <span>Average score</span>
+          <strong>
+            {(() => {
+              const scores = reports.map((report) => Number(report.score)).filter((score) => Number.isFinite(score));
+              if (!scores.length) return '0';
+              return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+            })()}
+          </strong>
         </div>
       </div>
 
       <div className="card-panel">
         <div className="section-heading">
           <div>
-            <h3>Downloadable reports</h3>
-            <p>Export student progress, system summaries, and admin performance outputs.</p>
+          <h3>Lesson progress reports</h3>
+          <p>Real records from student lesson progress.</p>
           </div>
         </div>
         <ul className="alert-list">
-          {(loading ? placeholderReports : reports).map((report) => (
-            <li key={report.id}>
-              <div>
-                <strong>{report.label}</strong>
-                <small>{report.type} file</small>
-              </div>
-              <button type="button" className="btn-secondary">Download</button>
-            </li>
-          ))}
+          {loading ? (
+            <li className="empty-state-card">Loading reports...</li>
+          ) : reports.length ? (
+            reports.map((report) => (
+              <li key={report.id}>
+                <div>
+                  <strong>{report.student || 'Student'} - {report.lesson || 'Lesson'}</strong>
+                  <small>
+                    {report.status || 'No status'} | Score: {report.score ?? 'No data'} | Updated: {report.lastUpdated || 'No date'}
+                  </small>
+                </div>
+                <span className="pill small">{report.percentageComplete ?? '0'}%</span>
+              </li>
+            ))
+          ) : (
+            <li className="empty-state-card">No lesson progress reports found.</li>
+          )}
         </ul>
       </div>
     </section>

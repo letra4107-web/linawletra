@@ -1859,6 +1859,15 @@ a {
   font-size: 0.85rem;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recommended-practice-chip small {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .recommended-practice-chip:hover {

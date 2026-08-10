@@ -7,6 +7,11 @@ async function assertParentOwnsStudent(req, studentId) {
   return allowed;
 }
 
+const normalizeLessonStatus = (status) => {
+  const value = String(status || '').trim().toLowerCase();
+  return ['not-started', 'in-progress', 'completed'].includes(value) ? value : null;
+};
+
 const attachStudentInfo = async (progressRows = []) => {
   const studentIds = [...new Set((progressRows || []).map((item) => item.studentId || item.student_id).filter(Boolean))];
   if (!studentIds.length) return progressRows;
@@ -83,17 +88,40 @@ export const updateProgress =async (req, res) => {
       return res.status(403).json({ message: 'You do not have permission to update this progress' });
     }
 
+    const requestedStatus = normalizeLessonStatus(status);
+    if (status !== undefined && !requestedStatus) {
+      return res.status(422).json({ message: 'Invalid progress status' });
+    }
+
+    const isStudentSelfUpdate = req.user.role === 'student';
+    const safeStudentUpdate = requestedStatus
+      ? {
+          status: requestedStatus,
+          percentageComplete: requestedStatus === 'completed'
+            ? 100
+            : Math.max(0, Number(existing.percentageComplete || 0)),
+          feedback: requestedStatus === 'completed' ? 'Lesson completed.' : existing.feedback,
+          updatedAt: Date.now(),
+          ...(requestedStatus === 'completed' && { completedAt: Date.now() }),
+        }
+      : {
+          status: existing.status || 'in-progress',
+          updatedAt: Date.now(),
+        };
+
     const progress = await Progress.findByIdAndUpdate(
       progressId,
-      {
-        status,
-        score,
-        percentageComplete,
-        timeSpent,
-        feedback,
-        updatedAt: Date.now(),
-        ...(status === 'completed' && { completedAt: Date.now() }),
-      },
+      isStudentSelfUpdate
+        ? safeStudentUpdate
+        : {
+            status: requestedStatus || status,
+            score,
+            percentageComplete,
+            timeSpent,
+            feedback,
+            updatedAt: Date.now(),
+            ...(requestedStatus === 'completed' && { completedAt: Date.now() }),
+          },
       { new: true }
     );
 

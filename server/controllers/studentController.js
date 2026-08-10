@@ -442,6 +442,14 @@ export const updateStudent =async (req, res) => {
       });
     }
 
+    const levelChangeRequested = gradeLevel !== undefined || readingLevel !== undefined;
+    if (levelChangeRequested && !['admin', 'parent'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only a parent or admin can change grade or reading level',
+      });
+    }
+
     if (name !== undefined) updateData.name = name;
     if (gradeLevel !== undefined) updateData.grade_level = gradeLevel;
     if (readingLevel !== undefined) updateData.reading_level = readingLevel;

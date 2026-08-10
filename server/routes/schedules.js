@@ -10,7 +10,7 @@ import { createSchedule,
 const router = express.Router();
 
 // Create schedule (teacher or parent)
-router.post('/', authMiddleware, createSchedule);
+router.post('/', authMiddleware, roleMiddleware('teacher', 'parent'), createSchedule);
 
 // Get schedules for student
 router.get('/student/:studentId', authMiddleware, getSchedulesByStudent);
@@ -22,9 +22,9 @@ router.get('/parent/list', authMiddleware, roleMiddleware('parent'), getSchedule
 router.get('/teacher/list', authMiddleware, roleMiddleware('teacher'), getSchedulesByTeacher);
 
 // Update schedule
-router.put('/:id', authMiddleware, updateSchedule);
+router.put('/:id', authMiddleware, roleMiddleware('teacher', 'parent'), updateSchedule);
 
 // Delete schedule
-router.delete('/:id', authMiddleware, deleteSchedule);
+router.delete('/:id', authMiddleware, roleMiddleware('teacher', 'parent'), deleteSchedule);
 
 export default router;

@@ -40,6 +40,25 @@ const uniqueIds = (values = []) => [...new Set(values.map(normalizeId).filter(Bo
 const XP_PER_CORRECT_WORD = 50;
 const XP_BONUS_PERFECT_WORD = 25;
 const PHONETIC_LEVEL_THRESHOLDS = { Easy: 5, Medium: 3, Hard: 2 };
+const normalizePracticeText = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]+/gu, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+const getUtc8DateString = (date = new Date()) =>
+  new Date(date.getTime() + UTC8_OFFSET_MS).toISOString().slice(0, 10);
+
+const addDaysToDateString = (dateString, days) => {
+  if (!dateString) return null;
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 
 const getAssignedIds = (material = {}) => {
   const assigned = material.assigned_students || material.assignedStudents || [];
@@ -113,6 +132,46 @@ const getCurrentStudentRecord = async (userId) => {
   return data || null;
 };
 
+const assertKnownPracticeTarget = async (expectedText, wordTarget) => {
+  const expected = normalizePracticeText(expectedText);
+  const target = normalizePracticeText(wordTarget || expectedText);
+
+  if (!target || expected !== target) {
+    return { allowed: false, message: 'Practice target does not match the expected text.' };
+  }
+
+  const { data: practiceWord, error: practiceWordError } = await supabase
+    .from('practice_words')
+    .select('id,word')
+    .eq('word', target)
+    .maybeSingle();
+
+  if (practiceWordError && practiceWordError.code !== 'PGRST116') {
+    throw practiceWordError;
+  }
+
+  if (practiceWord) {
+    return { allowed: true, source: 'practice_words' };
+  }
+
+  const { data: curriculumItem, error: curriculumError } = await supabase
+    .from('curriculum_items')
+    .select('id,content')
+    .eq('content', target)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (curriculumError && curriculumError.code !== 'PGRST116') {
+    throw curriculumError;
+  }
+
+  if (curriculumItem) {
+    return { allowed: true, source: 'curriculum_items' };
+  }
+
+  return { allowed: false, message: 'Practice target is not available for this student.' };
+};
+
 const updateStudentPronunciationProgress = async (student, payload, result) => {
   if (!student?.id) return null;
 
@@ -123,7 +182,14 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
   const isCorrect = score >= 80;
   const isPerfect = score === 100;
   const currentCompletedWords = Array.isArray(student.completed_words) ? student.completed_words : [];
-  const alreadyCompleted = currentCompletedWords.includes(target);
+  const alreadyCompleted = currentCompletedWords.some((word) => normalizePracticeText(word) === target);
+  const history = Array.isArray(student.history) ? student.history : [];
+  const alreadyPerfect = history.some((entry) =>
+    normalizePracticeText(entry?.word || '') === target && Number(entry?.score || 0) === 100
+  );
+  const earnsCompletionXp = isCorrect && !alreadyCompleted;
+  const earnsPerfectBonus = isPerfect && !alreadyPerfect;
+  const earnedXp = (earnsCompletionXp ? XP_PER_CORRECT_WORD : 0) + (earnsPerfectBonus ? XP_BONUS_PERFECT_WORD : 0);
   const currentLevel = student.current_phonetic_level || 'Easy';
   const threshold = PHONETIC_LEVEL_THRESHOLDS[currentLevel] || PHONETIC_LEVEL_THRESHOLDS.Easy;
   const previousCompleted = Number(student.completed || 0);
@@ -133,12 +199,13 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
     spoken: payload.spoken_text,
     score,
     correct: isCorrect,
-    xp: isCorrect ? XP_PER_CORRECT_WORD + (isPerfect ? XP_BONUS_PERFECT_WORD : 0) : 0,
+    xp: earnedXp,
+    completionXpAwarded: earnsCompletionXp,
+    perfectBonusAwarded: earnsPerfectBonus,
     activityType: payload.activity_type,
     timestamp: Date.now(),
   };
 
-  const history = Array.isArray(student.history) ? student.history : [];
   const nextHistory = [...history, attemptRecord].slice(-200);
   const nextCompletedCount = previousCompleted + 1;
   const updateData = {
@@ -151,7 +218,9 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
   if (!isCorrect) {
     updateData.progress_in_level = 0;
   } else {
-    updateData.xp = Number(student.xp || 0) + attemptRecord.xp;
+    if (earnedXp > 0) {
+      updateData.xp = Number(student.xp || 0) + earnedXp;
+    }
     if (!alreadyCompleted) {
       const nextWordsCompleted = Number(student.words_completed || 0) + 1;
       const nextProgressInLevel = Math.min(Number(student.progress_in_level || 0) + 1, threshold);
@@ -160,6 +229,23 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
       updateData.progress_in_level = nextProgressInLevel;
       if (nextWordsCompleted % 5 === 0) {
         updateData.achievements = Number(student.achievements || 0) + 1;
+      }
+    }
+
+    if (payload.activity_type === 'word_of_day') {
+      const today = getUtc8DateString();
+      const previousWordOfDayDate = student.word_of_day_completed_date || null;
+
+      if (previousWordOfDayDate !== today) {
+        const previousStreak = Number(student.streak || 0);
+        const yesterday = addDaysToDateString(today, -1);
+        const nextStreak = previousWordOfDayDate === yesterday ? previousStreak + 1 : 1;
+        updateData.word_of_day_completed_date = today;
+        updateData.streak = nextStreak;
+        updateData.longest_streak = Math.max(Number(student.longest_streak || 0), nextStreak);
+        if (previousWordOfDayDate && previousWordOfDayDate !== yesterday && previousStreak >= 3) {
+          updateData.had_streak_break = true;
+        }
       }
     }
   }
@@ -374,6 +460,13 @@ router.post('/attempts', authMiddleware, roleMiddleware('student'), async (req, 
     }
     if (!materialId && !wordTarget) {
       return res.status(400).json({ message: 'materialId or wordTarget is required.' });
+    }
+
+    if (!materialId && wordTarget) {
+      const targetCheck = await assertKnownPracticeTarget(expectedText, wordTarget);
+      if (!targetCheck.allowed) {
+        return res.status(422).json({ message: targetCheck.message });
+      }
     }
 
     if (materialId) {

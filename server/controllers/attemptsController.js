@@ -4,6 +4,81 @@ import { authorizeStudent } from '../utils/studentAccess.js';
 const MIN_ATTEMPTS_FOR_MASTERED = 3;
 const MIN_ATTEMPTS_FOR_DIFFICULT = 2;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const clampScore = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+
+const normalizeWordText = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]+/gu, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizeTags = (value) => {
+  if (Array.isArray(value)) return value.map((tag) => String(tag).toLowerCase()).filter(Boolean);
+  if (!value) return [];
+  return String(value).split(',').map((tag) => tag.trim().toLowerCase()).filter(Boolean);
+};
+
+const computeRecencyNeed = (lastAttemptAt) => {
+  if (!lastAttemptAt) return 1;
+  const elapsedDays = (Date.now() - new Date(lastAttemptAt).getTime()) / DAY_MS;
+  if (!Number.isFinite(elapsedDays) || elapsedDays <= 0) return 0;
+  return clampScore(elapsedDays / 14);
+};
+
+const buildRecommendation = (row = {}, context = {}) => {
+  const word = normalizeWordText(row.word);
+  const tags = normalizeTags(row.tags);
+  const patternWords = context.confusionPatterns || [];
+  const weaknessMatch = clampScore(
+    patternWords.reduce((score, pattern) => {
+      const examples = Array.isArray(pattern.example_words) ? pattern.example_words.map(normalizeWordText) : [];
+      const tagHit = tags.includes(String(pattern.pattern_type || '').toLowerCase());
+      const exampleHit = examples.includes(word);
+      if (!tagHit && !exampleHit) return score;
+      return score + Math.min(Number(pattern.occurrence_count || 1) / 5, 1);
+    }, 0)
+  );
+  const masteryGap = clampScore(1 - (Number(row.avg_pronunciation_score || 0) / 100));
+  const recencyNeed = computeRecencyNeed(row.last_attempt_at);
+  const structuralFit = row.mastery_status === 'difficult'
+    ? 1
+    : row.mastery_status === 'needs_practice'
+      ? 0.75
+      : row.source === 'practice_words'
+        ? 0.55
+        : 0.5;
+  const score = Math.round((
+    weaknessMatch * 0.35 +
+    masteryGap * 0.3 +
+    recencyNeed * 0.2 +
+    structuralFit * 0.15
+  ) * 100);
+
+  return {
+    ...row,
+    word,
+    recommendation_score: score,
+    predicted_probability: null,
+    ranking: {
+      weakness_match: Number(weaknessMatch.toFixed(2)),
+      mastery_gap: Number(masteryGap.toFixed(2)),
+      recency_need: Number(recencyNeed.toFixed(2)),
+      structural_fit: Number(structuralFit.toFixed(2)),
+      score,
+      rationale: [
+        weaknessMatch > 0 ? 'Matches recurring phoneme/sound confusions.' : null,
+        masteryGap >= 0.4 ? 'Pronunciation mastery still has room to improve.' : null,
+        recencyNeed >= 0.5 ? 'Has not been practiced recently.' : null,
+        structuralFit >= 0.75 ? 'Fits the current practice priority.' : null,
+      ].filter(Boolean),
+    },
+  };
+};
+
 /**
  * Upsert a student's mastery state for one word, and bump any confusion
  * patterns this attempt revealed. Called once per word from a recorded
@@ -128,17 +203,35 @@ export async function getPracticeRecommendations(req, res) {
     const student = await authorizeStudentAccess(req, req.params.studentId);
     if (!student) return res.status(403).json({ message: 'You do not have permission to view this data.' });
 
+    const { data: confusionPatterns, error: confusionError } = await supabase
+      .from('confusion_patterns')
+      .select('*')
+      .eq('student_id', student.id)
+      .order('occurrence_count', { ascending: false })
+      .limit(10);
+    if (confusionError) throw confusionError;
+
     const { data, error } = await supabase
       .from('word_mastery')
       .select('*')
       .eq('student_id', student.id)
       .in('mastery_status', ['needs_practice', 'difficult'])
       .order('last_attempt_at', { ascending: false })
-      .limit(10);
+      .limit(25);
     if (error) throw error;
 
     if ((data || []).length > 0) {
-      return res.json({ strategy: 'mastery_history', words: data || [] });
+      const words = (data || [])
+        .map((row) => buildRecommendation(row, { confusionPatterns }))
+        .sort((a, b) => b.recommendation_score - a.recommendation_score)
+        .slice(0, 10);
+      return res.json({
+        strategy: 'rule_based_mastery_history',
+        model_type: 'transparent_rule_based_ranking',
+        predicted_probability: null,
+        factors: ['weakness_match', 'mastery_gap', 'recency_need', 'structural_fit'],
+        words,
+      });
     }
 
     const levelToDifficulty = {
@@ -156,14 +249,19 @@ export async function getPracticeRecommendations(req, res) {
     if (coldStartError) throw coldStartError;
 
     return res.json({
-      strategy: 'cold_start_level_words',
+      strategy: 'rule_based_cold_start_level_words',
+      model_type: 'transparent_rule_based_ranking',
+      predicted_probability: null,
+      factors: ['weakness_match', 'mastery_gap', 'recency_need', 'structural_fit'],
       words: (coldStartWords || []).map((word) => ({
         word: word.word,
         mastery_status: 'new',
         avg_pronunciation_score: null,
         source: 'practice_words',
         ...word,
-      })),
+      }))
+        .map((row) => buildRecommendation(row, { confusionPatterns }))
+        .sort((a, b) => b.recommendation_score - a.recommendation_score),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

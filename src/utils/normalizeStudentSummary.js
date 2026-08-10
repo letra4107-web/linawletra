@@ -3,6 +3,10 @@
 // (comparePronunciation / phoneticThreshold) — duplicated here since there's no
 // shared module between that page and the Parent/Teacher dashboards.
 const PHONETIC_LEVEL_THRESHOLD = { Easy: 5, Medium: 3, Hard: 2 };
+const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+const getUtc8DateString = (date = new Date()) =>
+  new Date(date.getTime() + UTC8_OFFSET_MS).toISOString().slice(0, 10);
 
 // Accepts either a Parent-side normalized child (parentDashboardApi.js's
 // normalizeChild output, which spreads the raw students row plus a few
@@ -54,6 +58,6 @@ export function normalizeStudentSummary(input = {}) {
 
 export function isWordOfDayDoneToday(wordOfDayCompletedDate) {
   if (!wordOfDayCompletedDate) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getUtc8DateString();
   return String(wordOfDayCompletedDate).slice(0, 10) === today;
 }

@@ -9,10 +9,10 @@ import { createAssessment,
 const router = express.Router();
 
 // Create assessment
-router.post('/', authMiddleware, createAssessment);
+router.post('/', authMiddleware, roleMiddleware('parent', 'teacher', 'admin'), createAssessment);
 
 // Update assessment scores
-router.put('/:assessmentId', authMiddleware, updateAssessmentScores);
+router.put('/:assessmentId', authMiddleware, roleMiddleware('parent', 'teacher', 'admin'), updateAssessmentScores);
 
 // Get assessment by student
 router.get('/student/:studentId', authMiddleware, getAssessmentByStudent);

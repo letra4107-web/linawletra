@@ -39,6 +39,7 @@ export const PHONEME_SIMILARITY = {
   s_ts: 0.4, ts_s: 0.4,
   i_e: 0.3, e_i: 0.3,
   o_u: 0.3, u_o: 0.3,
+  a_o: 0.3, o_a: 0.3,
 };
 
 export const CONFUSION_LABELS = {
@@ -53,6 +54,7 @@ export const CONFUSION_LABELS = {
   s_ts: 'mixing up s and ts', ts_s: 'mixing up ts and s',
   i_e: 'mixing up i and e', e_i: 'mixing up e and i',
   o_u: 'mixing up o and u', u_o: 'mixing up u and o',
+  a_o: 'mixing up a and o', o_a: 'mixing up o and a',
 };
 
 /**

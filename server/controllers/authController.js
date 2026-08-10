@@ -1989,12 +1989,13 @@ export const resetPassword =async (req, res) => {
     }
 
     const { email, resetCode, newPassword } = req.body;
+    const normalizedEmail = String(email || '').toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        message: 'User not found',
+        message: 'Invalid or expired reset code. Please request a new one.',
       });
     }
 
@@ -2003,7 +2004,7 @@ export const resetPassword =async (req, res) => {
     if (!resetRecord) {
       return res.status(400).json({
         success: false,
-        message: 'Reset code not found. Please request a new one.',
+        message: 'Invalid or expired reset code. Please request a new one.',
       });
     }
 
@@ -2049,7 +2050,13 @@ export const resetPassword =async (req, res) => {
       { password: newPassword }
     );
 
-    if (authUpdateError) throw authUpdateError;
+    if (authUpdateError) {
+      console.error('[Reset Password] Supabase password update failed:', authUpdateError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Password reset failed. Please request a new reset code and try again.',
+      });
+    }
 
     const metadata = { ...(user.metadata || {}) };
     delete metadata.passwordReset;
@@ -2066,9 +2073,10 @@ export const resetPassword =async (req, res) => {
       message: 'Password reset successfully. Please log in.',
     });
   } catch (error) {
+    console.error('[Reset Password] Error:', error.message);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'Password reset failed. Please try again shortly.',
     });
   }
 };
@@ -2085,12 +2093,13 @@ export const verifyResetCode =async (req, res) => {
     }
 
     const { email, resetCode } = req.body;
+    const normalizedEmail = String(email || '').toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        message: 'User not found',
+        message: 'Invalid or expired reset code. Please request a new one.',
       });
     }
 
@@ -2099,7 +2108,7 @@ export const verifyResetCode =async (req, res) => {
     if (!resetRecord) {
       return res.status(400).json({
         success: false,
-        message: 'Reset code not found. Please request a new one.',
+        message: 'Invalid or expired reset code. Please request a new one.',
       });
     }
 
@@ -2125,9 +2134,10 @@ export const verifyResetCode =async (req, res) => {
       message: 'Reset code verified successfully',
     });
   } catch (error) {
+    console.error('[Verify Reset Code] Error:', error.message);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'Unable to verify reset code. Please try again shortly.',
     });
   }
 };

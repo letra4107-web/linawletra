@@ -178,7 +178,7 @@ function AppRoutes() {
         <Route path="/parent" element={<Navigate to="/parent/summary" replace />} />
         <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
         <Route path="/students" element={<PrivateRoute allowedRoles={['parent', 'admin']}><StudentManagement /></PrivateRoute>} />
-        <Route path="/assessment/:assessmentId" element={<PrivateRoute allowedRoles={['student', 'teacher', 'parent']}><AssessmentComponent /></PrivateRoute>} />
+        <Route path="/assessment/:assessmentId" element={<PrivateRoute allowedRoles={['teacher', 'parent']}><AssessmentComponent /></PrivateRoute>} />
         <Route path="/lessons/:lessonId" element={<PrivateRoute allowedRoles={['teacher', 'admin']}><LessonComponent /></PrivateRoute>} />
         <Route path="/lesson/:lessonId/:studentId" element={<PrivateRoute allowedRoles={['student', 'teacher', 'parent']}><LessonComponent /></PrivateRoute>} />
 

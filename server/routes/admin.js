@@ -59,6 +59,48 @@ const normalizeRecord = (record) => {
   };
 };
 
+const attachStudentDetailsToUsers = async (users = []) => {
+  const normalizedUsers = (users || []).map(normalizeRecord);
+  const studentUserIds = normalizedUsers
+    .filter((user) => String(user.role || '').toLowerCase() === 'student')
+    .map((user) => user.id || user.uid)
+    .filter(Boolean);
+
+  if (!studentUserIds.length) {
+    return normalizedUsers;
+  }
+
+  const { data: students, error } = await supabase
+    .from('students')
+    .select('id,user_id,parent_id,teacher_id,grade_level,reading_level,xp,words_completed,accuracy,streak,current_phonetic_level,progress_in_level')
+    .in('user_id', studentUserIds);
+
+  if (error) {
+    console.warn('[Admin] Could not attach student details:', error.message);
+    return normalizedUsers;
+  }
+
+  const studentsByUserId = new Map((students || []).map((student) => [student.user_id, student]));
+  return normalizedUsers.map((user) => {
+    const student = studentsByUserId.get(user.id || user.uid);
+    if (!student) return user;
+    return {
+      ...user,
+      studentId: student.id,
+      parentId: student.parent_id,
+      teacherId: student.teacher_id,
+      gradeLevel: student.grade_level,
+      readingLevel: student.reading_level,
+      xp: student.xp ?? 0,
+      wordsCompleted: student.words_completed ?? 0,
+      accuracy: student.accuracy ?? 0,
+      streak: student.streak ?? 0,
+      currentPhoneticLevel: student.current_phonetic_level ?? 'Easy',
+      progressInCurrentLevel: student.progress_in_level ?? 0,
+    };
+  });
+};
+
 const countRows = async (table, filterFn) => {
   let query = supabase.from(table).select('id', { count: 'exact', head: true });
   if (typeof filterFn === 'function') {
@@ -73,6 +115,27 @@ const countRows = async (table, filterFn) => {
     throw error;
   }
   return count || 0;
+};
+
+const countCompletedLessonProgress = async () => {
+  const statusResult = await supabase
+    .from('lesson_progress')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'completed');
+
+  if (!statusResult.error) return statusResult.count || 0;
+
+  const completedResult = await supabase
+    .from('lesson_progress')
+    .select('id', { count: 'exact', head: true })
+    .eq('completed', true);
+
+  if (completedResult.error) {
+    console.warn('[Admin] Could not count completed lesson progress:', completedResult.error.message);
+    return 0;
+  }
+
+  return completedResult.count || 0;
 };
 
 const logAdminAction = async (req, action, targetType = '', targetId = null, details = {}) => {
@@ -129,7 +192,7 @@ router.get('/overview', async (req, res) => {
       countRows('lessons'),
       countRows('assessments'),
       countRows('lesson_progress'),
-      countRows('lesson_progress', (query) => query.eq('completed', true)),
+      countCompletedLessonProgress(),
       0,
     ]);
 
@@ -154,6 +217,22 @@ router.get('/overview', async (req, res) => {
       return acc;
     }, {});
 
+    const { data: scoreRows, error: scoreError } = await supabase
+      .from('lesson_progress')
+      .select('score')
+      .not('score', 'is', null);
+
+    if (scoreError) {
+      throw scoreError;
+    }
+
+    const scoreValues = (scoreRows || [])
+      .map((row) => Number(row.score))
+      .filter((score) => Number.isFinite(score));
+    const averageScore = scoreValues.length
+      ? Math.round(scoreValues.reduce((sum, score) => sum + score, 0) / scoreValues.length)
+      : 0;
+
     const recentActivities = (recentLogData || []).map((item) => ({
       type: item.resource_type || item.action || 'event',
       who: item.user_id || item.user_email || item.user_name || 'System',
@@ -172,6 +251,8 @@ router.get('/overview', async (req, res) => {
       totalAssessments,
       totalProgress,
       completedProgress,
+      completionRate: totalProgress > 0 ? Math.round((completedProgress / totalProgress) * 100) : 0,
+      averageScore,
       lessonCompletion: totalProgress > 0 ? Math.round((completedProgress / totalProgress) * 100) : 0,
       userRoleBreakdown,
       platformSummary: {
@@ -239,7 +320,7 @@ router.get('/users', async (req, res) => {
     }
 
     return res.json({
-      users: (data || []).map(normalizeRecord),
+      users: await attachStudentDetailsToUsers(data || []),
       pagination: {
         page,
         limit,
@@ -776,13 +857,15 @@ router.get('/analytics', async (req, res) => {
     const [usersResult, progressCountResult, completedScoreResult, scoresResult] = await Promise.all([
       supabase.from('users').select('created_at').gt('created_at', since),
       supabase.from('lesson_progress').select('id', { count: 'exact', head: true }),
-      supabase.from('lesson_progress').select('id', { count: 'exact', head: true }).eq('completed', true),
+      supabase.from('lesson_progress').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
       supabase.from('lesson_progress').select('score').not('score', 'is', null),
     ]);
 
     if (usersResult.error) throw usersResult.error;
     if (progressCountResult.error) throw progressCountResult.error;
-    if (completedScoreResult.error) throw completedScoreResult.error;
+    if (completedScoreResult.error) {
+      completedScoreResult.count = await countCompletedLessonProgress();
+    }
     if (scoresResult.error) throw scoresResult.error;
 
     const enrollmentMap = {};
@@ -832,7 +915,7 @@ router.get('/reports', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const { data, error } = await supabase
-      .from('progress')
+      .from('lesson_progress')
       .select('*')
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -841,17 +924,38 @@ router.get('/reports', async (req, res) => {
       throw error;
     }
 
+    const studentIds = [...new Set((data || []).map((item) => item.student_id || item.studentId).filter(Boolean))];
+    const lessonIds = [...new Set((data || []).map((item) => item.lesson_id || item.lessonId).filter(Boolean))];
+    const { data: studentRows } = studentIds.length
+      ? await supabase.from('students').select('id,user_id,grade_level,reading_level').in('id', studentIds)
+      : { data: [] };
+    const userIds = [...new Set((studentRows || []).map((student) => student.user_id).filter(Boolean))];
+    const { data: userRows } = userIds.length
+      ? await supabase.from('users').select('id,name,email,metadata').in('id', userIds)
+      : { data: [] };
+    const { data: lessonRows } = lessonIds.length
+      ? await supabase.from('lessons').select('id,title,category,level').in('id', lessonIds)
+      : { data: [] };
+
+    const studentsById = new Map((studentRows || []).map((student) => [student.id, student]));
+    const usersById = new Map((userRows || []).map((user) => [user.id, user]));
+    const lessonsById = new Map((lessonRows || []).map((lesson) => [lesson.id, lesson]));
+
     const reportData = (data || []).map((item) => ({
       id: item.id,
-      student: item.student_name || item.student_email || item.student_id || 'No data available',
-      lesson: item.lesson_title || item.lesson_id || 'No data available',
+      student: (() => {
+        const student = studentsById.get(item.student_id || item.studentId);
+        const user = student ? usersById.get(student.user_id) : null;
+        return user?.name || user?.metadata?.displayName || user?.email || item.student_id || 'No data available';
+      })(),
+      lesson: lessonsById.get(item.lesson_id || item.lessonId)?.title || item.lesson_title || item.lesson_id || 'No data available',
       status: item.status || 'No data available',
       score: typeof item.score === 'number' ? item.score : 'No data available',
       percentageComplete: typeof item.percentage_complete === 'number' ? item.percentage_complete : 'No data available',
       lastUpdated: item.updated_at || item.updatedAt || 'No date available',
     }));
 
-    return res.json({ reportData, page, limit });
+    return res.json({ reports: reportData, reportData, page, limit });
   } catch (error) {
     console.error('Reports error:', error);
     return sendError(res, 500, 'Failed to fetch reports', error.message);

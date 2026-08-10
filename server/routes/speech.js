@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -84,7 +85,7 @@ const getOpenAIClient = () => {
 };
 
 // Speech-to-Text endpoint
-router.post('/stt', upload.single('audio'), async (req, res) => {
+router.post('/stt', authMiddleware, upload.single('audio'), async (req, res) => {
   try {
     const openaiClient = getOpenAIClient();
     if (!openaiClient) {
@@ -118,7 +119,7 @@ router.post('/stt', upload.single('audio'), async (req, res) => {
 });
 
 // Text-to-Speech endpoint
-router.post('/tts', async (req, res) => {
+router.post('/tts', authMiddleware, async (req, res) => {
   const { text, instructions, voice, speed } = req.body;
 
   if (!text) {

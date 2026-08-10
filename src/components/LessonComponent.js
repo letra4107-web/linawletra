@@ -114,9 +114,6 @@ export default function LessonComponent() {
     try {
       await progressService.updateProgress(progressId, {
         status: 'completed',
-        score: 85,
-        percentageComplete: 100,
-        feedback: 'Great job! You completed this lesson.',
       });
       alert('Lesson completed!');
       window.location.href = '/dashboard';

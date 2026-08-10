@@ -41,6 +41,12 @@ const normalizeChild = (child = {}) => {
     completedLessons: child.completedLessons ?? child.completed_lessons ?? metadata.completedLessons ?? metadata.wordsCompleted ?? child.completed ?? 0,
     accuracy: child.accuracy ?? child.progress_accuracy ?? metadata.accuracy ?? null,
     xp: child.xp ?? user.xp ?? metadata.xp ?? 0,
+    streak: child.streak ?? metadata.streak ?? 0,
+    longestStreak: child.longestStreak ?? child.longest_streak ?? metadata.longestStreak ?? 0,
+    achievements: child.achievements ?? metadata.achievements ?? 0,
+    currentPhoneticLevel: child.currentPhoneticLevel ?? child.current_phonetic_level ?? metadata.currentPhoneticLevel ?? 'Easy',
+    progressInCurrentLevel: child.progressInCurrentLevel ?? child.progress_in_level ?? metadata.progressInCurrentLevel ?? 0,
+    wordOfDayCompletedDate: child.wordOfDayCompletedDate ?? child.word_of_day_completed_date ?? metadata.wordOfDayCompletedDate ?? null,
     raw: child,
   };
 };

@@ -81,7 +81,12 @@ router.get('/progress/:studentId', authMiddleware, async (req, res) => {
     const result = await getNextCurriculumItemForStudent(req, req.params.studentId);
     if (result.status !== 200) return res.status(result.status).json(result.body);
 
-    const { summary } = await getStudentCurriculumSummary(req.params.studentId);
+    const authorizedStudentId = result.body?.studentId;
+    if (!authorizedStudentId) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const { summary } = await getStudentCurriculumSummary(authorizedStudentId);
     return res.json({ success: true, summary });
   } catch (error) {
     console.error('[Curriculum] Failed to fetch progress:', error.message);

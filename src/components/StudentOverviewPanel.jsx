@@ -86,9 +86,16 @@ export default function StudentOverviewPanel({
         <div className="student-overview-panel__section">
           <div className="student-overview-panel__section-title">Recommended words to practice</div>
           <div className="student-overview-panel__word-chips">
-            {recommendations.slice(0, 8).map((word) => (
-              <span key={word.word} className="student-overview-panel__word-chip">{word.word}</span>
-            ))}
+            {recommendations.slice(0, 8).map((word) => {
+              const rationale = word.ranking?.rationale?.[0] || 'Rule-based recommendation';
+              const score = Number(word.recommendation_score);
+              return (
+                <span key={word.word} className="student-overview-panel__word-chip" title={rationale}>
+                  {word.word}
+                  {Number.isFinite(score) ? ` · ${score}` : ''}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}

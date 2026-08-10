@@ -7,6 +7,7 @@ import StudentSelector from '../components/StudentSelector';
 import StudentOverviewPanel from '../components/StudentOverviewPanel';
 import { parentDashboardApi } from '../services/parentDashboardApi';
 import { studentService } from '../services/api';
+import { normalizeStudentSummary } from '../utils/normalizeStudentSummary';
 import './ParentDashboard.css';
 
 const Skeleton = ({ h = 14, w = '100%', style = {} }) => (
@@ -359,32 +360,10 @@ export default function ParentDashboard() {
 
   const summaryCards = useMemo(() => {
     const selectedProgress = progress?.student || selectedChild || {};
-    const status =
-      selectedProgress.readingLevel ||
-      selectedProgress.reading_level ||
-      dashboard?.childReadingLevelStatus ||
-      dashboard?.childReadingLevel ||
-      null;
-    const weeklyProgress =
-      selectedProgress.progressPercentage ??
-      progress?.progressPercentage ??
-      progress?.progress_percentage ??
-      dashboard?.weeklyProgressPercentage ??
-      dashboard?.weekly_progress_percentage ??
-      null;
-    const wordsFinished =
-      selectedProgress.wordsCompleted ??
-      selectedProgress.words_finished ??
-      selectedProgress.completedWords?.length ??
-      progress?.wordsCompleted ??
-      progress?.words_finished ??
-      progress?.completedWords?.length ??
-      selectedProgress.completedLessons ??
-      progress?.completedLessons ??
-      progress?.completed_lessons ??
-      dashboard?.completedLessonsCount ??
-      dashboard?.completed_lessons_count ??
-      null;
+    const summary = normalizeStudentSummary(selectedProgress);
+    const status = summary.readingLevel || dashboard?.childReadingLevelStatus || dashboard?.childReadingLevel || null;
+    const weeklyProgress = summary.progressToNextLevelPercent;
+    const wordsFinished = summary.wordsCompleted;
     const hasAlerts = Boolean(dashboard?.alertsIndicator ?? dashboard?.hasAlerts ?? dashboard?.has_alerts ?? (notifications?.length > 0));
 
     return [
@@ -394,9 +373,9 @@ export default function ParentDashboard() {
         note: status?.note || 'AI-assisted tracking',
       },
       {
-        label: 'Weekly Progress',
+        label: 'Progress to Next Level',
         value: typeof weeklyProgress === 'number' || typeof weeklyProgress === 'string' ? `${weeklyProgress}%` : '—',
-        note: 'Overall learning growth',
+        note: 'Shared progress calculation',
       },
       {
         label: 'Words Finished',
@@ -410,6 +389,16 @@ export default function ParentDashboard() {
       },
     ];
   }, [dashboard, notifications, progress, selectedChild]);
+
+  const selectedStudentForDisplay = useMemo(
+    () => progress?.student || selectedChild || null,
+    [progress, selectedChild]
+  );
+
+  const selectedStudentSummary = useMemo(
+    () => normalizeStudentSummary(selectedStudentForDisplay || {}),
+    [selectedStudentForDisplay]
+  );
 
   if (loading) {
     return (
@@ -522,7 +511,7 @@ export default function ParentDashboard() {
 
         {showSummary && selectedChild && (
           <StudentOverviewPanel
-            student={selectedChild}
+            student={selectedStudentForDisplay}
             wordMastery={wordMastery}
             confusionPatterns={confusionPatterns}
             recommendedWords={recommendedWords}
@@ -687,10 +676,10 @@ export default function ParentDashboard() {
                   <div className="parent-child-detail">
                     <div className="parent-child-detail__head">
                       <div>
-                        <div className="parent-section__title">{selectedChild.name}'s Progress</div>
+                        <div className="parent-section__title">{selectedStudentSummary.name}'s Progress</div>
                         <div className="parent-section__sub">Reading status, completed work, and recent activity.</div>
                       </div>
-                      <StatusChip variant="progress">{selectedChild.readingLevel || 'Reading level pending'}</StatusChip>
+                      <StatusChip variant="progress">{selectedStudentSummary.readingLevel || 'Reading level pending'}</StatusChip>
                     </div>
                     <div className="parent-child-detail__grid">
                       <div className="parent-child-detail__metric">
@@ -699,15 +688,15 @@ export default function ParentDashboard() {
                       </div>
                       <div className="parent-child-detail__metric">
                         <span>Progress</span>
-                        <strong>{progress?.student?.progressPercentage ?? selectedChild.progressPercentage ?? selectedChild.progress ?? 0}%</strong>
+                        <strong>{selectedStudentSummary.progressToNextLevelPercent}%</strong>
                       </div>
                       <div className="parent-child-detail__metric">
                         <span>Words Finished</span>
-                        <strong>{progress?.student?.wordsCompleted ?? progress?.student?.completedWords?.length ?? selectedChild.wordsCompleted ?? selectedChild.completedWords?.length ?? selectedChild.completedLessons ?? selectedChild.completed ?? 0}</strong>
+                        <strong>{selectedStudentSummary.wordsCompleted}</strong>
                       </div>
                       <div className="parent-child-detail__metric">
                         <span>Total XP</span>
-                        <strong>{progress?.student?.xp ?? selectedChild.xp ?? 0}</strong>
+                        <strong>{selectedStudentSummary.xp}</strong>
                       </div>
                     </div>
                     <div className="parent-child-detail__activity">
@@ -820,4 +809,3 @@ export default function ParentDashboard() {
     </div>
   );
 }
-

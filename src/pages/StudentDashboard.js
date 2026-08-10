@@ -726,6 +726,42 @@ const StudentDashboard = () => {
     setXpGainPopup(amount);
     setTimeout(() => setXpGainPopup(null), 2500);
   };
+  const applyServerStudentProgress = (studentProgress) => {
+    if (!studentProgress) return null;
+
+    const serverXp = Number(studentProgress.xp || 0);
+    let gainedXp = 0;
+    setXp((previousXp) => {
+      gainedXp = Math.max(0, serverXp - (Number(previousXp) || 0));
+      return serverXp;
+    });
+    if (gainedXp > 0) {
+      setXpGainPopup(gainedXp);
+      setTimeout(() => setXpGainPopup(null), 2500);
+    }
+
+    setWordsCompleted(Number(studentProgress.words_completed || 0));
+    setCompletedWords(Array.isArray(studentProgress.completed_words) ? studentProgress.completed_words : []);
+    setAchievements(Number(studentProgress.achievements || 0));
+    setAccuracy(Number(studentProgress.accuracy || 0));
+    setProgressInCurrentLevel(Number(studentProgress.progress_in_level || 0));
+    setCurrentPhoneticLevel(studentProgress.current_phonetic_level || 'Easy');
+    setHighestPhoneticLevel(studentProgress.highest_phonetic_level || 'Easy');
+    setHardCyclesCompleted(Number(studentProgress.hard_cycles_completed || 0));
+    setHadStreakBreak(Boolean(studentProgress.had_streak_break));
+    setUnlockedAchievementIds(Array.isArray(studentProgress.unlocked_achievement_ids) ? studentProgress.unlocked_achievement_ids : []);
+    setWordOfDayCompletedDate(studentProgress.word_of_day_completed_date || null);
+    setLongestStreak(Number(studentProgress.longest_streak || studentProgress.streak || 0));
+    setProgress((prev) => ({
+      ...prev,
+      completed: Number(studentProgress.completed || prev.completed || 0),
+      accuracy: Number(studentProgress.accuracy || prev.accuracy || 0),
+      streak: Number(studentProgress.streak || prev.streak || 0),
+      history: Array.isArray(studentProgress.history) ? studentProgress.history : prev.history,
+    }));
+
+    return { gainedXp };
+  };
   const normalizeForEvaluation = (text = '') =>
     text
       .toString()
@@ -926,6 +962,7 @@ const StudentDashboard = () => {
     const isCurriculumAttempt = Boolean(activeCurriculumItem || activePracticeWord?.curriculumItemId);
     const isWordOfDayAttempt = Boolean(wordOfTheDay) && activePracticeWord?.id === wordOfTheDay?.id;
     let curriculumAttempt = null;
+    let readingAttempt = null;
     if (isCurriculumAttempt) {
       try {
         const response = await curriculumService.submitAttempt({
@@ -955,23 +992,42 @@ const StudentDashboard = () => {
         return;
       }
     } else {
-      readingService.saveAttempt({
-        wordTarget: expected,
-        expectedText: expected,
-        spokenText: spoken,
-        mode: 'word',
-        activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
-      }).catch((error) => console.warn('Failed to record word attempt:', error.message));
+      try {
+        const response = await readingService.saveAttempt({
+          wordTarget: expected,
+          expectedText: expected,
+          spokenText: spoken,
+          mode: 'word',
+          activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
+        });
+        readingAttempt = response?.data || response || {};
+        if (typeof readingAttempt.result?.accuracyScore === 'number') {
+          score = readingAttempt.result.accuracyScore;
+        }
+      } catch (error) {
+        console.error('Failed to record word attempt:', error);
+        setRecognitionResult('error');
+        setStatus('incorrect');
+        setFeedback('Could not save your practice attempt. Please try again.');
+        setStatusMessage('Your answer was not saved.');
+        setTimeout(() => {
+          setStatus('idle');
+          setIsEvaluating(false);
+        }, 3000);
+        return;
+      }
     }
     const passedAttempt = score >= 80;
     const isClose = score >= 70 && score < 80;
-    const attemptXp = score === 100
+    const serverAttemptXp = readingAttempt?.studentProgress?.history?.at?.(-1)?.xp;
+    const attemptXp = Number.isFinite(Number(serverAttemptXp)) ? Number(serverAttemptXp) : score === 100
       ? PRONUNCIATION_XP.perfect
       : passedAttempt
         ? PRONUNCIATION_XP.correct
         : isClose
           ? PRONUNCIATION_XP.close
           : PRONUNCIATION_XP.practice;
+    const serverProgressAvailable = !isCurriculumAttempt && Boolean(readingAttempt?.studentProgress);
     setTranscribedText(spoken);
     setRecognitionDistance(distance);
     setAccuracy(score);
@@ -990,10 +1046,14 @@ const StudentDashboard = () => {
       playedTTS: score < 80,
       timestamp: Date.now(),
     };
-    setProgress((prev) => ({
-      ...prev,
-      history: [...(prev.history || []), attemptRecord],
-    }));
+    if (serverProgressAvailable) {
+      applyServerStudentProgress(readingAttempt.studentProgress);
+    } else {
+      setProgress((prev) => ({
+        ...prev,
+        history: [...(prev.history || []), attemptRecord],
+      }));
+    }
     if (score < 80) {
       const encouragement = ENCOURAGEMENT_MESSAGES[Math.floor(Math.random() * ENCOURAGEMENT_MESSAGES.length)];
       showReassurance(encouragement, 'encourage');
@@ -1002,8 +1062,10 @@ const StudentDashboard = () => {
       setFeedback(`${tagalogFeedback} Pakinggan mo ito.`);
     }
     if (passedAttempt) {
-      awardPronunciationXp(attemptXp);
-      if (isWordOfDayAttempt) completeWordOfDayStreak();
+      if (!serverProgressAvailable) {
+        awardPronunciationXp(attemptXp);
+      }
+      if (isWordOfDayAttempt && !serverProgressAvailable) completeWordOfDayStreak();
       if (score === 100) {
         setPerfectWords((prev) => prev.includes(expected) ? prev : [...prev, expected]);
       }
@@ -1023,7 +1085,7 @@ const StudentDashboard = () => {
         ? Boolean(curriculumAttempt?.summary?.readyForNextLevel || curriculumAttempt?.summary?.nextLevel)
         : newProgress >= threshold;
       const cappedProgress = Math.min(newProgress, threshold);
-      if (!alreadyCompleted) {
+      if (!alreadyCompleted && !serverProgressAvailable) {
         if (!isCurriculumAttempt) {
           setProgressInCurrentLevel(cappedProgress);
         }
@@ -2132,17 +2194,22 @@ const StudentDashboard = () => {
                 const matchingWord = practiceWords.find(
                   (word) => word.word?.toLowerCase() === row.word?.toLowerCase()
                 );
+                const rationale = row.ranking?.rationale?.[0] || 'Rule-based recommendation';
                 return (
                   <button
                     key={row.word}
                     type="button"
                     className="recommended-practice-chip"
+                    title={rationale}
                     onClick={() => {
                       if (matchingWord) selectPracticeWord(matchingWord);
                       handleNav('practice');
                     }}
                   >
-                    {matchingWord?.accentedSpelling || row.word}
+                    <span>{matchingWord?.accentedSpelling || row.word}</span>
+                    {Number.isFinite(Number(row.recommendation_score)) && (
+                      <small>{row.recommendation_score}</small>
+                    )}
                   </button>
                 );
               })}
