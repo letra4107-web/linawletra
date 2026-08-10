@@ -6,6 +6,17 @@
 import { body, validationResult, query, param } from 'express-validator';
 import validator from 'validator';
 
+const redactSensitiveBody = (body = {}) => {
+  if (!body || typeof body !== 'object') return body;
+
+  const sensitivePattern = /(password|token|code|otp|secret|key)/i;
+  return Object.fromEntries(
+    Object.entries(body).map(([key, value]) => [
+      key,
+      sensitivePattern.test(key) ? '[REDACTED]' : value,
+    ])
+  );
+};
 
 // Middleware to handle validation result
 const handleValidationErrors = (req, res, next) => {
@@ -16,7 +27,7 @@ const handleValidationErrors = (req, res, next) => {
       message: err.msg,
     }));
     console.error('❌ Validation error on', req.path);
-    console.error('   Body received:', req.body);
+    console.error('   Body received:', redactSensitiveBody(req.body));
     console.error('   Errors:', errorArray);
     return res.status(400).json({
       success: false,

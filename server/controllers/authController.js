@@ -571,15 +571,14 @@ export const register =async (req, res) => {
     }
 
     // Use admin.createUser instead of signUp to prevent Supabase auto-email.
-    // Supabase Auth must be confirmed so password sign-in can validate credentials;
-    // LinawLetra's own OTP gate remains in users.email_verified.
+    // LinawLetra sends and verifies its own OTP, then confirms Supabase Auth.
     let { data: authCreateData, error: authError } = await timedStep('create Supabase auth user', () => supabase.auth.admin.createUser({
       email: normalizedEmail,
       password: password,
       user_metadata: {
         role: userRole,
       },
-      email_confirm: true,
+      email_confirm: false,
     }));
     let authUser = authCreateData?.user;
 
@@ -604,7 +603,7 @@ export const register =async (req, res) => {
               user_metadata: {
                 role: userRole,
               },
-              email_confirm: true,
+              email_confirm: false,
             });
             authCreateData = retryResult.data;
             authError = retryResult.error;
