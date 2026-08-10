@@ -233,109 +233,25 @@ const getSafeSupabaseAuthErrorDetails = (error) => {
   );
 };
 
-const formatSupabaseAuthError = (error) => {
-  if (!error) return 'An unknown error occurred while sending the password reset email.';
-
-  const details = getSafeSupabaseAuthErrorDetails(error);
-
-  const debugMessage = Object.entries(details)
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(' | ');
-
-  if (error.name?.includes('AuthRetryableFetchError') || error.status === 504 || debugMessage.includes('504')) {
-    return 'Unable to connect to the Supabase authentication service. Please try again later.';
-  }
-
-  if (details.message && details.message !== '{}') {
-    return details.message;
-  }
-
-  if (details.code) {
-    return `Password reset failed (${details.code}). Please try again.`;
-  }
-
-  if (details.error_description) {
-    return details.error_description;
-  }
-
-  return 'Failed to send password reset email. Please verify your email address and try again.';
-};
-
-const normalizeRedirectUrl = (redirectUrl) => {
-  const defaultProductionUrl = 'https://linawletra.com/reset-password';
-
-  if (!redirectUrl || !redirectUrl.trim()) {
-    return process.env.NODE_ENV === 'production'
-      ? defaultProductionUrl
-      : `${window.location.origin}/reset-password`;
-  }
-
-  const trimmedUrl = redirectUrl.trim();
-  if (trimmedUrl.startsWith('/')) {
-    return `${window.location.origin}${trimmedUrl}`;
-  }
-
-  if (/^https?:\/\//i.test(trimmedUrl)) {
-    try {
-      const parsed = new URL(trimmedUrl);
-      const normalizedBase = `${parsed.protocol}//${parsed.host}`;
-      const path = parsed.pathname || '';
-
-      if (path === '' || path === '/') {
-        return `${normalizedBase}/reset-password`;
-      }
-
-      return `${normalizedBase}${path}${parsed.search || ''}${parsed.hash || ''}`;
-    } catch (error) {
-      console.warn('[Password Reset] Invalid redirect URL format:', trimmedUrl, error);
-      return process.env.NODE_ENV === 'production'
-        ? defaultProductionUrl
-        : `${window.location.origin}/reset-password`;
-    }
-  }
-
-  console.warn('[Password Reset] Redirect URL is not a valid absolute or root-relative URL:', trimmedUrl);
-  return process.env.NODE_ENV === 'production' ? defaultProductionUrl : `${window.location.origin}/reset-password`;
-};
-
-const getPasswordResetRedirectUrl = () => {
-  return normalizeRedirectUrl(
-    process.env.REACT_APP_PASSWORD_RESET_REDIRECT_URL ||
-    process.env.REACT_APP_SITE_URL ||
-    process.env.REACT_APP_BASE_URL
-  );
-};
-
 export const sendPasswordReset = async (email) => {
-  const redirectTo = getPasswordResetRedirectUrl();
   const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : email;
 
   try {
-    console.log('[Password Reset] Sending reset email to:', normalizedEmail);
-    console.log('[Password Reset] redirectTo:', redirectTo);
-
-    const { data, error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo,
-    });
-
-    console.log('[Password Reset] Supabase response data:', data);
-    console.log('[Password Reset] Supabase response error:', error);
-
-    if (error) throw error;
+    console.log('[Password Reset] Sending backend reset code email to:', normalizedEmail);
+    const response = await authService.forgotPassword(normalizedEmail);
 
     return {
-      success: true,
-      message: 'Password reset email sent',
+      success: Boolean(response?.data?.success),
+      message: response?.data?.message || 'If email exists, reset code will be sent',
     };
   } catch (error) {
-    const errorDetails = getSafeSupabaseAuthErrorDetails(error);
-    console.error('[Password Reset] Error sending password reset:', errorDetails);
-    const errorMessage = formatSupabaseAuthError(error);
-    console.error('[Password Reset] Parsed error message:', errorMessage);
-    const normalizedError = new Error(errorMessage);
-    normalizedError.supabase = errorDetails;
-    throw normalizedError;
+    const details = {
+      message: error?.message,
+      status: error?.status || error?.response?.status,
+      response: error?.response?.data,
+    };
+    console.error('[Password Reset] Backend reset email failed:', details);
+    throw error;
   }
 };
 

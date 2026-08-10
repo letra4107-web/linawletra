@@ -58,8 +58,22 @@ axiosInstance.interceptors.request.use(async (config) => {
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
-    console.error('API Error:', error);
     const config = error.config || {};
+    const safeUrl = (() => {
+      try {
+        return new URL(config.url || '', config.baseURL || API_BASE_URL).toString();
+      } catch {
+        return config.url || 'unknown';
+      }
+    })();
+    console.error('API Error:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      method: config.method,
+      url: safeUrl,
+      response: error.response?.data,
+    });
     const maxRetries = 2;
     const retryableMethods = ['get', 'head', 'options'];
     // Only retry safe idempotent requests on network failures or server errors (500+).

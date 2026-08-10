@@ -1,111 +1,79 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { FiAlertCircle, FiCheck, FiEye, FiEyeOff } from 'react-icons/fi';
-import { getRecoverySessionFromUrl, getCurrentSession, updateUserPassword } from '../services/supabaseAuth';
-import { validatePassword } from '../services/validation';
+import React, { useState } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { FiAlertCircle, FiCheck, FiEye, FiEyeOff, FiMail } from 'react-icons/fi';
+import { authService } from '../services/api';
+import { validateEmail, validatePassword, validateVerificationCode } from '../services/validation';
+import './Auth.css';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [email, setEmail] = useState(location.state?.email || '');
+  const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errors, setErrors] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [sessionLoading, setSessionLoading] = useState(true);
   const [apiError, setApiError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [sessionValid, setSessionValid] = useState(false);
-  const [email, setEmail] = useState('');
 
-  useEffect(() => {
-    const initializeSession = async () => {
-      setApiError('');
-      try {
-        const session = await getRecoverySessionFromUrl();
-        if (session?.user) {
-          setSessionValid(true);
-          setEmail(session.user.email || '');
-          if (window.history?.replaceState) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-          }
-          return;
-        }
+  const handleEmailChange = (event) => {
+    setEmail(event.target.value.trim());
+    setFieldErrors((prev) => ({ ...prev, email: '' }));
+    setApiError('');
+  };
 
-        const currentSession = await getCurrentSession();
-        if (currentSession?.user) {
-          setSessionValid(true);
-          setEmail(currentSession.user.email || '');
-          return;
-        }
+  const handleCodeChange = (event) => {
+    const value = event.target.value.replace(/\D/g, '').slice(0, 6);
+    setResetCode(value);
+    setFieldErrors((prev) => ({ ...prev, resetCode: '' }));
+    setApiError('');
+  };
 
-        setApiError('Invalid or expired recovery link. Please request a new password reset.');
-      } catch (error) {
-        console.error('[ResetPassword] Recovery session initialization failed:', error);
-        const message = error?.message || error?.msg || 'Unable to validate recovery link.';
-        setApiError(
-          message.includes('Invalid') || message.includes('expired')
-            ? 'Invalid or expired recovery link. Please request a new password reset.'
-            : 'Unable to validate recovery link. Please try again.'
-        );
-      } finally {
-        setSessionLoading(false);
-      }
-    };
+  const handlePasswordChange = (event) => {
+    setNewPassword(event.target.value);
+    setFieldErrors((prev) => ({ ...prev, newPassword: '' }));
+    setApiError('');
+  };
 
-    initializeSession();
-  }, []);
+  const handleConfirmPasswordChange = (event) => {
+    setConfirmPassword(event.target.value);
+    setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }));
+    setApiError('');
+  };
 
   const validateForm = () => {
-    const newErrors = {};
+    const nextErrors = {};
+    const emailValidation = validateEmail(email);
+    const codeValidation = validateVerificationCode(resetCode);
     const passwordValidation = validatePassword(newPassword);
+
+    if (!emailValidation.valid) {
+      nextErrors.email = emailValidation.error;
+    }
+
+    if (!codeValidation.valid) {
+      nextErrors.resetCode = codeValidation.error;
+    }
+
     if (!passwordValidation.valid) {
-      newErrors.newPassword = passwordValidation.errors[0];
+      nextErrors.newPassword = passwordValidation.errors[0];
     }
+
     if (newPassword !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+      nextErrors.confirmPassword = 'Passwords do not match';
     }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
-  const handlePasswordChange = (e) => {
-    const value = e.target.value;
-    setNewPassword(value);
-    if (fieldErrors.newPassword) {
-      setFieldErrors((prev) => ({ ...prev, newPassword: '' }));
-    }
-  };
-
-  const handleConfirmPasswordChange = (e) => {
-    const value = e.target.value;
-    setConfirmPassword(value);
-    if (fieldErrors.confirmPassword) {
-      setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }));
-    }
-  };
-
-  const getPasswordStrengthColor = () => {
-    const passwordValidation = validatePassword(newPassword);
-    if (!newPassword || passwordValidation.errors.length > 0) {
-      return '#ef4444';
-    }
-    if (newPassword.length < 12) {
-      return '#f59e0b';
-    }
-    return '#10b981';
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setApiError('');
-    setFieldErrors({});
-
-    if (!sessionValid) {
-      setApiError('Unable to update password. Please request a new reset link.');
-      return;
-    }
 
     if (!validateForm()) {
       return;
@@ -113,59 +81,46 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
-      await updateUserPassword(newPassword);
+      const response = await authService.resetPassword({
+        email: email.toLowerCase(),
+        resetCode,
+        newPassword,
+        confirmPassword,
+      });
+
+      if (!response.data?.success) {
+        setApiError(response.data?.message || 'Failed to reset password. Please try again.');
+        return;
+      }
+
       setSuccess(true);
       setTimeout(() => {
         navigate('/login', { state: { message: 'Password reset successfully! Please log in.' } });
-      }, 2000);
+      }, 1800);
     } catch (error) {
-      console.error('[ResetPassword] Password update failed:', error);
-      const message = error?.message || 'Password update failed. Please try again.';
-      if (message.includes('Invalid') || message.includes('expired') || message.includes('recovery')) {
-        setApiError('Invalid or expired recovery link. Request a new password reset.');
-      } else if (message.includes('Password')) {
-        setApiError(message);
+      console.error('[ResetPassword] Password reset failed:', {
+        message: error?.message,
+        status: error?.status || error?.response?.status,
+        response: error?.response?.data,
+      });
+
+      if (Array.isArray(error.response?.data?.errors)) {
+        setApiError(error.response.data.errors.map((item) => item.message).join('. '));
       } else {
-        setApiError('Password update failed. Please try again.');
+        setApiError(error.response?.data?.message || error.message || 'Failed to reset password. Please try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  if (sessionLoading) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <p>Checking recovery link...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!sessionValid) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <div className="alert alert-error">
-            <FiAlertCircle className="alert-icon" />
-            <span>{apiError || 'Invalid or expired recovery link.'}</span>
-          </div>
-          <button type="button" className="btn btn-primary" onClick={() => navigate('/forgot-password')}>
-            Request a New Reset Link
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (success) {
     return (
       <div className="auth-container">
         <div className="auth-card" style={{ textAlign: 'center' }}>
-          <FiCheck size={64} style={{ color: '#10b981', marginBottom: '1rem' }} />
+          <FiCheck size={64} style={{ color: 'var(--success-color)', marginBottom: '1rem' }} />
           <h2>Password Reset!</h2>
-          <p>Your password has been successfully updated.</p>
+          <p>Your password has been successfully updated. Redirecting to login...</p>
         </div>
       </div>
     );
@@ -176,8 +131,7 @@ export default function ResetPassword() {
       <div className="auth-card">
         <div className="auth-header">
           <h1>Reset Password</h1>
-          <p>Enter a new password for your account.</p>
-          {email && <p style={{ color: '#666', marginTop: 4 }}>Resetting password for <strong>{email}</strong></p>}
+          <p>Enter the code from your email and choose a new password.</p>
         </div>
 
         {apiError && (
@@ -189,17 +143,70 @@ export default function ResetPassword() {
 
         <form onSubmit={handleSubmit} className="form">
           <div className="form-group">
+            <label className="form-label form-label-required">Email Address</label>
+            <div className="input-wrapper">
+              <input
+                type="email"
+                value={email}
+                onChange={handleEmailChange}
+                placeholder="you@example.com"
+                disabled={loading}
+                className={`form-input ${fieldErrors.email ? 'error' : email ? 'success' : ''}`}
+              />
+              <FiMail style={{ position: 'absolute', right: '1rem', color: 'var(--text-light)' }} />
+            </div>
+            {fieldErrors.email && (
+              <div className="field-error">
+                <FiAlertCircle size={14} /> {fieldErrors.email}
+              </div>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label form-label-required">Reset Code</label>
+            <div className="input-wrapper">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength="6"
+                value={resetCode}
+                onChange={handleCodeChange}
+                placeholder="000000"
+                disabled={loading}
+                className={`form-input ${fieldErrors.resetCode ? 'error' : resetCode.length === 6 ? 'success' : ''}`}
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '1.35rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.35rem',
+                  textAlign: 'center',
+                }}
+              />
+            </div>
+            {fieldErrors.resetCode && (
+              <div className="field-error">
+                <FiAlertCircle size={14} /> {fieldErrors.resetCode}
+              </div>
+            )}
+          </div>
+
+          <div className="form-group">
             <label className="form-label form-label-required">New Password</label>
             <div className="input-wrapper">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={newPassword}
                 onChange={handlePasswordChange}
-                placeholder="••••••••"
+                placeholder="********"
                 disabled={loading}
-                className={`form-input ${fieldErrors.newPassword ? 'error' : ''}`}
+                className={`form-input ${fieldErrors.newPassword ? 'error' : newPassword ? 'success' : ''}`}
               />
-              <button type="button" className="password-toggle-btn" onClick={() => setShowPassword(!showPassword)} disabled={loading}>
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword((current) => !current)}
+                disabled={loading}
+              >
                 {showPassword ? <FiEyeOff /> : <FiEye />}
               </button>
             </div>
@@ -217,11 +224,16 @@ export default function ResetPassword() {
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={handleConfirmPasswordChange}
-                placeholder="••••••••"
+                placeholder="********"
                 disabled={loading}
-                className={`form-input ${fieldErrors.confirmPassword ? 'error' : ''}`}
+                className={`form-input ${fieldErrors.confirmPassword ? 'error' : confirmPassword ? 'success' : ''}`}
               />
-              <button type="button" className="password-toggle-btn" onClick={() => setShowConfirmPassword(!showConfirmPassword)} disabled={loading}>
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowConfirmPassword((current) => !current)}
+                disabled={loading}
+              >
                 {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
               </button>
             </div>
@@ -233,11 +245,13 @@ export default function ResetPassword() {
           </div>
 
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Updating password...' : 'Update Password'}
+            {loading ? 'Updating Password...' : 'Update Password'}
           </button>
         </form>
 
         <p className="auth-footer">
+          Need a code? <Link to="/forgot-password">Request password reset</Link>
+          <br />
           <Link to="/login">Back to Login</Link>
         </p>
       </div>

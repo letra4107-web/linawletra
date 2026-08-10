@@ -94,17 +94,25 @@ export default function ForgotPassword() {
           <div className={styles.authCard}>
             <div className={styles.cardHeader}>
               <h2 className={styles.cardTitle}>Forgot Password</h2>
-              <p className={styles.cardSubtitle}>Enter your email address to receive a secure password reset link.</p>
+              <p className={styles.cardSubtitle}>Enter your email address to receive a secure password reset code.</p>
             </div>
 
             {globalError && <Alert type="error" message={globalError} />}
 
             {submitted ? (
               <div className={styles.successPanel}>
-                <Alert type="success" message="If that email exists, a password reset link has been sent." />
+                <Alert type="success" message="If that email exists, a password reset code has been sent." />
                 <p className={styles.confirmationText}>
-                  Check your inbox for the link and follow the instructions to reset your password.
+                  Check your inbox for the code, then continue to reset your password.
                 </p>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => navigate('/reset-password', { state: { email: email.toLowerCase() } })}
+                >
+                  Enter Reset Code
+                  <FiArrowRight aria-hidden="true" />
+                </button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className={styles.form} noValidate>
@@ -127,7 +135,7 @@ export default function ForgotPassword() {
                   className={styles.primaryButton}
                   disabled={loading || !emailIsValid}
                 >
-                  {loading ? 'Sending...' : 'Send Reset Link'}
+                  {loading ? 'Sending...' : 'Send Reset Code'}
                   <FiArrowRight aria-hidden="true" />
                 </button>
               </form>

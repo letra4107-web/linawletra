@@ -302,6 +302,45 @@ const buildAuthUserPayload = (userData) => ({
 const signInWithPassword = (credentials) =>
   getSupabaseAuthClient().auth.signInWithPassword(credentials);
 
+const isEmailNotConfirmedAuthError = (error) => {
+  const message = String(error?.message || error?.error_description || '').toLowerCase();
+  return message.includes('email not confirmed') || message.includes('not confirmed');
+};
+
+const confirmSupabaseAuthEmail = async (userData, context = 'Login') => {
+  if (!userData?.id) return false;
+
+  const { error } = await supabase.auth.admin.updateUserById(
+    userData.id,
+    { email_confirm: true }
+  );
+
+  if (error) {
+    console.warn(`[${context}] Could not confirm Supabase Auth email:`, error.message);
+    return false;
+  }
+
+  console.log(`[${context}] Supabase Auth email confirmation synchronized for:`, userData.email);
+  return true;
+};
+
+const signInWithVerifiedProfileRetry = async ({ email, password, profile, context = 'Login' }) => {
+  let result = await signInWithPassword({ email, password });
+
+  if (
+    isEmailNotConfirmedAuthError(result.error) &&
+    profile?.email_verified === true
+  ) {
+    console.warn(`[${context}] Supabase Auth email was not confirmed although profile is verified. Synchronizing and retrying once.`);
+    const confirmed = await confirmSupabaseAuthEmail(profile, context);
+    if (confirmed) {
+      result = await signInWithPassword({ email, password });
+    }
+  }
+
+  return result;
+};
+
 const isSystemGeneratedStudentEmail = (email = '') => {
   const normalizedEmail = String(email).toLowerCase();
   return normalizedEmail.endsWith('@linaw.local') || normalizedEmail.endsWith('@student.linawletra.ph');
@@ -339,14 +378,7 @@ const normalizeStudentLoginAccount = async (userData) => {
     userData = updatedUser;
   }
 
-  const { error: authUpdateError } = await supabase.auth.admin.updateUserById(
-    userData.id,
-    { email_confirm: true }
-  );
-
-  if (authUpdateError) {
-    console.warn('[Login] Could not confirm student auth email:', authUpdateError.message);
-  }
+  await confirmSupabaseAuthEmail(userData, 'Login');
 
   return userData;
 };
@@ -1336,7 +1368,10 @@ export const resendVerificationCode =async (req, res) => {
 export const login =async (req, res) => {
   try {
     console.log('[Login] Request received');
-    console.log('   Body:', req.body);
+    console.log('   Body:', {
+      email: req.body?.email,
+      hasPassword: Boolean(req.body?.password),
+    });
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1350,7 +1385,7 @@ export const login =async (req, res) => {
     const { email, password } = req.body;
     const normalizedEmail = email.toLowerCase();
 
-    const { data: existingProfile, error: existingProfileError } = await supabase
+    let { data: existingProfile, error: existingProfileError } = await supabase
       .from('users')
       .select('*')
       .ilike('email', normalizedEmail)
@@ -1362,18 +1397,26 @@ export const login =async (req, res) => {
     }
 
     if (isStudentVerificationExempt(existingProfile)) {
-      await normalizeStudentLoginAccount(existingProfile);
+      existingProfile = await normalizeStudentLoginAccount(existingProfile);
     }
 
     console.log('[Login] Attempting Supabase auth for:', normalizedEmail);
 
-    const { data: authData, error: authError } = await signInWithPassword({
+    const { data: authData, error: authError } = await signInWithVerifiedProfileRetry({
       email: normalizedEmail,
       password,
+      profile: existingProfile,
     });
 
     if (authError || !authData?.user) {
       console.error('[Login] Supabase authentication failed:', authError?.message || authError);
+      if (isEmailNotConfirmedAuthError(authError) && existingProfile && !existingProfile.email_verified) {
+        return res.status(403).json({
+          success: false,
+          message: 'Please verify your email before logging in.',
+          requiresEmailVerification: true,
+        });
+      }
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
@@ -1470,7 +1513,10 @@ export const login =async (req, res) => {
 export const sendLoginOTP =async (req, res) => {
   try {
     console.log('[Send Login OTP] Request received');
-    console.log('   Body:', req.body);
+    console.log('   Body:', {
+      email: req.body?.email,
+      hasPassword: Boolean(req.body?.password),
+    });
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1515,13 +1561,22 @@ export const sendLoginOTP =async (req, res) => {
       });
     }
 
-    const { data: authData, error: authError } = await signInWithPassword({
+    const { data: authData, error: authError } = await signInWithVerifiedProfileRetry({
       email: normalizedEmail,
       password,
+      profile: userData,
+      context: 'Send Login OTP',
     });
 
     if (authError || !authData?.session) {
       console.error('[Send Login OTP] Password verification failed:', authError?.message || authError);
+      if (isEmailNotConfirmedAuthError(authError) && !userData.email_verified) {
+        return res.status(403).json({
+          success: false,
+          message: 'Please verify your email before logging in',
+          requiresEmailVerification: true,
+        });
+      }
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
@@ -1576,7 +1631,10 @@ export const sendLoginOTP =async (req, res) => {
 export const verifyLoginOTP =async (req, res) => {
   try {
     console.log('[Verify Login OTP] Request received');
-    console.log('   Body:', req.body);
+    console.log('   Body:', {
+      email: req.body?.email,
+      hasOtpCode: Boolean(req.body?.otpCode),
+    });
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1700,7 +1758,9 @@ export const verifyLoginOTP =async (req, res) => {
 export const resendLoginOTP =async (req, res) => {
   try {
     console.log('[Resend Login OTP] Request received');
-    console.log('   Body:', req.body);
+    console.log('   Body:', {
+      email: req.body?.email,
+    });
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1810,6 +1870,8 @@ export const resendLoginOTP =async (req, res) => {
 // Forgot Password - Request Reset Code
 export const forgotPassword =async (req, res) => {
   try {
+    console.log('[Forgot Password] Request received for:', req.body?.email);
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -1819,8 +1881,9 @@ export const forgotPassword =async (req, res) => {
     }
 
     const { email } = req.body;
+    const normalizedEmail = String(email).toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       // Don't reveal if email exists for security
       return res.json({
@@ -1853,16 +1916,23 @@ export const forgotPassword =async (req, res) => {
     if (updateError) throw updateError;
 
     // Send reset email
-    await sendPasswordResetEmail(email, resetCode);
+    const emailSent = await sendPasswordResetEmail(normalizedEmail, resetCode);
+    if (!emailSent) {
+      return res.status(503).json({
+        success: false,
+        message: 'Password reset email service is temporarily unavailable. Please try again shortly.',
+      });
+    }
 
     res.json({
       success: true,
-      message: 'Password reset code sent to your email',
+      message: 'If email exists, reset code will be sent',
     });
   } catch (error) {
+    console.error('[Forgot Password] Error:', error.message);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'Password reset request failed. Please try again shortly.',
     });
   }
 };
