@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { speechService, studentService, practiceWordService, readingService } from '../services/api';
+import { speechService, studentService, practiceWordService, readingService, curriculumService } from '../services/api';
 import { evaluateWord as evaluateWordPhonetics, syllabify } from '../utils/tagalogPhonetics';
 import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import {
@@ -94,6 +94,19 @@ const getPhoneticWordForProgress = (level = 'Easy', progressCount = 0) => {
   const normalizedProgress = Math.max(0, progressCount);
   return list[normalizedProgress % list.length];
 };
+const curriculumItemToPracticeWord = (item = {}) => ({
+  id: item.id,
+  curriculumItemId: item.id,
+  word: item.content,
+  accentedSpelling: item.syllable_hyphenation || item.display_text || item.content,
+  meaning: item.definition || '',
+  example: null,
+  isHomograph: false,
+  homographGroup: null,
+  difficulty: item.reading_level || 'beginner',
+  itemType: item.item_type || 'word',
+  sequenceNo: item.sequence_no,
+});
 // ============================================================================
 // GAMIFICATION HELPER FUNCTIONS
 // ============================================================================
@@ -129,6 +142,9 @@ const StudentDashboard = () => {
   const [expectedText, setExpectedText] = useState('aso');
   const [practiceWords, setPracticeWords] = useState([]);
   const [activePracticeWord, setActivePracticeWord] = useState(null);
+  const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
+  const [curriculumSummary, setCurriculumSummary] = useState(null);
+  const [curriculumLoading, setCurriculumLoading] = useState(false);
   const [homographPanelOpenId, setHomographPanelOpenId] = useState(null);
   const [transcribedText, setTranscribedText] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -650,6 +666,60 @@ const StudentDashboard = () => {
     setTimeout(() => setConfettiPopup(false), 2400);
   };
 
+  const loadNextCurriculumItem = async ({ speak = false } = {}) => {
+    if (!currentStudentId) return null;
+    setCurriculumLoading(true);
+    try {
+      const response = await curriculumService.getNextItem({ studentId: currentStudentId });
+      const payload = response?.data || response || {};
+      const item = payload.item || null;
+      setCurriculumSummary(payload.summary || null);
+
+      if (!item) {
+        setActiveCurriculumItem(null);
+        setFeedback(payload.summary?.completedProgram
+          ? 'Natapos mo na ang buong curriculum. Magaling!'
+          : 'No curriculum item is ready yet.');
+        return null;
+      }
+
+      const practiceItem = curriculumItemToPracticeWord(item);
+      setActiveCurriculumItem(item);
+      setActivePracticeWord(practiceItem);
+      setHomographPanelOpenId(null);
+      setExpectedText(item.content);
+      resetPracticeAttemptState();
+      if (speak) {
+        setTimeout(() => {
+          speakTagalog(practiceItem.accentedSpelling || practiceItem.word, { trackSyllables: true });
+        }, 150);
+      }
+      return item;
+    } catch (error) {
+      console.warn('Curriculum next item fetch failed; using legacy practice words:', error.message);
+      setActiveCurriculumItem(null);
+      return null;
+    } finally {
+      setCurriculumLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return;
+    let isMounted = true;
+    loadNextCurriculumItem().then((item) => {
+      if (!isMounted || item) return;
+      const fallbackWord = practiceWords[0];
+      if (fallbackWord && !activePracticeWord) {
+        setActivePracticeWord(fallbackWord);
+        setExpectedText(fallbackWord.word);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [hasLoadedProgress, currentStudentId, userRole, practiceWords.length]);
+
   const awardPronunciationXp = (amount) => {
     if (!amount) return;
     setXp((prev) => (Number(prev) || 0) + amount);
@@ -785,6 +855,11 @@ const StudentDashboard = () => {
   const moveToNextPracticeWord = async () => {
     if (!canAdvanceCurrentWord || isEvaluating) return;
 
+    if (activeCurriculumItem || activePracticeWord?.curriculumItemId) {
+      await loadNextCurriculumItem({ speak: true });
+      return;
+    }
+
     if (progressInCurrentLevel >= phoneticThreshold) {
       await attemptLevelAdvance();
       resetPracticeAttemptState();
@@ -841,25 +916,58 @@ const StudentDashboard = () => {
     setProgress((prev) => ({ ...prev, streak: updatedStreak }));
     setLongestStreak((prev) => Math.max(prev, updatedStreak));
   };
-  const comparePronunciation = (spoken) => {
+  const comparePronunciation = async (spoken) => {
     if (isEvaluating) return;
     setIsEvaluating(true);
     const expected = expectedText;
     const evaluation = evaluatePronunciation(spoken, expected);
-    const { score, feedback: tagalogFeedback, distance } = evaluation;
-    const isCorrect = score >= 80;
+    let { score } = evaluation;
+    const { feedback: tagalogFeedback, distance } = evaluation;
+    const isCurriculumAttempt = Boolean(activeCurriculumItem || activePracticeWord?.curriculumItemId);
     const isWordOfDayAttempt = Boolean(wordOfTheDay) && activePracticeWord?.id === wordOfTheDay?.id;
-    readingService.saveAttempt({
-      wordTarget: expected,
-      expectedText: expected,
-      spokenText: spoken,
-      mode: 'word',
-      activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
-    }).catch((error) => console.warn('Failed to record word attempt:', error.message));
+    let curriculumAttempt = null;
+    if (isCurriculumAttempt) {
+      try {
+        const response = await curriculumService.submitAttempt({
+          curriculumItemId: activePracticeWord?.curriculumItemId || activeCurriculumItem?.id,
+          spokenText: spoken,
+        });
+        curriculumAttempt = response?.data || response || {};
+        if (typeof curriculumAttempt.result?.accuracyScore === 'number') {
+          score = curriculumAttempt.result.accuracyScore;
+        }
+        if (curriculumAttempt.summary) {
+          setCurriculumSummary(curriculumAttempt.summary);
+          if (curriculumAttempt.summary.updatedLevel) {
+            setPracticeLevel(curriculumAttempt.summary.updatedLevel);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to record curriculum attempt:', error);
+        setRecognitionResult('error');
+        setStatus('incorrect');
+        setFeedback('Could not save your curriculum attempt. Please try again.');
+        setStatusMessage('Your answer was not saved.');
+        setTimeout(() => {
+          setStatus('idle');
+          setIsEvaluating(false);
+        }, 3000);
+        return;
+      }
+    } else {
+      readingService.saveAttempt({
+        wordTarget: expected,
+        expectedText: expected,
+        spokenText: spoken,
+        mode: 'word',
+        activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
+      }).catch((error) => console.warn('Failed to record word attempt:', error.message));
+    }
+    const passedAttempt = score >= 80;
     const isClose = score >= 70 && score < 80;
     const attemptXp = score === 100
       ? PRONUNCIATION_XP.perfect
-      : isCorrect
+      : passedAttempt
         ? PRONUNCIATION_XP.correct
         : isClose
           ? PRONUNCIATION_XP.close
@@ -876,9 +984,9 @@ const StudentDashboard = () => {
       word: expected,
       spoken,
       score,
-      correct: isCorrect,
+      correct: passedAttempt,
       xp: attemptXp,
-      activityType: isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
+      activityType: isCurriculumAttempt ? 'curriculum_practice' : isWordOfDayAttempt ? 'word_of_day' : 'word_practice',
       playedTTS: score < 80,
       timestamp: Date.now(),
     };
@@ -893,7 +1001,7 @@ const StudentDashboard = () => {
       setTimeout(() => speakTagalog(expected, { trackSyllables: true }), 900);
       setFeedback(`${tagalogFeedback} Pakinggan mo ito.`);
     }
-    if (isCorrect) {
+    if (passedAttempt) {
       awardPronunciationXp(attemptXp);
       if (isWordOfDayAttempt) completeWordOfDayStreak();
       if (score === 100) {
@@ -911,10 +1019,14 @@ const StudentDashboard = () => {
       const alreadyCompleted = completedWords.includes(expected);
       const newProgress = alreadyCompleted ? progressInCurrentLevel : progressInCurrentLevel + 1;
       const threshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
-      const eligibleToAdvance = newProgress >= threshold;
+      const eligibleToAdvance = isCurriculumAttempt
+        ? Boolean(curriculumAttempt?.summary?.readyForNextLevel || curriculumAttempt?.summary?.nextLevel)
+        : newProgress >= threshold;
       const cappedProgress = Math.min(newProgress, threshold);
       if (!alreadyCompleted) {
-        setProgressInCurrentLevel(cappedProgress);
+        if (!isCurriculumAttempt) {
+          setProgressInCurrentLevel(cappedProgress);
+        }
         setWordsCompleted((prev) => {
           const newCount = prev + 1;
           if (newCount % 5 === 0) {
@@ -1146,6 +1258,24 @@ const StudentDashboard = () => {
     ? getAchievementById(unlockedAchievementIds[unlockedAchievementIds.length - 1])
     : null;
   const phoneticThreshold = currentPhoneticLevel === 'Easy' ? 5 : currentPhoneticLevel === 'Medium' ? 3 : 2;
+  const isCurrentCurriculumPractice = Boolean(activeCurriculumItem || activePracticeWord?.curriculumItemId);
+  const curriculumProgressTotals = useMemo(() => {
+    const counts = curriculumSummary?.counts || {};
+    const values = Object.values(counts);
+    const required = values.reduce((sum, item) => sum + (Number(item.required) || 0), 0);
+    const passed = values.reduce((sum, item) => sum + (Number(item.passed) || 0), 0);
+    return { required, passed };
+  }, [curriculumSummary]);
+  const practiceProgressCurrent = isCurrentCurriculumPractice && curriculumProgressTotals.required > 0
+    ? curriculumProgressTotals.passed
+    : progressInCurrentLevel;
+  const practiceProgressTarget = isCurrentCurriculumPractice && curriculumProgressTotals.required > 0
+    ? curriculumProgressTotals.required
+    : phoneticThreshold;
+  const practiceProgressPercent = Math.min(
+    100,
+    (practiceProgressCurrent / Math.max(practiceProgressTarget, 1)) * 100
+  );
   const rootStyles = {
     fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['Comic Sans'],
     fontSize: `${accessibilitySettings.textSize}px`,
@@ -1167,6 +1297,7 @@ const StudentDashboard = () => {
   const latestWordOfTheDayAttempt = wordOfTheDayAttempts[wordOfTheDayAttempts.length - 1] || null;
   const hasPracticedWordOfTheDay = Boolean(latestWordOfTheDayAttempt) || completedWords.includes(wordOfTheDay?.word);
   const selectPracticeWord = (practiceWord) => {
+    setActiveCurriculumItem(null);
     setActivePracticeWord(practiceWord);
     setHomographPanelOpenId(null);
     setExpectedText(practiceWord.word);
@@ -1438,11 +1569,11 @@ const StudentDashboard = () => {
                 <div className="word-card-top">
                   <span className="word-card-kicker">Current word</span>
                   <div className="lesson-progress-inline">
-                    <span>{progressInCurrentLevel} / {phoneticThreshold}</span>
+                    <span>{practiceProgressCurrent} / {practiceProgressTarget}</span>
                     <div className="progress-bar progress-bar-compact">
                       <div
                         className="progress-fill"
-                        style={{ width: `${Math.min(100, (progressInCurrentLevel / phoneticThreshold) * 100)}%` }}
+                        style={{ width: `${practiceProgressPercent}%` }}
                       />
                     </div>
                   </div>
@@ -1461,7 +1592,7 @@ const StudentDashboard = () => {
                   </div>
                   {activePracticeWord ? (
                     <>
-                      <p className="word-meaning">{activePracticeWord.meaning}</p>
+                      {activePracticeWord.meaning && <p className="word-meaning">{activePracticeWord.meaning}</p>}
                       {activePracticeWord.isHomograph && (
                         <>
                           <button
@@ -1512,7 +1643,7 @@ const StudentDashboard = () => {
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
                     <FiRepeat aria-hidden="true" /> Replay Voice
                   </button>
-                  {activePracticeWord && (
+                  {activePracticeWord && !activePracticeWord.curriculumItemId && (
                     <>
                       <button
                         className="button-large button-secondary"
@@ -1536,9 +1667,9 @@ const StudentDashboard = () => {
                     className="button-large button-primary"
                     type="button"
                     onClick={moveToNextPracticeWord}
-                    disabled={!canAdvanceCurrentWord || isEvaluating}
+                    disabled={!canAdvanceCurrentWord || isEvaluating || curriculumLoading}
                   >
-                    <FiCheck aria-hidden="true" /> Next Word
+                    <FiCheck aria-hidden="true" /> {curriculumLoading ? 'Loading...' : 'Next Word'}
                   </button>
                 </div>
                 {canAdvanceCurrentWord && accuracy < 100 && (
@@ -1953,18 +2084,18 @@ const StudentDashboard = () => {
         </div>
         {activeSection !== 'home' && (
           <div className="student-panel-card">
-            <h4>Phonetic Level Progress</h4>
+            <h4>{isCurrentCurriculumPractice ? 'Curriculum Progress' : 'Phonetic Level Progress'}</h4>
             <div className="progress-metrics">
               <div className="metric-card">
-                <strong>{currentPhoneticLevel}</strong>
+                <strong>{isCurrentCurriculumPractice ? levelNames[practiceLevel] : currentPhoneticLevel}</strong>
                 <span>Current Level</span>
               </div>
               <div className="metric-card">
-                <strong>{progressInCurrentLevel}</strong>
+                <strong>{practiceProgressCurrent}</strong>
                 <span>Progress in Level</span>
               </div>
               <div className="metric-card">
-                <strong>{phoneticThreshold}</strong>
+                <strong>{practiceProgressTarget}</strong>
                 <span>Required for Next</span>
               </div>
             </div>
@@ -1972,7 +2103,7 @@ const StudentDashboard = () => {
               <div
                 className="progress-fill"
                 style={{
-                  width: `${(progressInCurrentLevel / phoneticThreshold) * 100}%`,
+                  width: `${practiceProgressPercent}%`,
                 }}
               />
             </div>
