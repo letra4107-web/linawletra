@@ -207,8 +207,8 @@ export const logoutUser = async () => {
 /**
  * Send password reset email
  */
-const formatSupabaseAuthError = (error) => {
-  if (!error) return 'An unknown error occurred while sending the password reset email.';
+const getSafeSupabaseAuthErrorDetails = (error) => {
+  if (!error) return { message: 'Unknown error' };
 
   const details = {
     name: error.name,
@@ -219,6 +219,24 @@ const formatSupabaseAuthError = (error) => {
     hint: error.hint,
     error_description: error.error_description,
   };
+
+  if (error.cause) {
+    details.cause = {
+      name: error.cause.name,
+      message: error.cause.message,
+      code: error.cause.code,
+    };
+  }
+
+  return Object.fromEntries(
+    Object.entries(details).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  );
+};
+
+const formatSupabaseAuthError = (error) => {
+  if (!error) return 'An unknown error occurred while sending the password reset email.';
+
+  const details = getSafeSupabaseAuthErrorDetails(error);
 
   const debugMessage = Object.entries(details)
     .filter(([, value]) => value !== undefined && value !== null)
@@ -311,25 +329,21 @@ export const sendPasswordReset = async (email) => {
       message: 'Password reset email sent',
     };
   } catch (error) {
-    console.error('[Password Reset] Error sending password reset:', error);
+    const errorDetails = getSafeSupabaseAuthErrorDetails(error);
+    console.error('[Password Reset] Error sending password reset:', errorDetails);
     const errorMessage = formatSupabaseAuthError(error);
     console.error('[Password Reset] Parsed error message:', errorMessage);
-    throw new Error(errorMessage);
+    const normalizedError = new Error(errorMessage);
+    normalizedError.supabase = errorDetails;
+    throw normalizedError;
   }
 };
 
 const buildSupabaseErrorMessage = (error) => {
   if (!error) return 'An unknown error occurred.';
 
-  const details = [];
-
-  if (error.name) details.push(`name: ${error.name}`);
-  if (error.message) details.push(`message: ${error.message}`);
-  if (error.status) details.push(`status: ${error.status}`);
-  if (error.code) details.push(`code: ${error.code}`);
-  if (error.details) details.push(`details: ${JSON.stringify(error.details)}`);
-  if (error.hint) details.push(`hint: ${error.hint}`);
-  if (error.error_description) details.push(`error_description: ${error.error_description}`);
+  const details = Object.entries(getSafeSupabaseAuthErrorDetails(error))
+    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
 
   return details.join(' | ') || 'An unknown Supabase error occurred.';
 };
@@ -399,8 +413,9 @@ export const updateUserPassword = async (newPassword) => {
 
     return { success: true };
   } catch (error) {
-    console.error('Error updating password:', error);
-    throw error;
+    const detailMessage = buildSupabaseErrorMessage(error);
+    console.error('[SupabaseAuth] Error updating password:', detailMessage);
+    throw new Error(detailMessage);
   }
 };
 
@@ -433,6 +448,21 @@ const isNoRecoverySessionError = (error) => {
 
 export const getRecoverySessionFromUrl = async () => {
   try {
+    const currentUrl = new URL(window.location.href);
+    const code = currentUrl.searchParams.get('code');
+
+    if (code) {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        if (isNoRecoverySessionError(error)) {
+          console.warn('[SupabaseAuth] No recovery session found for code:', getSafeSupabaseAuthErrorDetails(error));
+          return null;
+        }
+        throw error;
+      }
+      return data?.session || null;
+    }
+
     const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
     if (error) {
       if (isNoRecoverySessionError(error)) {
@@ -444,8 +474,9 @@ export const getRecoverySessionFromUrl = async () => {
     }
     return data?.session || null;
   } catch (error) {
-    console.error('[SupabaseAuth] getRecoverySessionFromUrl failed:', error);
-    throw error;
+    const detailMessage = buildSupabaseErrorMessage(error);
+    console.error('[SupabaseAuth] getRecoverySessionFromUrl failed:', detailMessage);
+    throw new Error(detailMessage);
   }
 };
 

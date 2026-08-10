@@ -1,6 +1,15 @@
+# Disable content negotiation that can interfere with SPA routing
+Options -MultiViews
+
+# Ensure index.html is used as the directory index
+DirectoryIndex index.html
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Do not rewrite API/backend requests into the React app
+  RewriteRule ^api(/|$) - [L]
 
   # Serve existing files and directories normally
   RewriteCond %{REQUEST_FILENAME} -f [OR]

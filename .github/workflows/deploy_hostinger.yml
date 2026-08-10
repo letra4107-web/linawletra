@@ -1,0 +1,57 @@
+name: Build and Deploy to Hostinger via SFTP
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production
+        run: npm run build
+
+      - name: Ensure build contains .htaccess
+        run: |
+          if [ ! -f build/.htaccess ]; then echo "ERROR: build/.htaccess missing"; exit 1; fi
+
+      - name: Remove remote files (SSH)
+        if: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY != '' }}
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_SFTP_HOST }}
+          username: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+          port: ${{ secrets.HOSTINGER_SFTP_PORT || '22' }}
+          script: |
+            set -e
+            TARGET=${{ secrets.HOSTINGER_SFTP_TARGET }}
+            if [ -z "$TARGET" ] || [ "$TARGET" = "/" ] || [ "$TARGET" = "." ] || [ "$TARGET" = ".." ]; then
+              echo "Refusing to clean unsafe HOSTINGER_SFTP_TARGET: '$TARGET'"
+              exit 1
+            fi
+            echo "Cleaning remote target: $TARGET"
+            find "$TARGET" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+      - name: Upload build via SCP
+        uses: appleboy/scp-action@v0.1.6
+        with:
+          host: ${{ secrets.HOSTINGER_SFTP_HOST }}
+          username: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+          port: ${{ secrets.HOSTINGER_SFTP_PORT || '22' }}
+          source: "build/"
+          target: ${{ secrets.HOSTINGER_SFTP_TARGET }}
+          strip_components: 1
