@@ -317,6 +317,13 @@ const isTransientSmtpError = (code) => {
   return ['ECONNRESET', 'ESOCKET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN'].includes(code);
 };
 
+const isTransientBrevoError = (error) => {
+  return error?.code === 'EMAIL_SEND_TIMEOUT' ||
+    ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN'].includes(error?.code) ||
+    error?.status === 429 ||
+    (typeof error?.status === 'number' && error.status >= 500);
+};
+
 const sendBrevoMail = async (mailOptions, { type, email } = {}) => {
   const sender = parseEmailAddress(mailOptions.from || config.email.from);
   const timeout = config.email.sendTimeoutMs || 7000;
@@ -383,7 +390,28 @@ const sendBrevoMail = async (mailOptions, { type, email } = {}) => {
 
 const sendMailWithRetry = async (mailOptions, { type, email, retries = 2 } = {}) => {
   if (config.email.provider === 'brevo') {
-    return sendBrevoMail(mailOptions, { type, email });
+    let attempt = 0;
+
+    while (true) {
+      try {
+        return await sendBrevoMail(mailOptions, { type, email });
+      } catch (err) {
+        attempt += 1;
+        console.error(`Brevo ${type || 'email'} send failed (attempt ${attempt}/${retries + 1}):`, {
+          message: err.message,
+          code: err.code || 'N/A',
+          status: err.status || 'N/A',
+          response: err.response || 'N/A',
+        });
+
+        if (isTransientBrevoError(err) && attempt <= retries) {
+          await sleep(500 * attempt);
+          continue;
+        }
+
+        throw err;
+      }
+    }
   }
 
   let attempt = 0;

@@ -42,6 +42,8 @@ const sanitizeInput = (value) => {
   return validator.trim(validator.escape(value));
 };
 
+const normalizeAppEmail = (value) => String(value || '').trim().toLowerCase();
+
 const isValidTagalogLetters = (value) => {
   // Only letters and spaces allowed
   return /^[a-zA-Z\s]*$/.test(value);
@@ -71,7 +73,7 @@ const validateRegister = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
   
   body('password')
     .notEmpty().withMessage('Password is required')
@@ -100,7 +102,7 @@ const validateLogin = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
   
   body('password')
     .notEmpty().withMessage('Password is required'),
@@ -110,7 +112,7 @@ const validateEmailVerification = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
   
   body('verificationCode')
     .notEmpty().withMessage('Verification code is required')
@@ -122,7 +124,7 @@ const validateSendEmailVerificationCode = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
 
   body('code')
     .notEmpty().withMessage('Verification code is required')
@@ -139,7 +141,7 @@ const validateStudentEnrollmentEmail = [
   body('parentEmail')
     .notEmpty().withMessage('Parent email is required')
     .isEmail().withMessage('Please provide a valid parent email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
 
   body('childName')
     .notEmpty().withMessage('Child name is required')
@@ -149,7 +151,7 @@ const validateStudentEnrollmentEmail = [
   body('childUsername')
     .notEmpty().withMessage('Student username is required')
     .isEmail().withMessage('Student username must be a valid email format')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
 
   body('childPassword')
     .notEmpty().withMessage('Student password is required')
@@ -165,7 +167,7 @@ const validateLoginOTP = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
   
   body('otpCode')
     .notEmpty().withMessage('OTP code is required')
@@ -177,21 +179,21 @@ const validateResendVerificationCode = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
 ];
 
 const validateForgotPasswordRequest = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
 ];
 
 const validateResetPassword = [
   body('email')
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .customSanitizer(normalizeAppEmail),
   
   body('resetCode')
     .notEmpty().withMessage('Reset code is required')

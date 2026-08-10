@@ -22,6 +22,7 @@ import { register,
   verifyResetCode, } from '../controllers/authController.js';
 
 const router = express.Router();
+const normalizeAppEmail = (value) => String(value || '').trim().toLowerCase();
 
 
 router.post(
@@ -38,7 +39,7 @@ router.post(
     body('userId').isUUID().withMessage('Valid user ID is required'),
     body('firstName').trim().isLength({ min: 1 }).withMessage('First name is required'),
     body('lastName').trim().isLength({ min: 1 }).withMessage('Last name is required'),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
     body('role').optional().isIn(['admin', 'teacher', 'parent', 'student']).withMessage('Invalid role'),
   ],
   handleValidationErrors,
@@ -73,7 +74,7 @@ router.post(
 router.post(
   '/verify-reset-code',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
     body('resetCode').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Valid 6-digit code is required'),
   ],
   handleValidationErrors,
@@ -92,7 +93,7 @@ router.post(
 router.post(
   '/send-email-verification-code',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
   ],
   handleValidationErrors,
   sendEmailVerificationCode
@@ -102,7 +103,7 @@ router.post(
 router.post(
   '/verify-email',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
     body('code').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Valid 6-digit code is required'),
   ],
   handleValidationErrors,
@@ -113,7 +114,7 @@ router.post(
 router.post(
   '/resend-verification-code',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
   ],
   handleValidationErrors,
   resendVerificationCode
@@ -123,7 +124,7 @@ router.post(
 router.post(
   '/send-login-otp',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
     body('password').notEmpty().withMessage('Password is required'),
   ],
   handleValidationErrors,
@@ -134,7 +135,7 @@ router.post(
 router.post(
   '/verify-login-otp',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
     body('otpCode').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Valid 6-digit OTP code is required'),
   ],
   handleValidationErrors,
@@ -145,7 +146,7 @@ router.post(
 router.post(
   '/resend-login-otp',
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('email').isEmail().withMessage('Valid email is required').customSanitizer(normalizeAppEmail),
   ],
   handleValidationErrors,
   resendLoginOTP
