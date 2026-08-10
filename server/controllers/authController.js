@@ -17,13 +17,14 @@ const storeSignupVerificationCode = async (userId, email, code, expiresAt, resen
   const resendAvailableAtISO = resendAvailableAt instanceof Date
     ? resendAvailableAt.toISOString()
     : resendAvailableAt;
+  const codeHash = hashCode(code);
 
   const { error } = await supabase
     .from('email_verification_codes')
     .insert({
       user_id: userId,
       email: String(email || '').toLowerCase().trim(),
-      code,
+      code: codeHash,
       expires_at: expiresAtISO,
       resend_available_at: resendAvailableAtISO,
       attempts: 0,
@@ -64,7 +65,8 @@ const storeSignupVerificationCode = async (userId, email, code, expiresAt, resen
           ...(currentUser?.metadata || {}),
           signupVerification: {
             email: String(email || '').toLowerCase().trim(),
-            code,
+            code: codeHash,
+            hashed: true,
             expires_at: expiresAtISO,
             resend_available_at: resendAvailableAtISO,
             attempts: 0,
@@ -111,6 +113,12 @@ const getSignupVerificationCode = async (user) => {
     return null;
   }
   return { source: 'table', record: tableRecord };
+};
+
+const signupVerificationCodeMatches = (record, providedCode) => {
+  if (!record || !providedCode) return false;
+  const hashedInput = hashCode(providedCode);
+  return record.code === hashedInput || (record.hashed !== true && record.code === providedCode);
 };
 
 const updateSignupVerificationAttempts = async (user, record) => {
@@ -1159,8 +1167,7 @@ export const verifyEmail =async (req, res) => {
       });
     }
 
-    // Verify code (plain text comparison since we store it plainly)
-    if (codeRecord.code !== providedCode) {
+    if (!signupVerificationCodeMatches(codeRecord, providedCode)) {
       console.warn('[Verify Email] Invalid verification code provided');
       if (codeLookup.source === 'table' && codeRecord.id) {
         await supabase
