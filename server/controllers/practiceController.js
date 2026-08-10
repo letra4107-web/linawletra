@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase.js';
-import Student from '../models/Student.js';
+import { authorizeStudent } from '../utils/studentAccess.js';
 
 const LEVEL_OPTIONS = ['beginner', 'intermediate', 'advanced'];
 const DEFAULT_LEVEL = 'beginner';
@@ -10,52 +10,32 @@ const normalizeLevel = (value) => {
   return LEVEL_OPTIONS.includes(normalized) ? normalized : DEFAULT_LEVEL;
 };
 
-const fetchStudent = async (studentId) => {
-  return Student.findById(studentId);
-};
-
-const isAuthorizedForStudent = async (req, student) => {
-  if (!student) return false;
-
-  if (req.user.role === 'parent') {
-    return student.parentId === req.user.id || student.parent_id === req.user.id;
-  }
-
-  if (req.user.role === 'student') {
-    // A student is linked to their own record via students.user_id, not the
-    // other way around -- users has no student_id column, so the previous
-    // check (user?.studentId === student.id) could never be true.
-    return student.userId === req.user.id || student.user_id === req.user.id;
-  }
-
-  return false;
-};
-
-export const getPracticeLevel =async (req, res) => {
+export const getPracticeLevel = async (req, res) => {
   try {
-    const studentId = req.params.id;
-    const student = await fetchStudent(studentId);
+    const requestedStudentId = req.params.id;
+    const { student, allowed, status } = await authorizeStudent(req, requestedStudentId);
 
     if (!student) {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    if (!(await isAuthorizedForStudent(req, student))) {
+    if (!allowed) {
       return res.status(403).json({ message: 'You do not have permission to view this student practice level' });
     }
 
+    const studentId = student.id;
     const { data: settings, error: settingsError } = await supabase
       .from('practice_settings')
       .select('*')
       .eq('student_id', studentId)
-      .single();
+      .maybeSingle();
 
     if (settingsError && settingsError.code !== 'PGRST116') {
       console.error('Practice settings fetch error:', settingsError);
-      return res.status(500).json({ message: 'Unable to retrieve practice level' });
+      return res.status(status >= 500 ? status : 500).json({ message: 'Unable to retrieve practice level' });
     }
 
-    const studentLevel = normalizeLevel(student.readingLevel || student.reading_level || DEFAULT_LEVEL);
+    const studentLevel = normalizeLevel(student.reading_level || DEFAULT_LEVEL);
 
     if (!settings) {
       return res.json({
@@ -73,13 +53,13 @@ export const getPracticeLevel =async (req, res) => {
     });
   } catch (error) {
     console.error('Get practice level error:', error);
-    res.status(500).json({ message: 'Unable to retrieve practice level' });
+    return res.status(500).json({ message: 'Unable to retrieve practice level' });
   }
 };
 
-export const setPracticeLevel =async (req, res) => {
+export const setPracticeLevel = async (req, res) => {
   try {
-    const studentId = req.params.id;
+    const requestedStudentId = req.params.id;
     const rawLevel = req.body.level;
     if (!rawLevel || typeof rawLevel !== 'string') {
       return res.status(422).json({ message: 'Invalid practice level specified' });
@@ -90,19 +70,20 @@ export const setPracticeLevel =async (req, res) => {
       return res.status(422).json({ message: 'Invalid practice level specified' });
     }
 
-    const student = await fetchStudent(studentId);
+    const { student, allowed } = await authorizeStudent(req, requestedStudentId, { allowAdmin: false });
     if (!student) {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    if (req.user.role !== 'parent' || (student.parentId !== req.user.id && student.parent_id !== req.user.id)) {
+    if (req.user.role !== 'parent' || !allowed) {
       return res.status(403).json({ message: 'Parent access required to set this student level' });
     }
 
+    const studentId = student.id;
     const now = new Date().toISOString();
     const payload = {
       student_id: studentId,
-      parent_id: student.parentId || student.parent_id,
+      parent_id: student.parent_id,
       level,
       updated_at: now,
     };
@@ -111,7 +92,7 @@ export const setPracticeLevel =async (req, res) => {
       .from('practice_settings')
       .select('*')
       .eq('student_id', studentId)
-      .single();
+      .maybeSingle();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Fetch practice settings error:', fetchError);
@@ -119,26 +100,38 @@ export const setPracticeLevel =async (req, res) => {
     }
 
     if (existingSettings) {
-      await supabase
+      const { error: updateError } = await supabase
         .from('practice_settings')
         .update(payload)
         .eq('student_id', studentId);
+      if (updateError) {
+        console.error('Update practice settings error:', updateError);
+        return res.status(500).json({ message: 'Unable to save practice level' });
+      }
     } else {
-      await supabase
+      const { error: insertError } = await supabase
         .from('practice_settings')
         .insert({ ...payload, created_at: now });
+      if (insertError) {
+        console.error('Insert practice settings error:', insertError);
+        return res.status(500).json({ message: 'Unable to save practice level' });
+      }
     }
 
-    await supabase
+    const { error: studentUpdateError } = await supabase
       .from('students')
       .update({ reading_level: level, updated_at: now })
       .eq('id', studentId);
+    if (studentUpdateError) {
+      console.error('Update student reading level error:', studentUpdateError);
+      return res.status(500).json({ message: 'Practice level saved, but student reading level could not be updated' });
+    }
 
     const { data: updatedSettings } = await supabase
       .from('practice_settings')
       .select('*')
       .eq('student_id', studentId)
-      .single();
+      .maybeSingle();
 
     return res.json({
       studentId,
@@ -148,6 +141,6 @@ export const setPracticeLevel =async (req, res) => {
     });
   } catch (error) {
     console.error('Set practice level error:', error);
-    res.status(500).json({ message: 'Unable to save practice level' });
+    return res.status(500).json({ message: 'Unable to save practice level' });
   }
 };
