@@ -26,6 +26,7 @@ import {
   FiAward,
   FiVolume2,
   FiRepeat,
+  FiSearch,
   FiLock,
   FiTarget,
 } from 'react-icons/fi';
@@ -93,6 +94,24 @@ const getTierFromXp = (xp = 0) => {
   if (xp >= 35) return 'Apprentice';
   return 'Beginner';
 };
+const getLessonTitle = (item = {}) => item.title || item.fileName || 'Shared resource';
+const getLessonCategory = (item = {}) => item.category || item.lessonCategory || item.skill || item.type || item.contentType || 'Lessons';
+const getLessonLevel = (item = {}) => item.level || item.readingLevel || item.difficulty || item.gradeLevel || 'Beginner';
+const getLessonProgress = (item = {}) => {
+  const raw = item.progress ?? item.progressPercentage ?? item.completionPercent ?? item.percentComplete ?? item.score;
+  const value = Number(raw);
+  if (Number.isFinite(value)) return Math.max(0, Math.min(100, Math.round(value)));
+  const status = String(item.status || '').toLowerCase();
+  return status.includes('complete') ? 100 : status.includes('progress') ? 60 : 0;
+};
+const getLessonStatus = (item = {}) => {
+  const progressValue = getLessonProgress(item);
+  const status = String(item.status || item.assignmentStatus || '').toLowerCase();
+  if (status.includes('lock')) return 'Locked';
+  if (status.includes('complete') || progressValue >= 100) return 'Completed';
+  if (status.includes('progress') || progressValue > 0) return 'In Progress';
+  return 'Not Started';
+};
 const levelNames = {
   beginner: 'Beginner',
   intermediate: 'Intermediate',
@@ -155,6 +174,7 @@ const StudentDashboard = () => {
   const [teacherUploads, setTeacherUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [learnFilter, setLearnFilter] = useState('All');
   const [expectedText, setExpectedText] = useState('');
   const [activePracticeWord, setActivePracticeWord] = useState(null);
   const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
@@ -1173,12 +1193,24 @@ const StudentDashboard = () => {
     [teacherUploads]
   );
   const searchValue = searchTerm.toLowerCase();
-  const filteredLessons = useMemo(
+  const searchedLessons = useMemo(
     () => sharedLessons.filter((item) => {
-      const text = `${item.title} ${item.description} ${item.teacherName}`.toLowerCase();
+      const text = `${getLessonTitle(item)} ${item.description || ''} ${item.teacherName || ''} ${getLessonCategory(item)} ${getLessonLevel(item)}`.toLowerCase();
       return text.includes(searchValue);
     }),
     [searchValue, sharedLessons]
+  );
+  const lessonLevels = useMemo(() => {
+    const values = Array.from(new Set(sharedLessons.map((item) => getLessonLevel(item)).filter(Boolean)));
+    return ['All', ...values, 'Completed'];
+  }, [sharedLessons]);
+  const filteredLessons = useMemo(
+    () => searchedLessons.filter((item) => {
+      if (learnFilter === 'All') return true;
+      if (learnFilter === 'Completed') return getLessonStatus(item) === 'Completed';
+      return getLessonLevel(item) === learnFilter;
+    }),
+    [learnFilter, searchedLessons]
   );
   const filteredAssessments = useMemo(
     () => assessments.filter((item) => {
@@ -1188,6 +1220,35 @@ const StudentDashboard = () => {
     [searchValue, assessments]
   );
   const nextLesson = filteredLessons[0] || null;
+  const recommendedLesson = sharedLessons.find((item) => getLessonStatus(item) !== 'Completed') || sharedLessons[0] || null;
+  const completedLessonCount = sharedLessons.filter((item) => getLessonStatus(item) === 'Completed').length;
+  const lessonCompletionPercent = sharedLessons.length > 0
+    ? Math.round((completedLessonCount / sharedLessons.length) * 100)
+    : completionPercent;
+  const learningCategories = useMemo(() => {
+    const grouped = new Map();
+    sharedLessons.forEach((item) => {
+      const category = getLessonCategory(item);
+      const current = grouped.get(category) || { name: category, total: 0, completed: 0, inProgress: 0, sample: item };
+      current.total += 1;
+      if (getLessonStatus(item) === 'Completed') current.completed += 1;
+      if (getLessonStatus(item) === 'In Progress') current.inProgress += 1;
+      if (!current.sample?.fileUrl && item.fileUrl) current.sample = item;
+      grouped.set(category, current);
+    });
+    return Array.from(grouped.values());
+  }, [sharedLessons]);
+  const recentLessons = useMemo(
+    () => [...sharedLessons]
+      .filter((item) => getLessonStatus(item) === 'Completed' || item.updatedAt || item.createdAt || item.uploadedAt || item.created_at)
+      .sort((a, b) => {
+        const aTime = new Date(a.updatedAt || a.createdAt || a.uploadedAt || a.created_at || 0).getTime();
+        const bTime = new Date(b.updatedAt || b.createdAt || b.uploadedAt || b.created_at || 0).getTime();
+        return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+      })
+      .slice(0, 4),
+    [sharedLessons]
+  );
   const openNextLesson = () => {
     if (nextLesson?.fileUrl) {
       window.open(nextLesson.fileUrl, '_blank');
@@ -1226,6 +1287,9 @@ const StudentDashboard = () => {
   const todayGoalDone = Math.min(totalAttempts % DAILY_GOAL, DAILY_GOAL);
   const todayGoalPercent = Math.min(100, Math.round((todayGoalDone / Math.max(DAILY_GOAL, 1)) * 100));
   const todayGoalRemaining = Math.max(DAILY_GOAL - todayGoalDone, 0);
+  const learnGoalDone = todayGoalDone;
+  const learnGoalTarget = DAILY_GOAL;
+  const learnGoalPercent = todayGoalPercent;
   const firstName = studentName?.split(' ')[0] || 'Student';
   const wordsPracticed = Number(wordsCompleted || completedWords.length || wordMasterySummary.mastered || 0);
   const weeklyPracticeDays = countWeeklyPracticeDays(history, dateTime);
@@ -2009,85 +2073,242 @@ const StudentDashboard = () => {
           </section>
         )}
         {activeSection === 'content' && (
-          <>
-            <section id="content-section" className="detail-block">
-              <div className="detail-block-title">Shared lessons</div>
-              <div className="top-search-box" style={{ marginBottom: 16 }}>
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search lessons, assessments..."
-                />
+          <section id="content-section" className="student-learn-redesign">
+            <header className="student-learn-header">
+              <div>
+                <h2>Let's Learn <FiBookOpen aria-hidden="true" /></h2>
+                <p>Choose a lesson and continue your reading journey.</p>
               </div>
-              <div className="practice-header" style={{ marginBottom: 16 }}>
-                <div>
-                  <h3>PDF Reading Assistant</h3>
-                  <p className="practice-sub">Open assigned PDF stories, listen sentence by sentence, and read aloud for feedback.</p>
+              <div className="student-learn-header-actions">
+                <label className="student-learn-search">
+                  <FiSearch aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search lessons..."
+                  />
+                </label>
+                <button type="button" className="student-home-icon-button" onClick={() => handleNav('settings')} aria-label="Open settings">
+                  <FiBell aria-hidden="true" />
+                </button>
+                <span className="student-home-avatar" aria-hidden="true">{firstName.charAt(0)}</span>
+                <div className="student-learn-profile">
+                  <strong>{studentName}</strong>
+                  <span>{studentGrade || tier}</span>
                 </div>
-                <a href="/student/learn" className="button-large button-primary" style={{ textDecoration: 'none' }}>
-                  Open Learn
-                </a>
               </div>
-              {uploadsLoading ? (
-                <p className="learning-path-text">Loading lessons...</p>
-              ) : filteredLessons.length === 0 ? (
-                <p className="learning-path-text">Your teacher will share lessons for your class here.</p>
-              ) : (
-                <div className="student-content-grid">
-                  {filteredLessons.map((item) => (
-                    <div key={item.id} className="content-card">
-                      <div className="content-card-header">
-                        <span className="content-status">{item.status || 'Not started'}</span>
-                        <span className="content-type">{item.type || item.contentType || 'Lesson'}</span>
-                      </div>
-                      <h4>{item.title || item.fileName || 'Shared resource'}</h4>
-                      <p>{item.description || item.category || item.pageSource || 'Open the file to view details.'}</p>
-                      <div className="content-meta">Uploaded by {item.teacherName || 'Teacher'}</div>
-                      <a href={item.fileUrl} target="_blank" rel="noreferrer" className="button-small button-secondary">
-                        Open lesson
-                      </a>
+            </header>
+
+            <div className="student-learn-layout">
+              <div className="student-learn-main">
+                <section className="student-learn-journey">
+                  <div>
+                    <span className="student-home-hero-kicker">Current learning path</span>
+                    <h3>Your Learning Journey</h3>
+                    <p>{completedLessonCount} of {sharedLessons.length} lessons completed</p>
+                    <div className="progress-bar student-home-progress-bar">
+                      <div className="progress-fill" style={{ width: `${lessonCompletionPercent}%` }} />
                     </div>
+                    <small>{lessonCompletionPercent}% Complete - Great work, {firstName}! Keep going.</small>
+                    {nextLesson?.fileUrl && (
+                      <a href={nextLesson.fileUrl} target="_blank" rel="noreferrer" className="button-large button-primary student-learn-hero-button">
+                        Continue Learning <FiChevronRight aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                  <img src="/bg.png" alt="" aria-hidden="true" />
+                </section>
+
+                <section className="student-learn-section">
+                  <div className="student-learn-section-title">
+                    <div>
+                      <h3>Learning Categories - Reading Skills</h3>
+                      <p>Choose what to practice.</p>
+                    </div>
+                  </div>
+                  {learningCategories.length === 0 ? (
+                    <div className="empty-state-card">
+                      <p>Your teacher will share lessons for your class here.</p>
+                    </div>
+                  ) : (
+                    <div className="student-learn-category-grid">
+                      {learningCategories.map((category, index) => {
+                        const percent = category.total > 0 ? Math.round((category.completed / category.total) * 100) : 0;
+                        const status = percent >= 100 ? 'Completed' : percent > 0 || category.inProgress > 0 ? 'In Progress' : 'Not Started';
+                        return (
+                          <article key={category.name} className={`student-learn-category-card accent-${index % 5}`}>
+                            <span className="student-learn-category-icon"><FiBookOpen aria-hidden="true" /></span>
+                            <h4>{category.name}</h4>
+                            <p>{category.total} {category.total === 1 ? 'lesson' : 'lessons'} available</p>
+                            <span className={`student-learn-status ${status.toLowerCase().replace(/\s+/g, '-')}`}>{percent}% - {status}</span>
+                            {category.sample?.fileUrl && (
+                              <a href={category.sample.fileUrl} target="_blank" rel="noreferrer" className="button-small button-secondary">
+                                Continue
+                              </a>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                <section className="student-learn-current-card">
+                  <span className="student-home-large-icon"><FiBookOpen aria-hidden="true" /></span>
+                  <div>
+                    <h3>Continue Where You Left Off</h3>
+                    <p>{nextLesson ? getLessonTitle(nextLesson) : 'No active lesson yet.'}</p>
+                    <div className="progress-bar student-home-progress-bar">
+                      <div className="progress-fill" style={{ width: `${nextLesson ? getLessonProgress(nextLesson) : 0}%` }} />
+                    </div>
+                    <small>
+                      {nextLesson ? `Progress ${getLessonProgress(nextLesson)}% - ${getLessonCategory(nextLesson)}` : 'Start with a shared lesson from your teacher.'}
+                    </small>
+                  </div>
+                  {nextLesson?.fileUrl && (
+                    <a href={nextLesson.fileUrl} target="_blank" rel="noreferrer" className="button-large button-primary">
+                      Continue Lesson <FiChevronRight aria-hidden="true" />
+                    </a>
+                  )}
+                </section>
+
+                <div className="student-learn-filters">
+                  {lessonLevels.map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      className={learnFilter === filter ? 'active' : ''}
+                      onClick={() => setLearnFilter(filter)}
+                    >
+                      {filter}
+                    </button>
                   ))}
                 </div>
-              )}
-            </section>
-            <section className="detail-block">
-              <div className="detail-block-title">Assessments</div>
-              {uploadsLoading ? (
-                <p className="learning-path-text">Loading assessments...</p>
-              ) : filteredAssessments.length === 0 ? (
-                <p className="learning-path-text">No assessments have been shared for your class yet.</p>
-              ) : (
-                <div className="student-assessment-grid">
-                  {filteredAssessments.map((item) => {
-                    const dueDate = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'No due date';
-                    const isOverdue = item.dueDate && new Date(item.dueDate) < new Date();
-                    const scoreLabel = item.score != null ? `${item.score}%` : 'Awaiting grade';
-                    return (
-                      <div key={item.id} className="assessment-card">
-                        <div className="content-card-header">
-                          <span className={`assignment-status ${isOverdue ? 'status-overdue' : 'status-pending'}`}>
-                            {isOverdue ? 'Overdue' : 'Assigned'}
+
+                {uploadsLoading ? (
+                  <p className="learning-path-text">Loading lessons...</p>
+                ) : filteredLessons.length === 0 ? (
+                  <p className="learning-path-text">No lessons match this view yet.</p>
+                ) : (
+                  <div className="student-learn-lesson-grid">
+                    {filteredLessons.map((item) => {
+                      const status = getLessonStatus(item);
+                      const progressValue = getLessonProgress(item);
+                      return (
+                        <article key={item.id} className="student-learn-lesson-card">
+                          <span className={`student-learn-status ${status.toLowerCase().replace(/\s+/g, '-')}`}>
+                            {status}{status !== 'Locked' ? ` - ${progressValue}%` : ''}
                           </span>
-                          <span className="score-tag">{scoreLabel}</span>
+                          <h4>{getLessonTitle(item)}</h4>
+                          <p>{item.description || item.pageSource || getLessonCategory(item)}</p>
+                          <div className="content-meta">{getLessonCategory(item)} - {getLessonLevel(item)}</div>
+                          <div className="progress-bar student-home-progress-bar">
+                            <div className="progress-fill" style={{ width: `${progressValue}%` }} />
+                          </div>
+                          {item.fileUrl ? (
+                            <a href={item.fileUrl} target="_blank" rel="noreferrer" className="button-small button-secondary">
+                              {status === 'Completed' ? 'Review' : status === 'In Progress' ? 'Continue' : 'Start Lesson'}
+                            </a>
+                          ) : (
+                            <button type="button" className="button-small button-secondary" disabled>
+                              {status === 'Locked' ? 'Locked' : 'Unavailable'}
+                            </button>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <aside className="student-learn-side">
+                <section className="student-learn-panel student-learn-recommended">
+                  <span className="student-home-card-icon"><FiStar aria-hidden="true" /></span>
+                  <h3>Recommended for You</h3>
+                  {recommendedLesson ? (
+                    <>
+                      <strong>{getLessonTitle(recommendedLesson)}</strong>
+                      <p>Reason: Based on your current available lesson path.</p>
+                      {recommendedLesson.fileUrl && (
+                        <a href={recommendedLesson.fileUrl} target="_blank" rel="noreferrer" className="button-small button-primary">
+                          Start Lesson <FiChevronRight aria-hidden="true" />
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <p>No recommended lesson yet.</p>
+                  )}
+                </section>
+
+                <section className="student-learn-panel">
+                  <h3>Today's Learning Goal</h3>
+                  <p>{learnGoalDone}/{learnGoalTarget} reading practices - {learnGoalPercent}%</p>
+                  <div className="progress-bar student-home-progress-bar">
+                    <div className="progress-fill" style={{ width: `${learnGoalPercent}%` }} />
+                  </div>
+                  <small>{todayGoalRemaining} more {todayGoalRemaining === 1 ? 'practice' : 'practices'} to reach today's goal</small>
+                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('practice')}>
+                    Continue Learning
+                  </button>
+                </section>
+
+                <section className="student-learn-panel">
+                  <h3>Recently Learned</h3>
+                  {recentLessons.length > 0 ? (
+                    <div className="student-learn-recent-list">
+                      {recentLessons.map((item) => (
+                        <div key={item.id}>
+                          <strong>{getLessonTitle(item)}</strong>
+                          <small>{getAttemptDateLabel({ date: item.updatedAt || item.createdAt || item.uploadedAt || item.created_at })}</small>
                         </div>
-                        <h4>{item.title || item.fileName || 'Shared assessment'}</h4>
-                        <p>{item.description || item.category || item.pageSource || 'Open the file to view details.'}</p>
-                        <div className="content-meta">Uploaded by {item.teacherName || 'Teacher'}</div>
-                        <div className="assessment-footer">
-                          <span>Due {dueDate}</span>
-                          <a href={item.fileUrl} target="_blank" rel="noreferrer" className="button-small button-secondary">
-                            Download
-                          </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p>No lessons completed yet.</p>
+                  )}
+                </section>
+
+                <section className="student-learn-panel student-learn-motivation">
+                  <h3>Every Word Counts</h3>
+                  <p>Keep practicing one word at a time, and your reading will keep getting stronger.</p>
+                </section>
+
+                <section className="student-learn-panel">
+                  <h3>Reading Accessibility</h3>
+                  <div className="student-learn-accessibility-row">
+                    <span>Dyslexia-Friendly Mode</span>
+                    <strong>{accessibilitySettings.fontFamily === 'Comic Sans' ? 'On' : 'Custom'}</strong>
+                  </div>
+                  <div className="student-learn-accessibility-row">
+                    <span>Text Size</span>
+                    <strong>{accessibilitySettings.textSize}px</strong>
+                  </div>
+                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('settings')}>
+                    Open Settings
+                  </button>
+                </section>
+
+                <section className="student-learn-panel">
+                  <h3>Assessments</h3>
+                  {uploadsLoading ? (
+                    <p>Loading assessments...</p>
+                  ) : filteredAssessments.length === 0 ? (
+                    <p>No assessments have been shared yet.</p>
+                  ) : (
+                    <div className="student-learn-recent-list">
+                      {filteredAssessments.slice(0, 3).map((item) => (
+                        <div key={item.id}>
+                          <strong>{item.title || item.fileName || 'Shared assessment'}</strong>
+                          <small>{item.dueDate ? `Due ${new Date(item.dueDate).toLocaleDateString()}` : 'No due date'}</small>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </aside>
+            </div>
+          </section>
         )}
         {activeSection === 'progress' && (
           <section id="progress-section" className="detail-block">
