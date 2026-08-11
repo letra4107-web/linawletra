@@ -496,6 +496,27 @@ a {
   color: #047857;
 }
 
+.current-practice-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+.current-practice-panel h4,
+.current-practice-panel p {
+  margin: 0;
+}
+
+.current-practice-panel p {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
 .metric-icon {
   display: block;
   width: 1.4rem;

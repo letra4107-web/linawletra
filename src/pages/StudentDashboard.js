@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { speechService, studentService, practiceWordService, readingService, curriculumService } from '../services/api';
+import { speechService, studentService, readingService, curriculumService } from '../services/api';
 import { evaluateWord as evaluateWordPhonetics, syllabify } from '../utils/tagalogPhonetics';
 import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import {
@@ -130,6 +130,18 @@ const curriculumItemToPracticeWord = (item = {}) => ({
   itemType: item.item_type || 'word',
   sequenceNo: item.sequence_no,
 });
+const recommendationToPracticeWord = (row = {}) => ({
+  id: row.id || row.word,
+  word: row.word,
+  accentedSpelling: row.syllableHyphenation || row.syllable_hyphenation || row.accentedSpelling || row.word,
+  meaning: row.definition || row.meaning || '',
+  example: row.example || null,
+  isHomograph: Boolean(row.isHomograph || row.is_homograph),
+  homographGroup: row.homographGroup || row.homograph_group || null,
+  difficulty: row.reading_level || row.difficulty || 'beginner',
+  itemType: row.item_type || 'word',
+  recommendationScore: row.recommendation_score,
+});
 // ============================================================================
 // GAMIFICATION HELPER FUNCTIONS
 // ============================================================================
@@ -163,7 +175,6 @@ const StudentDashboard = () => {
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [expectedText, setExpectedText] = useState('aso');
-  const [practiceWords, setPracticeWords] = useState([]);
   const [activePracticeWord, setActivePracticeWord] = useState(null);
   const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
   const [curriculumSummary, setCurriculumSummary] = useState(null);
@@ -342,15 +353,6 @@ const StudentDashboard = () => {
         recognitionRef.current.abort();
       }
     };
-  }, []);
-  useEffect(() => {
-    let isMounted = true;
-    practiceWordService.getPracticeWords().then((words) => {
-      if (isMounted) setPracticeWords(words);
-    }).catch((error) => {
-      console.error('Failed to load practice words:', error);
-    });
-    return () => { isMounted = false; };
   }, []);
   const buildProgressSnapshot = () => ({
     xp,
@@ -535,18 +537,16 @@ const StudentDashboard = () => {
     readingService.getPracticeRecommendations(currentStudentId)
       .then((res) => {
         const words = res?.data?.words || res?.words || [];
-        setRecommendedPracticeWords(words.slice(0, 5));
+        const recommendations = words.slice(0, 5);
+        setRecommendedPracticeWords(recommendations);
+        if (!activePracticeWord && !activeCurriculumItem && recommendations[0]) {
+          const practiceItem = recommendationToPracticeWord(recommendations[0]);
+          setActivePracticeWord(practiceItem);
+          setExpectedText(practiceItem.word);
+        }
       })
       .catch((error) => console.warn('Failed to load practice recommendations:', error.message));
-  }, [hasLoadedProgress, currentStudentId, wordsCompleted]);
-  // Quick word -> mastery status lookup for the vocabulary grid tiles.
-  const wordMasteryByWord = useMemo(() => {
-    const map = new Map();
-    wordMasteryDetail.mastered.forEach((row) => map.set(row.word?.toLowerCase(), 'mastered'));
-    wordMasteryDetail.needsPractice.forEach((row) => map.set(row.word?.toLowerCase(), 'needs_practice'));
-    wordMasteryDetail.difficult.forEach((row) => map.set(row.word?.toLowerCase(), 'difficult'));
-    return map;
-  }, [wordMasteryDetail]);
+  }, [hasLoadedProgress, currentStudentId, wordsCompleted, activePracticeWord, activeCurriculumItem]);
   const handleNav = (section) => {
     setActiveSection(section);
     const target = document.getElementById(`${section}-section`);
@@ -737,16 +737,12 @@ const StudentDashboard = () => {
     let isMounted = true;
     loadNextCurriculumItem().then((item) => {
       if (!isMounted || item) return;
-      const fallbackWord = practiceWords[0];
-      if (fallbackWord && !activePracticeWord) {
-        setActivePracticeWord(fallbackWord);
-        setExpectedText(fallbackWord.word);
-      }
+      setFeedback('No curriculum item is ready yet. Loading a recommended practice word if one is available.');
     });
     return () => {
       isMounted = false;
     };
-  }, [hasLoadedProgress, currentStudentId, userRole, practiceWords.length]);
+  }, [hasLoadedProgress, currentStudentId, userRole]);
 
   const awardPronunciationXp = (amount) => {
     if (!amount) return;
@@ -930,19 +926,21 @@ const StudentDashboard = () => {
       return;
     }
 
-    if (activePracticeWord && practiceWords.length > 0) {
-      const currentIndex = practiceWords.findIndex((word) => word.id === activePracticeWord.id);
-      const nextWord = practiceWords[(currentIndex + 1 + practiceWords.length) % practiceWords.length];
-      if (nextWord) {
-        setActivePracticeWord(nextWord);
-        setHomographPanelOpenId(null);
-        setExpectedText(nextWord.word);
-        resetPracticeAttemptState();
-        setTimeout(() => {
-          speakTagalog(nextWord.accentedSpelling || nextWord.word, { trackSyllables: true });
-        }, 150);
-        return;
-      }
+    const curriculumItem = await loadNextCurriculumItem({ speak: true });
+    if (curriculumItem) return;
+
+    const nextRecommendation = recommendedPracticeWords
+      .map(recommendationToPracticeWord)
+      .find((word) => word.word && word.word !== activePracticeWord?.word);
+    if (nextRecommendation) {
+      setActivePracticeWord(nextRecommendation);
+      setHomographPanelOpenId(null);
+      setExpectedText(nextRecommendation.word);
+      resetPracticeAttemptState();
+      setTimeout(() => {
+        speakTagalog(nextRecommendation.accentedSpelling || nextRecommendation.word, { trackSyllables: true });
+      }, 150);
+      return;
     }
 
     const nextExpectedWord = getPhoneticWordForProgress(currentPhoneticLevel, progressInCurrentLevel);
@@ -1391,12 +1389,7 @@ const StudentDashboard = () => {
     fontSize: `${accessibilitySettings.textSize}px`,
     letterSpacing: accessibilitySettings.letterSpacing === 'wide' ? '0.08em' : 'normal',
   };
-  const dayOfYear = Math.floor(
-    (dateTime - new Date(dateTime.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24)
-  );
-  const wordOfTheDay = practiceWords.length > 0
-    ? practiceWords[dayOfYear % practiceWords.length]
-    : null;
+  const wordOfTheDay = activePracticeWord || null;
   const wordOfTheDayAttempts = useMemo(() => {
     if (!wordOfTheDay) return [];
     return (progress.history || []).filter((entry) =>
@@ -1412,18 +1405,6 @@ const StudentDashboard = () => {
     setHomographPanelOpenId(null);
     setExpectedText(practiceWord.word);
     resetPracticeAttemptState();
-  };
-  const activePracticeIndex = activePracticeWord
-    ? practiceWords.findIndex((word) => word.id === activePracticeWord.id)
-    : -1;
-  const navigatePracticeWord = (direction) => {
-    if (practiceWords.length === 0) return;
-    const fallbackIndex = direction > 0 ? 0 : practiceWords.length - 1;
-    const nextIndex = activePracticeIndex < 0
-      ? fallbackIndex
-      : Math.min(practiceWords.length - 1, Math.max(0, activePracticeIndex + direction));
-    const nextWord = practiceWords[nextIndex];
-    if (nextWord) selectPracticeWord(nextWord);
   };
   const visiblePracticeLabel = activePracticeWord ? activePracticeWord.accentedSpelling : expectedText;
   return (
@@ -1814,26 +1795,6 @@ const StudentDashboard = () => {
                   <button className="button-large button-secondary" type="button" onClick={replayRecognizedWord}>
                     <FiRepeat aria-hidden="true" /> Replay Voice
                   </button>
-                  {activePracticeWord && !activePracticeWord.curriculumItemId && (
-                    <>
-                      <button
-                        className="button-large button-secondary"
-                        type="button"
-                        onClick={() => navigatePracticeWord(-1)}
-                        disabled={activePracticeIndex <= 0}
-                      >
-                        Back
-                      </button>
-                      <button
-                        className="button-large button-secondary"
-                        type="button"
-                        onClick={() => navigatePracticeWord(1)}
-                        disabled={activePracticeIndex < 0 || activePracticeIndex >= practiceWords.length - 1}
-                      >
-                        Browse Next
-                      </button>
-                    </>
-                  )}
                   <button
                     className="button-large button-primary"
                     type="button"
@@ -1906,52 +1867,17 @@ const StudentDashboard = () => {
 
             <div className="highlight-row">{renderWordHighlight()}</div>
 
-            {practiceWords.length > 0 && (
-              <div className="vocabulary-bank">
-                <h4>Talasalitaan</h4>
-                <div className="vocabulary-grid">
-                  {practiceWords.map((practiceWord) => {
-                    const isActive = activePracticeWord?.id === practiceWord.id;
-                    const isCompleted = completedWords.includes(practiceWord.word);
-                    const isPerfect = perfectWords.includes(practiceWord.word);
-                    const masteryStatus = wordMasteryByWord.get(practiceWord.word?.toLowerCase());
-                    const tileStatus = isActive
-                      ? 'current'
-                      : isPerfect
-                        ? 'perfect'
-                        : masteryStatus || (isCompleted ? 'completed' : 'new');
-                    const statusMeta = {
-                      current: { label: 'Current', Icon: FiTarget },
-                      perfect: { label: 'Perfect', Icon: FiStar },
-                      mastered: { label: 'Mastered', Icon: FiAward },
-                      needs_practice: { label: 'Needs practice', Icon: FiRepeat },
-                      difficult: { label: 'Difficult', Icon: FiAlertTriangle },
-                      completed: { label: 'Completed', Icon: FiCheck },
-                      new: { label: '', Icon: null },
-                    }[tileStatus];
-                    return (
-                      <button
-                        key={practiceWord.id}
-                        type="button"
-                        className={`vocabulary-tile status-${tileStatus}`}
-                        onClick={() => selectPracticeWord(practiceWord)}
-                        aria-label={`Hidden vocabulary word ${practiceWord.id}`}
-                      >
-                        <span className="vocabulary-tile-word is-hidden">
-                          {isCompleted ? '••••' : '---'}
-                        </span>
-                        {statusMeta.label && (
-                          <span className="vocabulary-tile-status">
-                            {statusMeta.Icon && <statusMeta.Icon aria-hidden="true" />}
-                            {statusMeta.label}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <div className="current-practice-panel">
+              <h4>Current practice item</h4>
+              <p>
+                {activePracticeWord
+                  ? `${activePracticeWord.itemType || 'word'} - ${levelNames[practiceLevel] || practiceLevel}`
+                  : 'Loading your next recommended item...'}
+              </p>
+              {activePracticeWord?.recommendationScore != null && (
+                <span className="student-activity-status">Recommendation {activePracticeWord.recommendationScore}</span>
+              )}
+            </div>
 
             <div className="practice-stats">
               <div className="metric-card">
@@ -2336,9 +2262,7 @@ const StudentDashboard = () => {
             <h4>Recommended practice</h4>
             <div className="recommended-practice-list">
               {recommendedPracticeWords.map((row) => {
-                const matchingWord = practiceWords.find(
-                  (word) => word.word?.toLowerCase() === row.word?.toLowerCase()
-                );
+                const recommendedWord = recommendationToPracticeWord(row);
                 const rationale = row.ranking?.rationale?.[0] || 'Rule-based recommendation';
                 return (
                   <button
@@ -2347,11 +2271,11 @@ const StudentDashboard = () => {
                     className="recommended-practice-chip"
                     title={rationale}
                     onClick={() => {
-                      if (matchingWord) selectPracticeWord(matchingWord);
+                      if (recommendedWord.word) selectPracticeWord(recommendedWord);
                       handleNav('practice');
                     }}
                   >
-                    <span>{matchingWord?.accentedSpelling || row.word}</span>
+                    <span>{recommendedWord.accentedSpelling || row.word}</span>
                     {Number.isFinite(Number(row.recommendation_score)) && (
                       <small>{row.recommendation_score}</small>
                     )}
