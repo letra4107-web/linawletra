@@ -228,7 +228,7 @@ const runTimedRegistrationStep = async (requestId, label, step) => {
 };
 
 const buildLoginOtpRecord = (code, session = null) => ({
-  code,
+  code: hashCode(code),
   expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
   resend_available_at: new Date(Date.now() + 60 * 1000).toISOString(),
   attempts: 0,
@@ -1742,7 +1742,7 @@ export const verifyLoginOTP =async (req, res) => {
     }
 
     // Verify OTP
-    if (otpRecord.code !== otpCode) {
+    if (otpRecord.code !== hashCode(otpCode)) {
       console.warn('[Verify Login OTP] Invalid OTP provided');
       await updateLoginOtpAttempts(userData, otpRecord);
 
