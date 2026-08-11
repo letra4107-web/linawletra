@@ -92,7 +92,7 @@ export default function Overview() {
             </div>
             <div>
               <span>System health</span>
-              <strong>{overview?.systemHealth || 'Healthy'}</strong>
+              <strong>{overview?.systemHealth || 'No data'}</strong>
             </div>
           </div>
         </div>

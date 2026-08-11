@@ -1,6 +1,7 @@
 ﻿import Progress from '../models/Progress.js';
 import { supabase } from '../config/supabase.js';
 import { authorizeStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
+import { getStudentStats } from '../services/studentStatsService.js';
 
 async function assertParentOwnsStudent(req, studentId) {
   const { allowed } = await authorizeStudent(req, studentId);
@@ -158,125 +159,32 @@ export const getProgressByStudent =async (req, res) => {
 export const getDashboardData =async (req, res) => {
   try {
     const { studentId } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    const { data: student, error } = await supabase
-      .from('students')
-      .select('*')
-      .or(`id.eq.${studentId},user_id.eq.${studentId}`)
-      .single();
-
-    if (error || !student) {
-      return res.status(404).json({ message: 'Student not found' });
+    const { student, allowed, status } = await authorizeStudent(req, studentId);
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+    if (!allowed) {
+      return res.status(status || 403).json({ message: 'You do not have permission to access this student dashboard data' });
     }
 
-    const isOwnStudent = student.user_id === userId;
-    const isParent = userRole === 'parent' && student.parent_id === userId;
-    const isTeacher = userRole === 'teacher' && student.teacher_id === userId;
-    const isAdmin = userRole === 'admin';
-
-    if (!isOwnStudent && !isParent && !isTeacher && !isAdmin) {
-      return res.status(403).json({ message: 'You do not have permission to access this student dashboard data' });
-    }
-
-    const { data: masteryRows } = await supabase
-      .from('word_mastery')
-      .select('word, mastery_status, avg_phoneme_accuracy, avg_syllable_accuracy, last_attempt_at')
-      .eq('student_id', student.id);
-    const mastered = (masteryRows || []).filter((w) => w.mastery_status === 'mastered');
-    const needsPractice = (masteryRows || []).filter((w) => w.mastery_status === 'needs_practice');
-    const difficult = (masteryRows || []).filter((w) => w.mastery_status === 'difficult');
-    const phonemeAccuracy = masteryRows?.length
-      ? Math.round(masteryRows.reduce((sum, w) => sum + (w.avg_phoneme_accuracy || 0), 0) / masteryRows.length)
-      : null;
-
-    const { data: confusionRows } = await supabase
-      .from('confusion_patterns')
-      .select('pattern_type, occurrence_count')
-      .eq('student_id', student.id)
-      .order('occurrence_count', { ascending: false })
-      .limit(5);
-
-    const { data: lessonProgressRows } = await supabase
-      .from('lesson_progress')
-      .select('*')
-      .in('student_id', [student.id, student.user_id].filter(Boolean));
-
-    const history = Array.isArray(student.history) ? student.history : [];
-    const totalAttempts = Number(student.total_attempts || history.length || 0);
-    const accuracySum = Number(
-      student.accuracy_sum ||
-      history.reduce((sum, entry) => sum + (Number(entry?.score ?? entry?.accuracy ?? entry?.accuracy_percentage ?? 0) || 0), 0)
-    );
-    const activitiesCompleted = (lessonProgressRows || []).filter((row) =>
-      String(row.status || '').toLowerCase().includes('completed')
-    ).length;
-    const recentActivities = [
-      ...(lessonProgressRows || [])
-        .sort((a, b) => {
-          const aTime = new Date(a.completed_at || a.completedAt || a.updated_at || a.updatedAt || a.created_at || a.createdAt || 0).getTime();
-          const bTime = new Date(b.completed_at || b.completedAt || b.updated_at || b.updatedAt || b.created_at || b.createdAt || 0).getTime();
-          return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
-        })
-        .slice(0, 5)
-        .map((row) => ({
-        id: row.id,
-        lessonTitle: row.lesson_title || row.lessonTitle || row.title || 'Lesson',
-        status: row.status || 'completed',
-        score: row.score,
-        timeSpent: row.time_spent || row.timeSpent || row.duration,
-        completedAt: row.completed_at || row.completedAt || row.updated_at || row.updatedAt || row.created_at || row.createdAt,
-        activityType: 'lesson',
-      })),
-      ...history.slice(-10).map((entry) => ({
-        ...entry,
-        lessonTitle: entry.word || entry.target || 'Reading practice',
-        status: entry.correct ? 'completed' : 'practice',
-        completedAt: entry.timestamp || entry.created_at || entry.createdAt || entry.date,
-        activityType: entry.activityType || 'pronunciation_practice',
-      })),
-    ].sort((a, b) => {
-      const aTime = new Date(a.completedAt || a.timestamp || 0).getTime();
-      const bTime = new Date(b.completedAt || b.timestamp || 0).getTime();
-      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
-    }).slice(0, 8);
-
-    res.json({
-      wordMastery: { mastered: mastered.length, needsPractice: needsPractice.length, difficult: difficult.length },
-      phonemeAccuracy,
-      topConfusions: confusionRows || [],
-      recommendedPracticeWords: [...needsPractice, ...difficult]
-        .sort((a, b) => new Date(b.last_attempt_at || 0) - new Date(a.last_attempt_at || 0))
-        .slice(0, 5)
-        .map((w) => w.word),
-      xp: student.xp ?? 0,
-      streak: student.streak ?? 0,
-      longestStreak: student.longest_streak ?? student.streak ?? 0,
-      lastLoginDate: student.last_login_date ?? null,
-      lastPracticeDate: student.last_practice_date ?? student.last_login_date ?? null,
-      wordsCompleted: student.words_completed ?? 0,
-      completedWords: student.completed_words ?? [],
-      achievements: Array.isArray(student.unlocked_achievement_ids) ? student.unlocked_achievement_ids.length : (student.achievements ?? 0),
-      accuracy: totalAttempts > 0 ? Math.round(accuracySum / totalAttempts) : (student.accuracy ?? 0),
-      completed: activitiesCompleted || student.completed || 0,
-      activitiesCompleted: activitiesCompleted || student.completed || 0,
-      lessonsCompleted: activitiesCompleted || student.completed || 0,
-      totalAttempts,
-      accuracySum,
-      baselineAccuracy: student.baseline_accuracy ?? null,
-      history,
-      recentActivities,
-      currentPhoneticLevel: student.current_phonetic_level ?? 'Easy',
-      progressInCurrentLevel: student.progress_in_level ?? 0,
-      highestPhoneticLevel: student.highest_phonetic_level ?? 'Easy',
-      hardCyclesCompleted: student.hard_cycles_completed ?? 0,
-      hadStreakBreak: student.had_streak_break ?? false,
-      unlockedAchievementIds: student.unlocked_achievement_ids ?? [],
-      totalLessons: 7,
-    });
+    const stats = await getStudentStats(student.id);
+    return res.json(stats);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const getCanonicalStudentStats = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { student, allowed, status } = await authorizeStudent(req, studentId);
+    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+    if (!allowed) {
+      return res.status(status || 403).json({ success: false, message: 'You do not have permission to access these student statistics' });
+    }
+
+    const stats = await getStudentStats(student.id);
+    return res.json({ success: true, data: stats });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

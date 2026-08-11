@@ -409,6 +409,43 @@ export const subscribeToTeacherUploadsByGradeLevel = (gradeLevel, onUpdate, onEr
   }
 };
 
+export const subscribeToCanonicalStudentStats = ({ studentId, userId }, onChange, onError) => {
+  try {
+    const studentFilters = [studentId && `student_id=eq.${studentId}`, userId && `student_id=eq.${userId}`].filter(Boolean);
+    const channel = supabase.channel(`canonical_student_stats_${studentId || userId}`);
+
+    if (studentId) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'students', filter: `id=eq.${studentId}` }, onChange);
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'curriculum_progress', filter: `student_id=eq.${studentId}` }, onChange);
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'reading_attempts', filter: `student_id=eq.${studentId}` }, onChange);
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'word_mastery', filter: `student_id=eq.${studentId}` }, onChange);
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'confusion_patterns', filter: `student_id=eq.${studentId}` }, onChange);
+    }
+
+    studentFilters.forEach((filter) => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'lesson_progress', filter }, onChange);
+    });
+
+    if (userId) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, onChange);
+    }
+
+    channel.subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        onError?.(new Error('Canonical student stats realtime channel failed.'));
+      }
+    });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (error) {
+    console.error('Error subscribing to canonical student stats:', error);
+    onError?.(error);
+    return () => {};
+  }
+};
+
 /**
  * Generic collection operations
  */

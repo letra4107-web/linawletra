@@ -8,6 +8,7 @@ import Progress from '../models/Progress.js';
 import Setting from '../models/Setting.js';
 import Log from '../models/Log.js';
 import { sendTeacherAccountEmail } from '../services/emailService.js';
+import { getManyStudentStats } from '../services/studentStatsService.js';
 
 const router = express.Router();
 const SETTINGS_DOC_ID = 'system';
@@ -80,9 +81,12 @@ const attachStudentDetailsToUsers = async (users = []) => {
     return normalizedUsers;
   }
 
+  const statsRows = await getManyStudentStats((students || []).map((student) => student.id));
+  const statsByStudentId = new Map(statsRows.map((stats) => [stats.studentId, stats]));
   const studentsByUserId = new Map((students || []).map((student) => [student.user_id, student]));
   return normalizedUsers.map((user) => {
     const student = studentsByUserId.get(user.id || user.uid);
+    const stats = student ? statsByStudentId.get(student.id) : null;
     if (!student) return user;
     return {
       ...user,
@@ -91,12 +95,13 @@ const attachStudentDetailsToUsers = async (users = []) => {
       teacherId: student.teacher_id,
       gradeLevel: student.grade_level,
       readingLevel: student.reading_level,
-      xp: student.xp ?? 0,
-      wordsCompleted: student.words_completed ?? 0,
-      accuracy: student.accuracy ?? 0,
-      streak: student.streak ?? 0,
-      currentPhoneticLevel: student.current_phonetic_level ?? 'Easy',
-      progressInCurrentLevel: student.progress_in_level ?? 0,
+      xp: stats?.xp ?? student.xp ?? 0,
+      wordsCompleted: stats?.wordsCompleted ?? student.words_completed ?? 0,
+      accuracy: stats?.accuracy ?? student.accuracy ?? 0,
+      streak: stats?.streak ?? student.streak ?? 0,
+      currentPhoneticLevel: stats?.currentPhoneticLevel ?? student.current_phonetic_level ?? 'Easy',
+      progressInCurrentLevel: stats?.progressInCurrentLevel ?? student.progress_in_level ?? 0,
+      stats,
     };
   });
 };
@@ -177,7 +182,6 @@ router.get('/overview', async (req, res) => {
       totalParents,
       totalTeachers,
       totalStudents,
-      activeUsers,
       totalLessons,
       totalAssessments,
       totalProgress,
@@ -188,7 +192,6 @@ router.get('/overview', async (req, res) => {
       countRows('users', (query) => query.eq('role', 'parent')),
       countRows('users', (query) => query.eq('role', 'teacher')),
       countRows('users', (query) => query.eq('role', 'student')),
-      countRows('users'),
       countRows('lessons'),
       countRows('assessments'),
       countRows('lesson_progress'),
@@ -196,7 +199,7 @@ router.get('/overview', async (req, res) => {
       0,
     ]);
 
-    const { data: roleData, error: roleError } = await supabase.from('users').select('role');
+    const { data: roleData, error: roleError } = await supabase.from('users').select('role,status,metadata,created_at');
     if (roleError) {
       throw roleError;
     }
@@ -216,6 +219,15 @@ router.get('/overview', async (req, res) => {
       acc[role] = (acc[role] || 0) + 1;
       return acc;
     }, {});
+    const isActiveUser = (row = {}) =>
+      row.status === 'active' || row.metadata?.isActive === true || row.metadata?.isActive === undefined;
+    const computedActiveUsers = (roleData || []).filter(isActiveUser).length;
+    const inactiveUsers = (roleData || []).filter((row) => !isActiveUser(row)).length;
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const recentRegistrations = (roleData || []).filter((row) => {
+      const created = new Date(row.created_at || 0).getTime();
+      return Number.isFinite(created) && created >= sevenDaysAgo;
+    }).length;
 
     const { data: scoreRows, error: scoreError } = await supabase
       .from('lesson_progress')
@@ -245,7 +257,9 @@ router.get('/overview', async (req, res) => {
       totalParents,
       totalTeachers,
       totalStudents,
-      activeUsers,
+      activeUsers: computedActiveUsers,
+      inactiveUsers,
+      recentRegistrations,
       pendingApprovals,
       totalLessons,
       totalAssessments,
@@ -854,19 +868,27 @@ router.get('/analytics', async (req, res) => {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const since = sevenDaysAgo.toISOString();
 
-    const [usersResult, progressCountResult, completedScoreResult, scoresResult] = await Promise.all([
+    const [usersResult, allUsersResult, studentRowsResult, progressCountResult, completedScoreResult, scoresResult, attemptsResult] = await Promise.all([
       supabase.from('users').select('created_at').gt('created_at', since),
+      supabase.from('users').select('created_at,status,metadata'),
+      supabase.from('students').select('id,reading_level'),
       supabase.from('lesson_progress').select('id', { count: 'exact', head: true }),
       supabase.from('lesson_progress').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
       supabase.from('lesson_progress').select('score').not('score', 'is', null),
+      supabase.from('reading_attempts').select('id,accuracy_score,activity_type,completed_at'),
     ]);
 
     if (usersResult.error) throw usersResult.error;
+    if (allUsersResult.error) throw allUsersResult.error;
+    if (studentRowsResult.error) throw studentRowsResult.error;
     if (progressCountResult.error) throw progressCountResult.error;
     if (completedScoreResult.error) {
       completedScoreResult.count = await countCompletedLessonProgress();
     }
     if (scoresResult.error) throw scoresResult.error;
+    const attemptsUnavailable = ['PGRST205', '42P01'].includes(attemptsResult.error?.code);
+    const attempts = attemptsUnavailable ? [] : (attemptsResult.data || []);
+    if (attemptsResult.error && !attemptsUnavailable) throw attemptsResult.error;
 
     const enrollmentMap = {};
     for (let i = 0; i < 7; i += 1) {
@@ -891,6 +913,45 @@ router.get('/analytics', async (req, res) => {
     const averageProgressScore = scoreValues.length > 0
       ? Math.round(scoreValues.reduce((sum, score) => sum + score, 0) / scoreValues.length)
       : 0;
+    const studentStats = await getManyStudentStats((studentRowsResult.data || []).map((student) => student.id));
+    const levelDistribution = (studentStats.length ? studentStats : (studentRowsResult.data || [])).reduce((acc, row) => {
+      const level = String(row.level || row.reading_level || 'beginner').toLowerCase();
+      acc[level] = (acc[level] || 0) + 1;
+      return acc;
+    }, {});
+    const totalAttempts = studentStats.reduce((sum, stats) => sum + Number(stats.totalAttempts || 0), 0);
+    const totalWordsCompleted = studentStats.reduce((sum, stats) => sum + Number(stats.wordsCompleted || 0), 0);
+    const totalLessonsCompleted = studentStats.reduce((sum, stats) => sum + Number(stats.lessonsCompleted || 0), 0);
+    const totalActivitiesCompleted = studentStats.reduce((sum, stats) => sum + Number(stats.activitiesCompleted || 0), 0);
+    const totalBadgeUnlocks = studentStats.reduce((sum, stats) => sum + Number(stats.badges?.length || 0), 0);
+    const badgeCounts = studentStats.reduce((acc, stats) => {
+      (stats.badges || []).forEach((badge) => {
+        const id = typeof badge === 'string' ? badge : badge?.id;
+        if (id) acc[id] = (acc[id] || 0) + 1;
+      });
+      return acc;
+    }, {});
+    const averageAccuracy = studentStats.length
+      ? Math.round(studentStats.reduce((sum, stats) => sum + Number(stats.accuracy || 0), 0) / studentStats.length)
+      : 0;
+    const activeUsers = (allUsersResult.data || []).filter((row) =>
+      row.status === 'active' || row.metadata?.isActive === true || row.metadata?.isActive === undefined
+    ).length;
+    const readingAttempts = attempts.length;
+    const wordOfDayCompletions = attempts.filter((attempt) => attempt.activity_type === 'word_of_day').length;
+    const readingEngagement = studentStats.length
+      ? Math.round((studentStats.filter((stats) => Number(stats.totalAttempts || 0) > 0).length / studentStats.length) * 100)
+      : 0;
+    const readingAnalytics = [
+      { label: 'Accuracy', value: averageAccuracy },
+      { label: 'Engagement', value: readingEngagement },
+      {
+        label: 'Completion',
+        value: studentStats.length
+          ? Math.round((studentStats.filter((stats) => Number(stats.activitiesCompleted || 0) > 0).length / studentStats.length) * 100)
+          : 0,
+      },
+    ];
 
     return res.json({
       enrollmentLabels: Object.keys(enrollmentMap),
@@ -899,6 +960,25 @@ router.get('/analytics', async (req, res) => {
         ? Math.round(((completedScoreResult.count || 0) / (progressCountResult.count || 0)) * 100)
         : 0,
       averageProgressScore,
+      activeUsers,
+      averageAccuracy,
+      readingEngagement,
+      readingAttempts,
+      practiceSessions: totalAttempts,
+      wordsCompleted: totalWordsCompleted,
+      lessonsCompleted: totalLessonsCompleted,
+      activitiesCompleted: totalActivitiesCompleted,
+      wordOfDayCompletions,
+      totalBadgeUnlocks,
+      badgeCounts,
+      badgeStats: {
+        studentCount: studentStats.length,
+        totalUnlocked: totalBadgeUnlocks,
+        counts: badgeCounts,
+      },
+      levelDistribution,
+      readingAnalytics,
+      averageSessionMinutes: 0,
       totalProgressRecords: progressCountResult.count || 0,
       weeklyEnrollments: usersResult.data?.length || 0,
     });

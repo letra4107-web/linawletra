@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { adminService, studentService } from '../../services/api';
+import { adminService } from '../../services/api';
 import { ACHIEVEMENTS } from '../../services/achievementService';
 import AchievementBadge from '../../components/AchievementBadge';
 
@@ -12,8 +12,6 @@ export default function Analytics() {
   const [analytics, setAnalytics] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [badgeStats, setBadgeStats] = useState(null);
-  const [badgeStatsLoading, setBadgeStatsLoading] = useState(true);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -32,42 +30,16 @@ export default function Analytics() {
     fetchAnalytics();
   }, []);
 
-  useEffect(() => {
-    const fetchBadgeStats = async () => {
-      setBadgeStatsLoading(true);
-      try {
-        const response = await studentService.getAllStudents();
-        const students = Array.isArray(response.data) ? response.data : [];
-        const counts = {};
-        ACHIEVEMENTS.forEach((achievement) => { counts[achievement.id] = 0; });
-        let totalUnlocked = 0;
-        students.forEach((student) => {
-          const unlockedIds = student.user?.metadata?.unlockedAchievementIds || [];
-          unlockedIds.forEach((id) => {
-            if (counts[id] !== undefined) {
-              counts[id] += 1;
-              totalUnlocked += 1;
-            }
-          });
-        });
-        setBadgeStats({
-          studentCount: students.length,
-          totalUnlocked,
-          counts,
-        });
-      } catch (err) {
-        setBadgeStats(null);
-      } finally {
-        setBadgeStatsLoading(false);
-      }
-    };
-
-    fetchBadgeStats();
-  }, []);
-
   const trend = useMemo(() => {
-    return analytics?.enrollmentTrends || [12, 18, 22, 30, 27, 34, 42];
+    return Array.isArray(analytics?.enrollmentTrends) ? analytics.enrollmentTrends : [];
   }, [analytics]);
+  const badgeStats = analytics?.badgeStats || {
+    studentCount: analytics?.levelDistribution
+      ? Object.values(analytics.levelDistribution).reduce((sum, count) => sum + Number(count || 0), 0)
+      : 0,
+    totalUnlocked: analytics?.totalBadgeUnlocks || 0,
+    counts: analytics?.badgeCounts || {},
+  };
 
   return (
     <section className="dashboard-section">
@@ -111,12 +83,14 @@ export default function Analytics() {
           <div className="line-chart">
             {loading ? (
               <div className="chart-skeleton" />
-            ) : (
+            ) : trend.length ? (
               trend.map((value, index) => (
                 <div key={index} className="chart-bar" style={{ height: `${Math.round((value / Math.max(...trend, 1)) * 100)}%` }}>
                   <span>{value}</span>
                 </div>
               ))
+            ) : (
+              <p className="empty-state-text">No enrollment data available.</p>
             )}
           </div>
         </div>
@@ -167,7 +141,7 @@ export default function Analytics() {
             <span className="pill">{formatNumber(badgeStats.totalUnlocked)} total unlocks · {formatNumber(badgeStats.studentCount)} students</span>
           )}
         </div>
-        {badgeStatsLoading ? (
+        {loading ? (
           <div className="chart-skeleton" />
         ) : !badgeStats ? (
           <p className="empty-state-text">Unable to load badge statistics.</p>

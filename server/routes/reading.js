@@ -8,6 +8,7 @@ import { evaluateWord } from '../services/tagalogPhonetics.js';
 import { VALID_READING_LEVELS, normalizeReadingLevel, getReadingLevelRank } from '../services/readingLevels.js';
 import { recordWordOutcome, getWordMastery, getConfusionPatterns, getPracticeRecommendations, getLevelReadiness } from '../controllers/attemptsController.js';
 import { getVisibleStudentIds } from '../utils/studentAccess.js';
+import { getStudentStats } from '../services/studentStatsService.js';
 
 const router = express.Router();
 const require = createRequire(import.meta.url);
@@ -208,9 +209,19 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
 
   const nextHistory = [...history, attemptRecord].slice(-200);
   const nextCompletedCount = previousCompleted + 1;
+  const previousTotalAttempts = Number(student.total_attempts || history.length || 0);
+  const previousAccuracySum = Number(
+    student.accuracy_sum ||
+    history.reduce((sum, entry) => sum + (Number(entry?.score ?? entry?.accuracy ?? entry?.accuracy_percentage ?? 0) || 0), 0)
+  );
   const updateData = {
     history: nextHistory,
     completed: nextCompletedCount,
+    activities_completed: nextCompletedCount,
+    total_attempts: previousTotalAttempts + 1,
+    accuracy_sum: previousAccuracySum + score,
+    baseline_accuracy: student.baseline_accuracy ?? (previousTotalAttempts === 0 ? score : null),
+    last_practice_date: new Date().toISOString(),
     accuracy: Math.round(((previousAccuracy * previousCompleted) + score) / nextCompletedCount),
     updated_at: new Date().toISOString(),
   };
@@ -262,7 +273,7 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
     return null;
   }
 
-  return data;
+  return getStudentStats(data.id);
 };
 
 const decorateMaterialForLevel = (material, studentLevel) => {

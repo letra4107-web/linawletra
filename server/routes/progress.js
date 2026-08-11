@@ -4,6 +4,7 @@ import { createOrGetProgress,
   updateProgress,
   getProgressByStudent,
   getDashboardData,
+  getCanonicalStudentStats,
   getProgressReports, } from '../controllers/progressController.js';
 
 const router = express.Router();
@@ -16,6 +17,9 @@ router.put('/:progressId', authMiddleware, updateProgress);
 
 // Get progress by student
 router.get('/student/:studentId', authMiddleware, getProgressByStudent);
+
+// Get canonical student statistics
+router.get('/:studentId/stats', authMiddleware, getCanonicalStudentStats);
 
 // Get teacher/admin progress reports
 router.get('/reports', authMiddleware, getProgressReports);

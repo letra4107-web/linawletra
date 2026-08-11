@@ -62,7 +62,18 @@ export const parentDashboardApi = {
   getDashboard: async () => {
     try {
       const res = await studentService.getStudents();
-      const children = unwrapStudents(res).map(normalizeChild);
+      const children = await Promise.all(
+        unwrapStudents(res).map(async (child) => {
+          const normalized = normalizeChild(child);
+          try {
+            const statsRes = await progressService.getCanonicalStats(normalized.studentId);
+            const stats = statsRes?.data?.data ?? statsRes?.data ?? {};
+            return normalizeChild({ ...normalized, ...stats });
+          } catch {
+            return normalized;
+          }
+        })
+      );
       return {
         childCount: children.length,
         children,
@@ -75,7 +86,18 @@ export const parentDashboardApi = {
   getChildren: async () => {
     try {
       const res = await studentService.getStudents();
-      return unwrapStudents(res).map(normalizeChild);
+      return Promise.all(
+        unwrapStudents(res).map(async (child) => {
+          const normalized = normalizeChild(child);
+          try {
+            const statsRes = await progressService.getCanonicalStats(normalized.studentId);
+            const stats = statsRes?.data?.data ?? statsRes?.data ?? {};
+            return normalizeChild({ ...normalized, ...stats });
+          } catch {
+            return normalized;
+          }
+        })
+      );
     } catch (e) {
       return [];
     }
@@ -85,7 +107,7 @@ export const parentDashboardApi = {
     try {
       const [studentRes, dashboardRes] = await Promise.all([
         studentService.getStudentDashboard(childId),
-        progressService.getDashboardData(childId),
+        progressService.getCanonicalStats(childId),
       ]);
       const studentData = studentRes?.data?.data ?? studentRes?.data ?? {};
       const dashboardData = dashboardRes?.data?.data ?? dashboardRes?.data ?? {};

@@ -7,6 +7,7 @@ import { createStudent,
   deleteStudent, } from '../controllers/studentController.js';
 import { supabase } from '../config/supabase.js';
 import { canAccessStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
+import { getManyStudentStats } from '../services/studentStatsService.js';
 
 const router = express.Router();
 
@@ -64,7 +65,13 @@ router.get('/all', authMiddleware, roleMiddleware('teacher', 'admin'), async (re
       throw error;
     }
 
-    res.json(await attachUserProfiles(supabase, students || []));
+    const studentsWithProfiles = await attachUserProfiles(supabase, students || []);
+    const statsRows = await getManyStudentStats(studentsWithProfiles.map((student) => student.id));
+    const statsById = new Map(statsRows.map((stats) => [stats.studentId, stats]));
+    res.json(studentsWithProfiles.map((student) => ({
+      ...student,
+      stats: statsById.get(student.id) || null,
+    })));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

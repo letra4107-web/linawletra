@@ -2,6 +2,7 @@ import { supabase } from '../config/supabase.js';
 import { compareReadingText } from './readingAccuracy.js';
 import { authorizeStudent, resolveStudent } from '../utils/studentAccess.js';
 import { recordWordOutcome } from '../controllers/attemptsController.js';
+import { getStudentStats } from './studentStatsService.js';
 
 const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'];
 const PASS_ACCURACY = 80;
@@ -220,6 +221,41 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
 
   if (upsertError) throw upsertError;
 
+  const previousHistory = Array.isArray(student.history) ? student.history : [];
+  const previousTotalAttempts = Number(student.total_attempts || previousHistory.length || 0);
+  const previousAccuracySum = Number(
+    student.accuracy_sum ||
+    previousHistory.reduce((sum, entry) => sum + (Number(entry?.score ?? entry?.accuracy ?? entry?.accuracy_percentage ?? 0) || 0), 0)
+  );
+  const nextHistory = [
+    ...previousHistory,
+    {
+      word: expectedText,
+      spoken: spokenText,
+      score: accuracy,
+      correct: accuracy >= PASS_ACCURACY,
+      activityType: 'curriculum_practice',
+      timestamp: Date.now(),
+    },
+  ].slice(-200);
+
+  const { error: statsError } = await supabase
+    .from('students')
+    .update({
+      history: nextHistory,
+      total_attempts: previousTotalAttempts + 1,
+      accuracy_sum: previousAccuracySum + accuracy,
+      baseline_accuracy: student.baseline_accuracy ?? (previousTotalAttempts === 0 ? accuracy : null),
+      activities_completed: Number(student.activities_completed || student.completed || 0) + 1,
+      completed: Number(student.completed || 0) + 1,
+      accuracy: Math.round((previousAccuracySum + accuracy) / (previousTotalAttempts + 1)),
+      last_practice_date: now,
+      updated_at: now,
+    })
+    .eq('id', student.id);
+
+  if (statsError) throw statsError;
+
   if (item.item_type === 'word') {
     await recordWordOutcome(student.id, item.content, {
       pronunciationScore: accuracy,
@@ -240,6 +276,8 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
     updatedLevel = summary.nextLevel;
   }
 
+  const studentStats = await getStudentStats(student.id);
+
   return {
     status: 201,
     body: {
@@ -250,6 +288,7 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
       passUnlocked: accuracy >= PASS_ACCURACY,
       masteryUnlocked: accuracy >= MASTERY_ACCURACY,
       summary: { ...summary, updatedLevel },
+      studentStats,
     },
   };
 }

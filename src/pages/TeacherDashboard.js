@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { PlusCircle } from 'lucide-react';
 import '../styles/TeacherDashboard.css';
-import { assessmentService, lessonService, progressService, studentService } from '../services/api';
+import { assessmentService, lessonService, studentService } from '../services/api';
 
 export default function TeacherDashboard() {
   const { user } = useContext(AuthContext);
@@ -19,18 +19,17 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [studentsResponse, lessonsResponse, assessmentsResponse, progressResponse] = await Promise.all([
+        const [studentsResponse, lessonsResponse, assessmentsResponse] = await Promise.all([
           studentService.getAllStudents().catch(() => ({ data: [] })),
           lessonService.getLessons().catch(() => ({ data: [] })),
           assessmentService.getAssessments().catch(() => ({ data: [] })),
-          progressService.getProgressReports().catch(() => ({ data: { reports: [] } })),
         ]);
         const students = Array.isArray(studentsResponse?.data) ? studentsResponse.data : [];
         const lessons = Array.isArray(lessonsResponse?.data) ? lessonsResponse.data : [];
         const assessments = assessmentsResponse?.data?.assessments || assessmentsResponse?.data || [];
-        const reports = progressResponse?.data?.reports || progressResponse?.data || [];
-        const averageProgress = reports.length
-          ? reports.reduce((sum, report) => sum + Number(report.overallScore || 0), 0) / reports.length
+        const statsRows = students.map((student) => student.stats).filter(Boolean);
+        const averageProgress = statsRows.length
+          ? statsRows.reduce((sum, stats) => sum + Number(stats.progress?.percentage || 0), 0) / statsRows.length
           : 0;
 
         setStats({
@@ -153,7 +152,7 @@ export default function TeacherDashboard() {
                 <div className="detail-info-block">
                   <div className="detail-name">{firstName}'s teaching dashboard</div>
                   <div className="detail-meta-row">
-                    Active lesson plans · 3 groups · {stats.loading ? '...' : stats.totalStudents} students
+                    Active lesson plans · {stats.loading ? '...' : stats.totalStudents} students
                   </div>
                 </div>
                 <div className="detail-badges">

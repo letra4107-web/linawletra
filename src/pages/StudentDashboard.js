@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { speechService, studentService, readingService, curriculumService } from '../services/api';
+import { speechService, studentService, readingService, curriculumService, progressService } from '../services/api';
 import { evaluateWord as evaluateWordPhonetics, syllabify } from '../utils/tagalogPhonetics';
 import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import {
@@ -24,8 +24,8 @@ import {
   FiLock,
   FiTarget,
 } from 'react-icons/fi';
-import { subscribeToTeacherUploadsByGradeLevel } from '../services/supabaseService';
-import { ACHIEVEMENTS, getUnlockedAchievementIds, getAchievementById } from '../services/achievementService';
+import { subscribeToCanonicalStudentStats, subscribeToTeacherUploadsByGradeLevel } from '../services/supabaseService';
+import { ACHIEVEMENTS, getAchievementById } from '../services/achievementService';
 import AchievementBadge from '../components/AchievementBadge';
 import AchievementUnlockModal from '../components/AchievementUnlockModal';
 import './StudentDashboard.css';
@@ -279,7 +279,7 @@ const StudentDashboard = () => {
         // the students row (userData) and are the real source of truth.
         let dashboardData = {};
         try {
-          const dashboardResponse = await studentService.getDashboardData?.(userId);
+          const dashboardResponse = await progressService.getCanonicalStats(userData.studentId || userData.student_id || userData.id || userId);
           dashboardData = dashboardResponse?.data?.data ?? dashboardResponse?.data ?? dashboardResponse ?? {};
         } catch (dashboardError) {
           console.warn('Dashboard summary fetch failed (non-fatal):', dashboardError);
@@ -303,7 +303,7 @@ const StudentDashboard = () => {
           setPerfectWords(progressData.perfectWords || progressData.perfect_words || []);
           setXp(progressData.xp || 0);
           setWordsCompleted(progressData.wordsCompleted || progressData.completed_words?.length || 0);
-          setAchievements(Math.floor((progressData.wordsCompleted || progressData.completedWords?.length || 0) / 5));
+          setAchievements(progressData.achievements || progressData.badges?.length || progressData.unlockedAchievementIds?.length || 0);
           // Load phonetic progression
           setCurrentPhoneticLevel(progressData.currentPhoneticLevel || 'Easy');
           setProgressInCurrentLevel(progressData.progressInCurrentLevel || 0);
@@ -354,105 +354,6 @@ const StudentDashboard = () => {
       }
     };
   }, []);
-  const buildProgressSnapshot = () => ({
-    xp,
-    wordsCompleted,
-    achievements,
-    completedWords,
-    perfectWords,
-    practiceLevel,
-    completed: progress.completed || 0,
-    accuracy: progress.accuracy || 0,
-    streak: progress.streak || 0,
-    totalLessons: progress.totalLessons || 7,
-    history: progress.history || [],
-    currentPhoneticLevel,
-    progressInCurrentLevel,
-    highestPhoneticLevel,
-    hardCyclesCompleted,
-    hadStreakBreak,
-    unlockedAchievementIds,
-    wordOfDayCompletedDate,
-    longestStreak,
-  });
-  // A save request can take longer than the gap between two rapid state
-  // changes (e.g. pronunciation evaluation updates xp, then wordsCompleted,
-  // then completedWords across separate renders). Firing an independent
-  // request per change lets them resolve OUT OF ORDER, so an older request
-  // finishing last can silently overwrite a newer one's data. Chaining every
-  // save onto this single ref forces them to run strictly one-at-a-time, and
-  // each step reads state fresh at ITS OWN turn, so the final queued save
-  // (whichever it is) always reflects the true latest state.
-  const saveChainRef = useRef(Promise.resolve());
-  const queuePersist = () => {
-    saveChainRef.current = saveChainRef.current.catch(() => {}).then(async () => {
-      if (!authUser) {
-        console.warn('Cannot save progress: user not authenticated');
-        return;
-      }
-      if (!hasLoadedProgress || !currentStudentId) {
-        // Initial load for this user hasn't finished restoring saved
-        // progress yet -- saving now would overwrite it with defaults.
-        return;
-      }
-      const progressData = buildProgressSnapshot();
-      try {
-        await studentService.updateStudent(currentStudentId, progressData).catch((error) => {
-          console.warn('Failed to save progress via API:', error);
-        });
-        console.log('Progress saved to backend for student:', currentStudentId);
-        localStorage.setItem(`linawletra_progress_${currentStudentId}`, JSON.stringify(progressData));
-      } catch (error) {
-        console.error('Failed to save progress:', error);
-      }
-    });
-    return saveChainRef.current;
-  };
-  useEffect(() => {
-    queuePersist();
-  }, [xp, wordsCompleted, achievements, completedWords, perfectWords, practiceLevel, progress.accuracy, progress.completed, progress.history, progress.streak, progress.totalLessons, currentPhoneticLevel, progressInCurrentLevel, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, unlockedAchievementIds, wordOfDayCompletedDate, longestStreak, currentStudentId, authUser, hasLoadedProgress, userRole]);
-
-  // Recompute unlocked achievements whenever the underlying stats change.
-  // This only ever ADDS badge ids (a union with what's already unlocked) --
-  // a badge earned in the past must never disappear just because a
-  // moment-in-time check (like an improving-streak window) no longer holds.
-  useEffect(() => {
-    if (!hasLoadedProgress) {
-      // Don't evaluate against default/zeroed stats before the real saved
-      // achievements have been restored -- that would both wipe real badges
-      // and fire a bogus "newly unlocked" celebration for Unang Hakbang.
-      return;
-    }
-    const stats = {
-      xp,
-      streak: progress.streak || 0,
-      accuracy: progress.accuracy || 0,
-      completed: progress.completed || 0,
-      activitiesCompleted: progress.activitiesCompleted || progress.activities_completed || progress.completed || 0,
-      totalAttempts: progress.totalAttempts || progress.total_attempts || progress.history?.length || 0,
-      accuracySum: progress.accuracySum || progress.accuracy_sum || (progress.history || []).reduce((sum, entry) => sum + getAttemptScore(entry), 0),
-      baselineAccuracy: progress.baselineAccuracy ?? progress.baseline_accuracy,
-      lastPracticeDate: progress.lastPracticeDate || progress.last_practice_date || progress.lastLoginDate,
-      level: practiceLevel,
-      readingLevel: practiceLevel,
-      history: progress.history || [],
-      perfectWords,
-      wordMasteryDetail,
-      highestPhoneticLevel,
-      hardCyclesCompleted,
-      hadStreakBreak,
-    };
-    const unlockedNow = getUnlockedAchievementIds(stats, unlockedAchievementIds);
-    setUnlockedAchievementIds((prev) => {
-      const newlyUnlockedIds = unlockedNow.filter((id) => !prev.includes(id));
-      if (newlyUnlockedIds.length === 0) {
-        return prev;
-      }
-      setNewlyUnlockedAchievements(newlyUnlockedIds.map(getAchievementById).filter(Boolean));
-      return [...prev, ...newlyUnlockedIds];
-    });
-  }, [xp, progress.streak, progress.accuracy, progress.completed, progress.activitiesCompleted, progress.activities_completed, progress.totalAttempts, progress.total_attempts, progress.accuracySum, progress.accuracy_sum, progress.baselineAccuracy, progress.baseline_accuracy, progress.history, progress.lastPracticeDate, progress.last_practice_date, progress.lastLoginDate, perfectWords, practiceLevel, wordMasteryDetail, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, hasLoadedProgress, unlockedAchievementIds]);
-
   useEffect(() => {
     setAchievements(unlockedAchievementIds.length);
   }, [unlockedAchievementIds.length]);
@@ -476,6 +377,19 @@ const StudentDashboard = () => {
     );
     return () => unsubscribe();
   }, [studentGrade, userRole]);
+  useEffect(() => {
+    if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return undefined;
+    const userId = authUser?.uid || authUser?.id;
+    return subscribeToCanonicalStudentStats(
+      { studentId: currentStudentId, userId },
+      () => {
+        refreshCanonicalStats().catch((error) => {
+          console.warn('Canonical stats realtime refresh failed:', error);
+        });
+      },
+      (error) => console.warn('Canonical stats realtime subscription failed:', error)
+    );
+  }, [hasLoadedProgress, currentStudentId, userRole, authUser]);
   const persistAccessibilitySettings = async (updates) => {
     const previous = accessibilitySettings;
     const next = { ...previous, ...updates };
@@ -495,17 +409,6 @@ const StudentDashboard = () => {
   const handleLogout = async () => {
     console.log('[Logout] clicked. currentStudentId:', currentStudentId, 'hasLoadedProgress:', hasLoadedProgress);
     try {
-      // Flush any pending progress to the backend BEFORE the auth token is
-      // cleared, and queue it onto the SAME ordered chain as every other
-      // save -- so it's guaranteed to run after (not race against) any save
-      // still pending from a recent action, and be the true final write.
-      if (currentStudentId && hasLoadedProgress) {
-        console.log('[Logout] flushing progress snapshot:', buildProgressSnapshot());
-        await queuePersist();
-        console.log('[Logout] flush call finished.');
-      } else {
-        console.log('[Logout] SKIPPED flush -- guard was false.');
-      }
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
@@ -764,27 +667,45 @@ const StudentDashboard = () => {
       setTimeout(() => setXpGainPopup(null), 2500);
     }
 
-    setWordsCompleted(Number(studentProgress.words_completed || 0));
-    setCompletedWords(Array.isArray(studentProgress.completed_words) ? studentProgress.completed_words : []);
-    setAchievements(Number(studentProgress.achievements || 0));
+    setWordsCompleted(Number(studentProgress.wordsCompleted ?? studentProgress.words_completed ?? 0));
+    setCompletedWords(Array.isArray(studentProgress.completedWords) ? studentProgress.completedWords : Array.isArray(studentProgress.completed_words) ? studentProgress.completed_words : []);
+    setAchievements(Number(studentProgress.achievements || studentProgress.badges?.length || studentProgress.unlockedAchievementIds?.length || 0));
     setAccuracy(Number(studentProgress.accuracy || 0));
-    setProgressInCurrentLevel(Number(studentProgress.progress_in_level || 0));
-    setCurrentPhoneticLevel(studentProgress.current_phonetic_level || 'Easy');
-    setHighestPhoneticLevel(studentProgress.highest_phonetic_level || 'Easy');
-    setHardCyclesCompleted(Number(studentProgress.hard_cycles_completed || 0));
-    setHadStreakBreak(Boolean(studentProgress.had_streak_break));
-    setUnlockedAchievementIds(Array.isArray(studentProgress.unlocked_achievement_ids) ? studentProgress.unlocked_achievement_ids : []);
-    setWordOfDayCompletedDate(studentProgress.word_of_day_completed_date || null);
-    setLongestStreak(Number(studentProgress.longest_streak || studentProgress.streak || 0));
+    setProgressInCurrentLevel(Number(studentProgress.progress?.completed ?? studentProgress.progressInCurrentLevel ?? studentProgress.progress_in_level ?? 0));
+    setCurrentPhoneticLevel(studentProgress.progress?.currentLevel || studentProgress.currentPhoneticLevel || studentProgress.current_phonetic_level || 'Easy');
+    setHighestPhoneticLevel(studentProgress.highestPhoneticLevel || studentProgress.highest_phonetic_level || 'Easy');
+    setHardCyclesCompleted(Number(studentProgress.hardCyclesCompleted ?? studentProgress.hard_cycles_completed ?? 0));
+    setHadStreakBreak(Boolean(studentProgress.hadStreakBreak ?? studentProgress.had_streak_break));
+    setUnlockedAchievementIds(
+      Array.isArray(studentProgress.unlockedAchievementIds)
+        ? studentProgress.unlockedAchievementIds
+        : Array.isArray(studentProgress.unlocked_achievement_ids)
+          ? studentProgress.unlocked_achievement_ids
+          : []
+    );
+    setWordOfDayCompletedDate(studentProgress.wordOfDayCompletedDate || studentProgress.word_of_day_completed_date || studentProgress.wordOfTheDay?.completedAt || null);
+    setLongestStreak(Number(studentProgress.longestStreak ?? studentProgress.longest_streak ?? studentProgress.streak ?? 0));
     setProgress((prev) => ({
       ...prev,
-      completed: Number(studentProgress.completed || prev.completed || 0),
-      accuracy: Number(studentProgress.accuracy || prev.accuracy || 0),
-      streak: Number(studentProgress.streak || prev.streak || 0),
+      completed: Number(studentProgress.activitiesCompleted ?? studentProgress.activities_completed ?? studentProgress.completed ?? prev.completed ?? 0),
+      accuracy: Number(studentProgress.accuracy ?? prev.accuracy ?? 0),
+      streak: Number(studentProgress.streak ?? prev.streak ?? 0),
+      totalAttempts: Number(studentProgress.totalAttempts ?? studentProgress.total_attempts ?? prev.totalAttempts ?? 0),
+      accuracySum: Number(studentProgress.accuracySum ?? studentProgress.accuracy_sum ?? prev.accuracySum ?? 0),
+      activitiesCompleted: Number(studentProgress.activitiesCompleted ?? studentProgress.activities_completed ?? prev.activitiesCompleted ?? 0),
+      dailyGoal: studentProgress.dailyGoal || prev.dailyGoal,
       history: Array.isArray(studentProgress.history) ? studentProgress.history : prev.history,
+      recentActivities: Array.isArray(studentProgress.recentActivities) ? studentProgress.recentActivities : Array.isArray(studentProgress.recentActivity) ? studentProgress.recentActivity : prev.recentActivities,
     }));
 
     return { gainedXp };
+  };
+  const refreshCanonicalStats = async () => {
+    if (!currentStudentId) return null;
+    const response = await progressService.getCanonicalStats(currentStudentId);
+    const stats = response?.data?.data ?? response?.data ?? response ?? null;
+    applyServerStudentProgress(stats);
+    return stats;
   };
   const normalizeForEvaluation = (text = '') =>
     text
@@ -1080,6 +1001,9 @@ const StudentDashboard = () => {
         history: [...(prev.history || []), attemptRecord],
       }));
     }
+    await refreshCanonicalStats().catch((error) => {
+      console.warn('Canonical stats refresh failed:', error);
+    });
     if (score < 80) {
       const encouragement = ENCOURAGEMENT_MESSAGES[Math.floor(Math.random() * ENCOURAGEMENT_MESSAGES.length)];
       showReassurance(encouragement, 'encourage');

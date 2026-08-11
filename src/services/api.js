@@ -216,6 +216,8 @@ export const studentService = {
   },
   getStudent: (id) => axiosInstance.get(`/students/${id}`),
   getStudentDashboard: (id) => axiosInstance.get(`/students/${id}/dashboard`),
+  getDashboardData: (id) => axiosInstance.get(`/progress/${id}/stats`),
+  getCanonicalStats: (id) => axiosInstance.get(`/progress/${id}/stats`),
   updateStudent: (id, data) => axiosInstance.put(`/students/${id}`, data),
   deleteStudent: (id) => axiosInstance.delete(`/students/${id}`),
   verifyChildPin: (id, pin) => axiosInstance.post(`/students/${id}/verify-pin`, { pin }),
@@ -239,6 +241,7 @@ export const progressService = {
   updateProgress: (id, data) => axiosInstance.put(`/progress/${id}`, data),
   getProgressByStudent: (studentId) => axiosInstance.get(`/progress/student/${studentId}`),
   getDashboardData: (studentId) => axiosInstance.get(`/progress/dashboard/${studentId}`),
+  getCanonicalStats: (studentId) => axiosInstance.get(`/progress/${studentId}/stats`),
   getProgressReports: () => axiosInstance.get('/progress/reports'),
 };
 
