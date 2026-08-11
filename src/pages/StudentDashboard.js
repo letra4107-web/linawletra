@@ -371,10 +371,6 @@ const StudentDashboard = () => {
       }
       const progressData = buildProgressSnapshot();
       try {
-        if (userRole === 'student') {
-          localStorage.setItem(`linawletra_progress_${currentStudentId}`, JSON.stringify(progressData));
-          return;
-        }
         await studentService.updateStudent(currentStudentId, progressData).catch((error) => {
           console.warn('Failed to save progress via API:', error);
         });

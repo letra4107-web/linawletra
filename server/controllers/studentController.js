@@ -453,7 +453,9 @@ export const updateStudent =async (req, res) => {
     if (name !== undefined) updateData.name = name;
     if (gradeLevel !== undefined) updateData.grade_level = gradeLevel;
     if (readingLevel !== undefined) updateData.reading_level = readingLevel;
-    const canWriteProgressFields = userRole === 'admin';
+    const isOwnStudentRecord = existingStudent.user_id === userId
+      || (userRole === 'parent' && existingStudent.parent_id === userId);
+    const canWriteProgressFields = userRole === 'admin' || isOwnStudentRecord;
 
     // Game progress now lives on dedicated students columns (see
     // supabase_migration_student_progress_columns.sql), not users.metadata.
