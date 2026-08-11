@@ -41,10 +41,6 @@ $headers = @{
   "Content-Type" = "application/json"
 }
 
-$fragmentWords = New-Object "System.Collections.Generic.HashSet[string]"
-@("apat", "na", "buwan", "limang", "taon", "anim", "oras", "pitong", "linggo", "walong") |
-  ForEach-Object { [void]$fragmentWords.Add($_) }
-
 $tempRoot = Join-Path $env:TEMP ("linaw_curriculum_import_" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
@@ -106,26 +102,29 @@ try {
   }
 
   $sheetConfig = @{
-    "Level 1 Simple" = @{ Level = "beginner"; HeaderRows = 1; SequenceOffset = 0 }
-    "Level 2 Intermediate" = @{ Level = "intermediate"; HeaderRows = 1; SequenceOffset = 200 }
-    "Level 3 Advanced" = @{ Level = "advanced"; HeaderRows = 1; SequenceOffset = 400 }
+    "Level 1 Simple" = @{ Level = "beginner"; Type = "word"; HeaderRows = 1; SequenceOffset = 1000; ContentColumn = 1; SyllableColumn = 4; DefinitionColumn = 5; PatternColumn = 3; BackendCategoryColumn = $null }
+    "Beginner Phonetics" = @{ Level = "beginner"; Type = "phonetic"; HeaderRows = 3; SequenceOffset = 2000; ContentColumn = 1; SyllableColumn = $null; DefinitionColumn = $null; PatternColumn = 4; BackendCategoryColumn = 5 }
+    "Level 2 Intermediate" = @{ Level = "intermediate"; Type = "word"; HeaderRows = 1; SequenceOffset = 3000; ContentColumn = 1; SyllableColumn = 4; DefinitionColumn = 5; PatternColumn = 3; BackendCategoryColumn = $null }
+    "Intermediate Phrases" = @{ Level = "intermediate"; Type = "phrase"; HeaderRows = 3; SequenceOffset = 4000; ContentColumn = 1; SyllableColumn = $null; DefinitionColumn = $null; PatternColumn = 4; BackendCategoryColumn = 5 }
+    "Level 3 Advanced" = @{ Level = "advanced"; Type = "word"; HeaderRows = 1; SequenceOffset = 5000; ContentColumn = 1; SyllableColumn = 4; DefinitionColumn = 5; PatternColumn = 3; BackendCategoryColumn = $null }
+    "Advanced Sentences" = @{ Level = "advanced"; Type = "sentence"; HeaderRows = 3; SequenceOffset = 6000; ContentColumn = 1; SyllableColumn = $null; DefinitionColumn = $null; PatternColumn = 4; BackendCategoryColumn = 5 }
+    "Advanced Paragraphs" = @{ Level = "advanced"; Type = "paragraph"; HeaderRows = 3; SequenceOffset = 7000; ContentColumn = 1; SyllableColumn = $null; DefinitionColumn = $null; PatternColumn = 4; BackendCategoryColumn = 5 }
   }
 
   $existingRows = @()
   if (-not $DryRun) {
-    $existingRows = Invoke-Supabase "GET" "curriculum_items?select=id,sequence_no,content,reading_level,item_type,is_active&item_type=eq.word&limit=1000"
+    $existingRows = Invoke-Supabase "GET" "curriculum_items?select=id,sequence_no,content,reading_level,item_type,is_active&limit=5000"
   }
   $existingByNaturalKey = @{}
   foreach ($row in ($existingRows | ForEach-Object { $_ })) {
     if (@("beginner", "intermediate", "advanced") -notcontains $row.reading_level) { continue }
-    $key = "$(Normalize-Text $row.content)|$($row.reading_level)"
+    $key = "$(Normalize-Text $row.content)|$($row.reading_level)|$($row.item_type)"
     if (-not $existingByNaturalKey.ContainsKey($key)) {
       $existingByNaturalKey[$key] = $row
     }
   }
 
   $rowsToUpsert = New-Object System.Collections.Generic.List[object]
-  $skippedFragments = New-Object System.Collections.Generic.List[object]
   $sheetIndex = 1
 
   foreach ($sheet in $sheets) {
@@ -155,45 +154,41 @@ try {
         }
       }
 
-      $content = ([string]$cells[1]).Trim()
+      $contentColumn = [int]$config.ContentColumn
+      $content = ([string]$cells[$contentColumn]).Trim()
       if (-not $content) { continue }
 
       $ordinal += 1
       $normalizedContent = Normalize-Text $content
       $level = [string]$config.Level
-      $naturalKey = "$normalizedContent|$level"
+      $itemType = [string]$config.Type
+      $naturalKey = "$normalizedContent|$level|$itemType"
       $computedSequence = [int]$config.SequenceOffset + $ordinal
-
-      if ($level -eq "intermediate" -and $fragmentWords.Contains($normalizedContent)) {
-        $skippedFragments.Add([pscustomobject]@{
-          content = $content
-          reading_level = $level
-          source_sheet = $name
-          source_row = $rowNumber
-          existing = $existingByNaturalKey[$naturalKey]
-        })
-        continue
-      }
 
       $existing = $existingByNaturalKey[$naturalKey]
       $metadata = @{}
-      if ($level -eq "advanced") {
+      if ($level -eq "advanced" -and $itemType -eq "word") {
         $metadata.definition_status = "pending_review"
         $metadata.definition_confidence = "lower"
         $metadata.review_note = "Level 3 definitions are AI-drafted compound phrases and need human review."
       }
 
+      $syllableHyphenation = if ($null -ne $config.SyllableColumn) { ([string]$cells[[int]$config.SyllableColumn]).Trim() } else { $content }
+      $definition = if ($null -ne $config.DefinitionColumn) { ([string]$cells[[int]$config.DefinitionColumn]).Trim() } else { $null }
+      $patternNote = if ($null -ne $config.PatternColumn) { ([string]$cells[[int]$config.PatternColumn]).Trim() } else { $null }
+      $backendCategory = if ($null -ne $config.BackendCategoryColumn) { ([string]$cells[[int]$config.BackendCategoryColumn]).Trim() } else { $null }
+
       $rowsToUpsert.Add([pscustomobject]@{
-        id = if ($existing) { $existing.id } else { "word-{0:D4}" -f $computedSequence }
+        id = if ($existing) { $existing.id } else { ("{0}-{1:D4}" -f $itemType, $computedSequence) }
         sequence_no = if ($existing) { $existing.sequence_no } else { $computedSequence }
-        item_type = "word"
+        item_type = $itemType
         reading_level = $level
         content = $content
         display_text = $content
-        syllable_hyphenation = ([string]$cells[4]).Trim()
-        definition = ([string]$cells[5]).Trim()
-        pattern_note = ([string]$cells[3]).Trim()
-        backend_category = $null
+        syllable_hyphenation = $syllableHyphenation
+        definition = $definition
+        pattern_note = $patternNote
+        backend_category = $backendCategory
         source_sheet = $name
         source_row = $rowNumber
         is_active = $true
@@ -205,13 +200,12 @@ try {
   }
 
   Write-Host "Workbook rows prepared: $($rowsToUpsert.Count)"
-  Write-Host "Level 2 fragments skipped: $($skippedFragments.Count)"
-  Write-Host "Level 3 rows marked pending review: $(($rowsToUpsert | Where-Object { $_.reading_level -eq 'advanced' }).Count)"
+  Write-Host "Level 3 word rows marked pending review: $(($rowsToUpsert | Where-Object { $_.reading_level -eq 'advanced' -and $_.item_type -eq 'word' }).Count)"
+  $rowsToUpsert | Group-Object item_type, reading_level | ForEach-Object {
+    Write-Host "Prepared $($_.Count) $($_.Name)"
+  }
 
   if ($DryRun) {
-    $skippedFragments | ForEach-Object {
-      Write-Host "Skipped fragment: $($_.content) ($($_.source_sheet) row $($_.source_row))"
-    }
     return
   }
 
@@ -220,24 +214,7 @@ try {
     Invoke-Supabase "POST" "curriculum_items?on_conflict=id" $chunk "resolution=merge-duplicates,return=minimal" | Out-Null
   }
 
-  $deactivatedFragments = 0
-  foreach ($fragment in $skippedFragments) {
-    if (-not $fragment.existing) { continue }
-    $body = @{
-      is_active = $false
-      metadata = @{
-        skipped_reason = "fragment_unclear_level_2_entry"
-        skipped_by = "importCurriculumWorkbook.ps1"
-        source_sheet = $fragment.source_sheet
-        source_row = $fragment.source_row
-      }
-    }
-    Invoke-Supabase "PATCH" "curriculum_items?id=eq.$($fragment.existing.id)" $body "return=minimal" | Out-Null
-    $deactivatedFragments += 1
-  }
-
-  Write-Host "Imported/updated $($rowsToUpsert.Count) curriculum word rows."
-  Write-Host "Deactivated $deactivatedFragments existing Level 2 fragment rows."
+  Write-Host "Imported/updated $($rowsToUpsert.Count) curriculum rows."
 }
 finally {
   if ($tempRoot -like (Join-Path $env:TEMP "linaw_curriculum_import_*")) {
