@@ -5,13 +5,16 @@ import { evaluateWord as evaluateWordPhonetics, syllabify } from '../utils/tagal
 import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import {
   FiBell,
+  FiBarChart2,
   FiLogOut,
   FiStar,
   FiHome,
   FiBookOpen,
+  FiCalendar,
   FiChevronLeft,
   FiChevronRight,
   FiMic,
+  FiPlayCircle,
   FiTrendingUp,
   FiSettings,
   FiZap,
@@ -1221,7 +1224,35 @@ const StudentDashboard = () => {
   // Parity note: this intentionally mirrors mobile's current X/5 formula.
   // It is not a true midnight-reset daily counter; it rolls over every 5 attempts.
   const todayGoalDone = Math.min(totalAttempts % DAILY_GOAL, DAILY_GOAL);
+  const todayGoalPercent = Math.min(100, Math.round((todayGoalDone / Math.max(DAILY_GOAL, 1)) * 100));
+  const todayGoalRemaining = Math.max(DAILY_GOAL - todayGoalDone, 0);
+  const firstName = studentName?.split(' ')[0] || 'Student';
+  const wordsPracticed = Number(wordsCompleted || completedWords.length || wordMasterySummary.mastered || 0);
   const weeklyPracticeDays = countWeeklyPracticeDays(history, dateTime);
+  const weeklyActivity = useMemo(() => {
+    const start = new Date(dateTime);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay() + 1);
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return {
+        key: date.toISOString().slice(0, 10),
+        label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date).slice(0, 3),
+        value: 0,
+      };
+    });
+    history.forEach((entry) => {
+      const raw = getAttemptTimestamp(entry);
+      const time = typeof raw === 'number' ? raw : new Date(raw).getTime();
+      if (!Number.isFinite(time)) return;
+      const key = new Date(time).toISOString().slice(0, 10);
+      const day = days.find((item) => item.key === key);
+      if (day) day.value += 1;
+    });
+    return days;
+  }, [dateTime, history]);
+  const weeklyMaxActivity = Math.max(1, ...weeklyActivity.map((day) => day.value));
   const recentReadingActivity = useMemo(
     () => [...history]
       .sort((a, b) => {
@@ -1257,6 +1288,40 @@ const StudentDashboard = () => {
     100,
     (practiceProgressCurrent / Math.max(practiceProgressTarget, 1)) * 100
   );
+  const todayActivity = useMemo(() => {
+    const todayKey = dateTime.toISOString().slice(0, 10);
+    const entries = history
+      .filter((entry) => {
+        const raw = getAttemptTimestamp(entry);
+        const time = typeof raw === 'number' ? raw : new Date(raw).getTime();
+        return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === todayKey;
+      })
+      .slice(-3)
+      .reverse()
+      .map((entry, index) => ({
+        id: `${getActivityTitle(entry)}-${getAttemptTimestamp(entry)}-${index}`,
+        icon: entry.correct ? <FiCheckCircle aria-hidden="true" /> : <FiMic aria-hidden="true" />,
+        label: getActivityTitle(entry),
+        detail: `Accuracy ${getAttemptScore(entry)}%`,
+      }));
+    if (wordOfDayCompletedDate === todayKey) {
+      entries.unshift({
+        id: 'word-of-day',
+        icon: <FiTarget aria-hidden="true" />,
+        label: 'Word of the Day completed',
+        detail: 'Great daily practice',
+      });
+    }
+    if (streakDays > 0) {
+      entries.push({
+        id: 'streak',
+        icon: <FiZap aria-hidden="true" />,
+        label: `${streakDays} day streak`,
+        detail: 'Keep it going',
+      });
+    }
+    return entries.slice(0, 4);
+  }, [dateTime, history, streakDays, wordOfDayCompletedDate]);
   const rootStyles = {
     fontFamily: fontFamilies[accessibilitySettings.fontFamily] || fontFamilies['Comic Sans'],
     fontSize: `${accessibilitySettings.textSize}px`,
@@ -1463,142 +1528,235 @@ const StudentDashboard = () => {
           </div>
         </section>
         {activeSection === 'home' && (
-          <>
+          <section className="student-home-redesign">
             <div className="home-greeting">
-              <h2>{timeGreeting}, {studentName}!</h2>
-              <p>Keep learning today!</p>
+              <div>
+                <span className="student-home-eyebrow">{timeGreeting}</span>
+                <h2>Good Day, {firstName}</h2>
+                <p>Ready to practice reading today?</p>
+              </div>
+              <div className="student-home-header-actions">
+                <button type="button" className="student-home-icon-button" onClick={() => handleNav('settings')} aria-label="Open settings">
+                  <FiBell aria-hidden="true" />
+                </button>
+                <span className="student-home-avatar" aria-hidden="true">{firstName.charAt(0)}</span>
+                <span className="student-home-date"><FiCalendar aria-hidden="true" /> {formattedDate}</span>
+              </div>
             </div>
 
-            {wordOfTheDay && (
-              <article className="word-of-the-day-card word-of-the-day-featured">
-                <span className="word-of-the-day-kicker">Salita Ngayon</span>
-                <span className={`word-of-the-day-word ${hasPracticedWordOfTheDay ? '' : 'is-hidden'}`}>
-                  {hasPracticedWordOfTheDay ? wordOfTheDay.accentedSpelling : '---'}
-                </span>
-                {hasPracticedWordOfTheDay ? (
-                  <>
-                    <span className="word-of-the-day-meaning">{wordOfTheDay.meaning}</span>
-                    {latestWordOfTheDayAttempt?.score !== undefined && (
-                      <span className="word-of-the-day-meaning">
-                        Accuracy: {latestWordOfTheDayAttempt.score}%
-                      </span>
-                    )}
-                    {wordOfTheDay.example && (
-                      <span className="word-of-the-day-example">"{wordOfTheDay.example}"</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="word-of-the-day-meaning">Practice today's hidden word to reveal it.</span>
-                )}
-                <div className="word-of-the-day-actions">
-                  {hasPracticedWordOfTheDay && (
-                    <button
-                      type="button"
-                      className="button-large button-secondary"
-                      onClick={() => speakTagalog(wordOfTheDay.accentedSpelling)}
-                    >
-                      <FiVolume2 aria-hidden="true" /> Listen
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="button-large button-primary"
-                    onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
-                  >
-                    <FiTarget aria-hidden="true" />
-                    {hasPracticedWordOfTheDay ? 'Try for 100%' : 'Start Word of the Day'}
-                  </button>
+            <section className="student-home-hero-card">
+              <div className="student-home-hero-copy">
+                <span className="student-home-hero-kicker">LinawLetra reading path</span>
+                <h3>Keep Learning, {firstName}!</h3>
+                <p>Every word you practice brings you one step closer to becoming a stronger reader.</p>
+                <button type="button" className="button-large button-primary student-home-hero-button" onClick={nextLesson ? openNextLesson : () => handleNav('content')}>
+                  Continue Learning <FiChevronRight aria-hidden="true" />
+                </button>
+              </div>
+              <div className="student-home-progress-ring" style={{ '--progress': `${completionPercent}%` }}>
+                <div>
+                  <strong>{completionPercent}%</strong>
+                  <span>Reading Progress</span>
                 </div>
-              </article>
-            )}
-
-            <section className="detail-block">
-              <div className="detail-block-title">Continue Learning</div>
-              {nextLesson ? (
-                <div className="continue-learning-card">
-                  <p className="continue-learning-title">{nextLesson.title}</p>
-                  <p className="continue-learning-copy">{nextLesson.description || nextLesson.category || 'Continue your assigned lesson.'}</p>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${completionPercent}%` }} />
-                  </div>
-                  <button className="button-large button-primary" type="button" onClick={openNextLesson}>
-                    Continue {nextLesson.title}
-                  </button>
-                </div>
-              ) : (
-                <div className="empty-state-card">
-                  <p>No reading path is available yet.</p>
-                  <p>Ask your teacher to assign your first lesson so progress appears here.</p>
-                </div>
-              )}
-            </section>
-
-            <section className="detail-block">
-              <div className="detail-block-title">Today's progress</div>
-              <div className="home-summary-grid">
-                <article className="stat-card">
-                  <p className="stat-title">Lessons completed</p>
-                  <p className="stat-value">{activitiesCompleted}</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Total XP</p>
-                  <p className="stat-value">{xp}</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Streak</p>
-                  <p className="stat-value">{streakDays} days</p>
-                  <p className="stat-note">Consecutive days using LinawLetra</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Words mastered</p>
-                  <p className="stat-value">{wordMasterySummary.mastered}</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">All-time accuracy</p>
-                  <p className="stat-value">{allTimeAccuracy}%</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Practice sessions</p>
-                  <p className="stat-value">{totalAttempts}</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Longest streak</p>
-                  <p className="stat-value">{longestStreak} days</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Today's reading goal</p>
-                  <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
-                  <p className="stat-note">Daily reading target</p>
-                </article>
-                <article className="stat-card">
-                  <p className="stat-title">Practice days this week</p>
-                  <p className="stat-value">{weeklyPracticeDays}</p>
-                </article>
+              </div>
+              <div className="student-home-hero-art" aria-hidden="true">
+                <FiBookOpen />
               </div>
             </section>
 
-            <section className="detail-block">
-              <div className="detail-block-title">Recent reading activity</div>
-              {recentReadingActivity.length > 0 ? (
-                <div className="student-activity-list">
-                  {recentReadingActivity.map((entry, index) => (
-                    <div key={`${getActivityTitle(entry)}-${getAttemptTimestamp(entry)}-${index}`} className="student-activity-row">
-                      <div>
-                        <div className="student-activity-title">{getActivityTitle(entry)}</div>
-                        <div className="student-activity-meta">{getAttemptDateLabel(entry)} &middot; Accuracy {getAttemptScore(entry)}%</div>
-                      </div>
-                      <span className={`student-activity-status ${entry.correct ? 'is-passed' : ''}`}>{entry.correct ? 'Passed' : 'Practice'}</span>
-                    </div>
-                  ))}
+            <div className="student-home-stats-grid">
+              <article className="student-home-stat-card accent-blue">
+                <span className="student-home-stat-icon"><FiBookOpen aria-hidden="true" /></span>
+                <div>
+                  <p>Lessons Completed</p>
+                  <strong>{activitiesCompleted} / {lessonsGoal}</strong>
+                  <small>{completionPercent}% complete</small>
                 </div>
-              ) : (
-                <div className="empty-state-card">
-                  <p>No recent reading activity yet.</p>
+              </article>
+              <article className="student-home-stat-card accent-green">
+                <span className="student-home-stat-icon"><FiMic aria-hidden="true" /></span>
+                <div>
+                  <p>Practice Sessions</p>
+                  <strong>{totalAttempts}</strong>
+                  <small>{weeklyPracticeDays} practice days this week</small>
                 </div>
-              )}
-            </section>
+              </article>
+              <article className="student-home-stat-card accent-yellow">
+                <span className="student-home-stat-icon"><FiStar aria-hidden="true" /></span>
+                <div>
+                  <p>Words Practiced</p>
+                  <strong>{wordsPracticed}</strong>
+                  <small>{wordMasterySummary.mastered} mastered</small>
+                </div>
+              </article>
+              <article className="student-home-stat-card accent-coral">
+                <span className="student-home-stat-icon"><FiZap aria-hidden="true" /></span>
+                <div>
+                  <p>Reading Streak</p>
+                  <strong>{streakDays} Days</strong>
+                  <small>{longestStreak} days longest</small>
+                </div>
+              </article>
+            </div>
 
-            <section className="detail-block">
+            <div className="student-home-layout-grid">
+              <div className="student-home-main-column">
+                <section className="student-home-card student-home-goal-card">
+                  <div className="student-home-card-heading">
+                    <span className="student-home-card-icon"><FiTarget aria-hidden="true" /></span>
+                    <div>
+                      <h3>Today's Reading Goal</h3>
+                      <p>Keep up your reading practice</p>
+                    </div>
+                  </div>
+                  <div className="student-home-goal-value">
+                    <strong>{todayGoalDone}/{DAILY_GOAL}</strong>
+                    <span>Words</span>
+                  </div>
+                  <div className="progress-bar student-home-progress-bar">
+                    <div className="progress-fill" style={{ width: `${todayGoalPercent}%` }} />
+                  </div>
+                  <div className="student-home-goal-meta">
+                    <span>{todayGoalPercent}% Complete</span>
+                    <span>{todayGoalRemaining} more {todayGoalRemaining === 1 ? 'word' : 'words'} to reach your goal</span>
+                  </div>
+                  <button type="button" className="button-large button-primary student-home-full-button" onClick={() => handleNav('practice')}>
+                    Practice Now <FiChevronRight aria-hidden="true" />
+                  </button>
+                </section>
+
+                <section className="student-home-card student-home-learning-card">
+                  <div className="student-home-card-heading">
+                    <span className="student-home-card-icon"><FiBookOpen aria-hidden="true" /></span>
+                    <div>
+                      <h3>Continue Learning</h3>
+                      <p>{nextLesson ? nextLesson.title : 'No reading path is available yet.'}</p>
+                    </div>
+                  </div>
+                  {nextLesson ? (
+                    <>
+                      <p className="student-home-muted">{nextLesson.description || nextLesson.category || 'Continue your assigned lesson.'}</p>
+                      <div className="progress-bar student-home-progress-bar">
+                        <div className="progress-fill" style={{ width: `${completionPercent}%` }} />
+                      </div>
+                      <button className="button-secondary button-small" type="button" onClick={openNextLesson}>
+                        Continue <FiChevronRight aria-hidden="true" />
+                      </button>
+                    </>
+                  ) : (
+                    <p className="student-home-muted">Ask your teacher to assign your first lesson so progress appears here.</p>
+                  )}
+                </section>
+
+                <div className="student-home-action-grid">
+                  <section className="student-home-card student-home-practice-card">
+                    <span className="student-home-large-icon"><FiMic aria-hidden="true" /></span>
+                    <h3>Quick Practice</h3>
+                    <p>Practice your reading and pronunciation.</p>
+                    <button type="button" className="button-large button-primary" onClick={() => handleNav('practice')}>
+                      Start Practice <FiPlayCircle aria-hidden="true" />
+                    </button>
+                  </section>
+
+                  {wordOfTheDay && (
+                    <section className="student-home-card student-home-word-card">
+                      <span className="student-home-card-icon"><FiVolume2 aria-hidden="true" /></span>
+                      <h3>Salita Ngayon</h3>
+                      <strong className={hasPracticedWordOfTheDay ? '' : 'is-hidden'}>
+                        {hasPracticedWordOfTheDay ? wordOfTheDay.accentedSpelling : '---'}
+                      </strong>
+                      <p>{hasPracticedWordOfTheDay ? wordOfTheDay.meaning : "Practice today's hidden word to reveal it."}</p>
+                      <button
+                        type="button"
+                        className="button-secondary button-small"
+                        onClick={() => { selectPracticeWord(wordOfTheDay); handleNav('practice'); }}
+                      >
+                        {hasPracticedWordOfTheDay ? 'Try Again' : 'Start'} <FiChevronRight aria-hidden="true" />
+                      </button>
+                    </section>
+                  )}
+                </div>
+              </div>
+
+              <aside className="student-home-side-column">
+                <section className="student-home-card student-home-weekly-card">
+                  <div className="student-home-card-heading">
+                    <span className="student-home-card-icon"><FiBarChart2 aria-hidden="true" /></span>
+                    <div>
+                      <h3>Weekly Progress</h3>
+                      <p>{weeklyPracticeDays} active {weeklyPracticeDays === 1 ? 'day' : 'days'} this week</p>
+                    </div>
+                  </div>
+                  <div className="student-home-weekly-bars">
+                    {weeklyActivity.map((day) => (
+                      <div key={day.key} className="student-home-weekly-day">
+                        <span className="student-home-weekly-bar">
+                          <span style={{ height: `${Math.max(8, (day.value / weeklyMaxActivity) * 100)}%` }} />
+                        </span>
+                        <small>{day.label}</small>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="student-home-card student-home-achievement-card">
+                  <div className="student-home-card-heading">
+                    <span className="student-home-card-icon"><FiAward aria-hidden="true" /></span>
+                    <div>
+                      <h3>Recent Achievement</h3>
+                      <p>{recentAchievement ? 'New badge unlocked' : 'Keep practicing'}</p>
+                    </div>
+                  </div>
+                  {recentAchievement ? (
+                    <div className="student-home-achievement-body">
+                      <AchievementBadge achievement={recentAchievement} unlocked />
+                      <div>
+                        <strong>{recentAchievement.name}</strong>
+                        <p>{recentAchievement.description}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="student-home-muted">Keep practicing to unlock your first badge!</p>
+                  )}
+                  <button type="button" className="button-secondary button-small" onClick={() => handleNav('badges')}>
+                    View Badges <FiChevronRight aria-hidden="true" />
+                  </button>
+                </section>
+
+                <section className="student-home-card student-home-today-card">
+                  <div className="student-home-card-heading">
+                    <span className="student-home-card-icon"><FiCalendar aria-hidden="true" /></span>
+                    <div>
+                      <h3>Today</h3>
+                      <p>{formattedTime}</p>
+                    </div>
+                  </div>
+                  {todayActivity.length > 0 ? (
+                    <div className="student-home-today-list">
+                      {todayActivity.map((item) => (
+                        <div key={item.id} className="student-home-today-item">
+                          <span>{item.icon}</span>
+                          <div>
+                            <strong>{item.label}</strong>
+                            <small>{item.detail}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="student-home-muted">No activity yet today. Start practicing!</p>
+                  )}
+                </section>
+
+                <section className="student-home-card student-home-motivation-card">
+                  <span className="student-home-card-icon"><FiStar aria-hidden="true" /></span>
+                  <h3>You're Doing Great!</h3>
+                  <p>Every little bit helps you become a stronger reader.</p>
+                </section>
+              </aside>
+            </div>
+
+            <section className="detail-block student-home-legacy-achievements">
               <div className="detail-block-title">Achievements</div>
               {recentAchievement ? (
                 <div className="home-achievement-card">
@@ -1617,7 +1775,7 @@ const StudentDashboard = () => {
                 </div>
               )}
             </section>
-          </>
+          </section>
         )}
         {activeSection === 'practice' && (
           <section id="practice-section" className="detail-block practice-page">

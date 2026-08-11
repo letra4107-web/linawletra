@@ -3994,3 +3994,557 @@ body,
     left: max(14px, calc((100vw - 980px) / 2));
   }
 }
+
+/* ============================================================================
+   Student Home redesign
+   ============================================================================ */
+.student-home-redesign {
+  display: grid;
+  gap: 18px;
+}
+
+.student-home-redesign .student-mobile-hero {
+  display: none;
+}
+
+.student-home-redesign .student-home-legacy-achievements {
+  display: none;
+}
+
+.home-greeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 2px;
+}
+
+.home-greeting h2 {
+  margin: 0;
+  color: var(--mobile-ink);
+  font-size: clamp(2rem, 4vw, 3.3rem);
+  line-height: 1.02;
+  font-weight: 950;
+}
+
+.home-greeting p {
+  margin: 6px 0 0;
+  color: var(--mobile-ink-soft);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.student-home-eyebrow {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: var(--mobile-lavender-dark);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.student-home-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.student-home-icon-button,
+.student-home-avatar,
+.student-home-date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(95, 82, 176, 0.16);
+  background: rgba(255, 247, 231, 0.9);
+  box-shadow: 0 10px 22px rgba(59, 50, 44, 0.08);
+}
+
+.student-home-icon-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  color: var(--mobile-ink);
+  cursor: pointer;
+}
+
+.student-home-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #7C6FCF, #E06B4C);
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.student-home-date {
+  min-height: 44px;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 16px;
+  color: var(--mobile-ink);
+  font-size: 0.88rem;
+  font-weight: 850;
+}
+
+.student-home-hero-card {
+  position: relative;
+  min-height: 270px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px 180px;
+  align-items: center;
+  gap: 24px;
+  overflow: hidden;
+  padding: 32px 34px;
+  border-radius: 30px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.2), transparent 20%),
+    radial-gradient(circle at 95% 92%, rgba(255, 247, 231, 0.18), transparent 32%),
+    linear-gradient(135deg, #5F24D5 0%, #7B2DE2 42%, #B21962 100%);
+  box-shadow: 0 22px 44px rgba(95, 36, 213, 0.24);
+}
+
+.student-home-hero-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.student-home-hero-kicker {
+  display: inline-flex;
+  margin-bottom: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.student-home-hero-card h3 {
+  margin: 0;
+  max-width: 720px;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.student-home-hero-card p {
+  max-width: 560px;
+  margin: 12px 0 22px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 1rem;
+  line-height: 1.55;
+  font-weight: 800;
+}
+
+.student-home-hero-button {
+  width: fit-content;
+  background: #ffffff;
+  color: var(--mobile-lavender-dark);
+}
+
+.student-home-progress-ring {
+  position: relative;
+  z-index: 2;
+  width: 142px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(#ffffff var(--progress), rgba(255, 255, 255, 0.22) 0);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.student-home-progress-ring > div {
+  width: 106px;
+  aspect-ratio: 1;
+  display: grid;
+  place-content: center;
+  border-radius: 50%;
+  background: rgba(116, 39, 195, 0.9);
+  text-align: center;
+}
+
+.student-home-progress-ring strong {
+  font-size: 1.7rem;
+  font-weight: 950;
+}
+
+.student-home-progress-ring span {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.student-home-hero-art {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 170px;
+  height: 190px;
+  border-radius: 42px 42px 24px 24px;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 6.6rem;
+}
+
+.student-home-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.student-home-stat-card,
+.student-home-card {
+  background: rgba(255, 247, 231, 0.96);
+  border: 1px solid rgba(95, 82, 176, 0.14);
+  box-shadow: 0 14px 30px rgba(59, 50, 44, 0.09);
+}
+
+.student-home-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 126px;
+  padding: 18px;
+  border-radius: 22px;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.student-home-card:hover,
+.student-home-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 38px rgba(59, 50, 44, 0.12);
+}
+
+.student-home-stat-icon,
+.student-home-card-icon,
+.student-home-large-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--mobile-lavender-dark);
+  background: #F2EEFF;
+}
+
+.student-home-stat-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 18px;
+  font-size: 1.4rem;
+}
+
+.student-home-stat-card p,
+.student-home-card-heading p,
+.student-home-muted,
+.student-home-goal-meta,
+.student-home-practice-card p,
+.student-home-word-card p,
+.student-home-motivation-card p {
+  margin: 0;
+  color: var(--mobile-ink-soft);
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.student-home-stat-card strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--mobile-ink);
+  font-size: clamp(1.55rem, 2.4vw, 2.15rem);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.student-home-stat-card small {
+  display: block;
+  margin-top: 5px;
+  color: var(--mobile-ink-soft);
+  font-weight: 800;
+}
+
+.accent-blue .student-home-stat-icon { background: #E6F2FF; color: #2869B8; }
+.accent-green .student-home-stat-icon { background: #E2F7EF; color: #188C69; }
+.accent-yellow .student-home-stat-icon { background: #FFF0B8; color: #B77908; }
+.accent-coral .student-home-stat-icon { background: #FFE3DA; color: #C24D36; }
+
+.student-home-layout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 18px;
+}
+
+.student-home-main-column,
+.student-home-side-column {
+  display: grid;
+  gap: 16px;
+}
+
+.student-home-card {
+  border-radius: 24px;
+  padding: 20px;
+}
+
+.student-home-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.student-home-card-heading h3,
+.student-home-practice-card h3,
+.student-home-word-card h3,
+.student-home-motivation-card h3 {
+  margin: 0;
+  color: var(--mobile-ink);
+  font-size: 1.08rem;
+  line-height: 1.15;
+  font-weight: 950;
+}
+
+.student-home-card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+}
+
+.student-home-goal-card {
+  background: #ffffff;
+}
+
+.student-home-goal-value {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.student-home-goal-value strong {
+  color: var(--mobile-ink);
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.student-home-goal-value span {
+  color: var(--mobile-ink-soft);
+  font-weight: 900;
+}
+
+.student-home-progress-bar {
+  min-height: 12px;
+  background: #ECE7F5;
+}
+
+.student-home-progress-bar .progress-fill {
+  background: linear-gradient(90deg, #5F24D5, #9C4DE6);
+}
+
+.student-home-goal-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 16px;
+  font-size: 0.86rem;
+}
+
+.student-home-full-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.student-home-learning-card {
+  background: linear-gradient(135deg, #FFF7E7, #F5F3FC);
+}
+
+.student-home-learning-card .button-small,
+.student-home-achievement-card .button-small,
+.student-home-word-card .button-small {
+  width: fit-content;
+}
+
+.student-home-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.student-home-practice-card,
+.student-home-word-card,
+.student-home-motivation-card {
+  display: grid;
+  gap: 12px;
+}
+
+.student-home-large-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 22px;
+  font-size: 2rem;
+}
+
+.student-home-word-card {
+  background: linear-gradient(135deg, #F5F3FC, #FFF7E7);
+}
+
+.student-home-word-card strong {
+  color: var(--mobile-lavender-dark);
+  font-size: 2rem;
+  font-weight: 950;
+}
+
+.student-home-weekly-bars {
+  height: 140px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.student-home-weekly-day {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+}
+
+.student-home-weekly-bar {
+  width: 100%;
+  height: 104px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ECE7F5;
+  overflow: hidden;
+}
+
+.student-home-weekly-bar span {
+  width: 100%;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, #8D68D8, #5F24D5);
+}
+
+.student-home-weekly-day small {
+  color: var(--mobile-ink-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.student-home-achievement-card {
+  background: #F5F3FC;
+}
+
+.student-home-achievement-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.student-home-achievement-body strong {
+  color: var(--mobile-ink);
+  font-weight: 950;
+}
+
+.student-home-achievement-body p {
+  margin: 4px 0 0;
+  color: var(--mobile-ink-soft);
+  font-weight: 750;
+}
+
+.student-home-today-list {
+  display: grid;
+  gap: 10px;
+}
+
+.student-home-today-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.student-home-today-item > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  background: #F2EEFF;
+  color: var(--mobile-lavender-dark);
+}
+
+.student-home-today-item strong,
+.student-home-today-item small {
+  display: block;
+}
+
+.student-home-today-item strong {
+  color: var(--mobile-ink);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.student-home-today-item small {
+  margin-top: 2px;
+  color: var(--mobile-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.student-home-motivation-card {
+  background: linear-gradient(135deg, #FFF0B8, #FFF7E7);
+}
+
+@media (max-width: 1200px) {
+  .student-home-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .student-home-hero-card {
+    grid-template-columns: minmax(0, 1fr) 140px;
+  }
+
+  .student-home-hero-art {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .student-home-layout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .home-greeting {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .student-home-header-actions {
+    justify-content: flex-start;
+  }
+
+  .student-home-hero-card {
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+
+  .student-home-progress-ring {
+    width: 124px;
+  }
+
+  .student-home-progress-ring > div {
+    width: 92px;
+  }
+
+  .student-home-stats-grid,
+  .student-home-action-grid {
+    grid-template-columns: 1fr;
+  }
+}
