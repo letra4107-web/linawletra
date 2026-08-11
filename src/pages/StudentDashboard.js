@@ -1546,7 +1546,7 @@ const StudentDashboard = () => {
                 <article className="stat-card">
                   <p className="stat-title">Today's reading goal</p>
                   <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
-                  <p className="stat-note">Matches mobile's current rollover logic</p>
+                  <p className="stat-note">Daily reading target</p>
                 </article>
                 <article className="stat-card">
                   <p className="stat-title">Practice days this week</p>

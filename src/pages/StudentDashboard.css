@@ -1985,3 +1985,562 @@ a {
     overflow: visible;
   }
 }
+
+/* ============================================================================
+   Polished student dashboard experience
+   ============================================================================ */
+.dashboard-page {
+  --surface: #fbfaf7;
+  --surface-soft: #ffffff;
+  --surface-muted: #eef3f7;
+  --border: #dce3ea;
+  --text: #172033;
+  --text-secondary: #607086;
+  --accent: #3157d5;
+  --accent-strong: #243b93;
+  --accent-soft: #eaf0ff;
+  --success: #148a5b;
+  --warning: #b7791f;
+  --danger: #d14343;
+  --radius: 8px;
+  --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, #f7fafc 0%, #eef3f7 100%);
+}
+
+.student-shell {
+  background:
+    radial-gradient(circle at top left, rgba(49, 87, 213, 0.08), transparent 32rem),
+    linear-gradient(135deg, #f8fafc 0%, #eef3f7 45%, #f7f2ea 100%);
+}
+
+.student-sidebar {
+  width: 248px;
+  padding: 24px 14px;
+  background: rgba(255, 255, 255, 0.88);
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 12px 0 40px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(16px);
+}
+
+.student-sidebar-brand {
+  min-height: 56px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #172033;
+  color: #ffffff;
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.16);
+}
+
+.student-sidebar-brand img {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.student-sidebar-brand-name {
+  color: #ffffff;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.student-sidebar-nav {
+  gap: 8px;
+}
+
+.student-sidebar-link {
+  position: relative;
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 12px 12px;
+  color: #526276;
+  font-weight: 800;
+}
+
+.student-sidebar-link:hover {
+  background: #f1f5f9;
+  border-color: rgba(49, 87, 213, 0.18);
+}
+
+.student-sidebar-link.active {
+  background: var(--accent-soft);
+  border-color: rgba(49, 87, 213, 0.28);
+  color: var(--accent-strong);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.student-sidebar-link-icon {
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(96, 112, 134, 0.1);
+}
+
+.student-sidebar-link.active .student-sidebar-link-icon {
+  background: #ffffff;
+  color: var(--accent);
+}
+
+.student-sidebar-logout {
+  width: 100%;
+  justify-content: center;
+  min-height: 42px;
+  border-radius: 8px;
+  background: #fff5f5;
+}
+
+.student-main {
+  padding: 30px 34px 42px;
+}
+
+.student-side-panel {
+  width: 336px;
+  padding: 30px 22px 42px 0;
+}
+
+.home-greeting {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.home-greeting h2 {
+  font-size: clamp(1.55rem, 2.4vw, 2.25rem);
+  line-height: 1.08;
+  color: #111827;
+}
+
+.home-greeting p {
+  font-weight: 700;
+  color: #64748b;
+}
+
+.detail-block,
+.student-panel-card,
+.word-card,
+.feedback-panel,
+.content-card,
+.assessment-card,
+.notification-item,
+.achievement-badge,
+.metric-card,
+.stat-card {
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07);
+}
+
+.detail-block {
+  padding: 22px;
+  margin-bottom: 22px;
+}
+
+.detail-block-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  font-size: 0.92rem;
+  font-weight: 900;
+  color: #22304a;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.detail-block-title::before {
+  content: "";
+  width: 9px;
+  height: 24px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #3157d5, #13a06f);
+}
+
+.home-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stat-card {
+  position: relative;
+  min-height: 138px;
+  padding: 18px;
+  overflow: hidden;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.stat-card::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #eaf0ff;
+}
+
+.stat-card:nth-child(2)::after {
+  background: #fff1d6;
+}
+
+.stat-card:nth-child(3)::after,
+.stat-card:nth-child(7)::after {
+  background: #e7f7ef;
+}
+
+.stat-card:nth-child(4)::after,
+.stat-card:nth-child(5)::after {
+  background: #ffeceb;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(49, 87, 213, 0.32);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.1);
+}
+
+.stat-card .stat-title {
+  position: relative;
+  z-index: 1;
+  max-width: calc(100% - 52px);
+  margin: 0 0 20px;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.stat-card .stat-value {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: #111827;
+  font-size: clamp(1.7rem, 2.2vw, 2.25rem);
+  line-height: 1;
+  font-weight: 900;
+}
+
+.stat-note {
+  position: relative;
+  z-index: 1;
+  margin: 10px 0 0;
+  color: #526276;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.word-of-the-day-featured {
+  position: relative;
+  min-height: 190px;
+  padding: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(49, 87, 213, 0.22);
+  background:
+    linear-gradient(135deg, rgba(49, 87, 213, 0.12), rgba(19, 160, 111, 0.1)),
+    #ffffff;
+  overflow: hidden;
+}
+
+.word-of-the-day-featured::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  bottom: -38px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.word-of-the-day-kicker,
+.word-card-kicker {
+  color: var(--accent);
+  letter-spacing: 0;
+  font-size: 0.78rem;
+}
+
+.word-of-the-day-featured .word-of-the-day-word {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(2.4rem, 5.2vw, 4rem);
+  color: #111827;
+}
+
+.continue-learning-card {
+  padding: 18px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.button-large,
+.button-primary,
+.button-secondary,
+.button-danger,
+.button-small,
+.tab-button {
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.button-primary {
+  background: linear-gradient(135deg, #3157d5, #243b93);
+  box-shadow: 0 14px 24px rgba(49, 87, 213, 0.22);
+}
+
+.button-secondary {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+}
+
+.progress-bar {
+  height: 10px;
+  border-radius: 8px;
+  background: #e6edf5;
+  border: 0;
+}
+
+.progress-fill {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #3157d5 0%, #13a06f 100%);
+}
+
+.practice-page {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.96));
+}
+
+.practice-header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.practice-header h3 {
+  font-size: clamp(1.45rem, 2vw, 2rem);
+  line-height: 1.1;
+  color: #111827;
+}
+
+.practice-sub,
+.practice-level-note {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.practice-hero {
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.9fr);
+  gap: 18px;
+}
+
+.word-card {
+  min-height: 440px;
+  padding: clamp(22px, 3vw, 36px);
+  background:
+    linear-gradient(145deg, rgba(49, 87, 213, 0.07), rgba(19, 160, 111, 0.05)),
+    #ffffff;
+}
+
+.word-card-top {
+  align-items: flex-start;
+}
+
+.lesson-progress-inline {
+  min-width: 190px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.word-display {
+  min-height: 190px;
+  place-content: center start;
+}
+
+.practice-word {
+  font-size: clamp(3rem, 6.4vw, 5.4rem);
+  color: #111827;
+  letter-spacing: 0;
+}
+
+.syllable-divider {
+  color: #13a06f;
+}
+
+.practice-syllable.syllable-active {
+  background: #ffe8a3;
+  box-shadow: 0 8px 20px rgba(183, 121, 31, 0.2);
+}
+
+.word-actions {
+  gap: 10px;
+}
+
+.word-actions .button-large {
+  min-height: 50px;
+  padding: 12px 16px;
+}
+
+.feedback-panel {
+  padding: 22px;
+}
+
+.feedback-panel h4 {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.feedback-result {
+  border-radius: 8px;
+  background: #f3f7fb;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.feedback-icon {
+  border-radius: 8px;
+  color: var(--accent);
+}
+
+.accuracy-display,
+.homograph-panel,
+.highlight-word,
+.empty-state-card,
+.student-activity-row,
+.current-practice-panel {
+  border-radius: 8px;
+}
+
+.student-activity-row {
+  background: #ffffff;
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.student-activity-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(49, 87, 213, 0.28);
+}
+
+.student-panel-card {
+  padding: 18px;
+}
+
+.student-panel-card h4 {
+  font-size: 0.94rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.student-stat-chip {
+  min-height: 58px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.student-side-panel .word-of-the-day-card,
+.recommended-practice-chip {
+  border-radius: 8px;
+}
+
+.recommended-practice-chip {
+  background: #f8fafc;
+}
+
+.content-card,
+.assessment-card,
+.metric-card {
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.content-card:hover,
+.assessment-card:hover,
+.metric-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(49, 87, 213, 0.28);
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.09);
+}
+
+@media (max-width: 1180px) {
+  .home-summary-grid,
+  .progress-metrics,
+  .practice-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .practice-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .student-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 12px;
+  }
+
+  .student-sidebar-top {
+    gap: 10px;
+  }
+
+  .student-sidebar-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .student-sidebar-link {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 42px;
+    padding: 10px 12px;
+  }
+
+  .student-sidebar-bottom {
+    display: none;
+  }
+
+  .student-main,
+  .student-side-panel {
+    padding: 18px 14px;
+  }
+
+  .home-greeting {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .home-summary-grid,
+  .progress-metrics,
+  .practice-stats,
+  .student-content-grid,
+  .student-assessment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-block {
+    padding: 16px;
+  }
+
+  .word-card,
+  .feedback-panel {
+    padding: 18px;
+  }
+
+  .practice-word {
+    font-size: clamp(2.4rem, 13vw, 4rem);
+  }
+
+  .word-actions .button-large {
+    width: 100%;
+  }
+}
