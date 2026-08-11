@@ -3388,3 +3388,197 @@ body,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ============================================================================
+   Desktop web refinement
+   ============================================================================ */
+.student-shell {
+  display: block;
+  width: min(1220px, calc(100vw - 40px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px 0 52px;
+}
+
+.student-main {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+}
+
+.student-side-panel {
+  display: none !important;
+}
+
+.student-sidebar {
+  position: sticky;
+  top: 16px;
+  left: auto;
+  bottom: auto;
+  z-index: 80;
+  width: 100%;
+  min-height: 74px;
+  margin: 0 0 22px;
+  padding: 10px 12px;
+  transform: none;
+  border-radius: 22px;
+  background: rgba(255, 250, 240, 0.94);
+  border: 1px solid rgba(95, 82, 176, 0.14);
+  box-shadow: 0 16px 36px rgba(59, 50, 44, 0.12);
+}
+
+.student-sidebar-top {
+  display: block;
+}
+
+.student-sidebar-nav {
+  grid-template-columns: repeat(7, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.student-sidebar-link {
+  min-height: 54px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  font-size: 0.78rem;
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.student-sidebar-link:hover {
+  background: #F2EEFF;
+}
+
+.student-sidebar-link-icon {
+  width: 38px;
+  height: 32px;
+}
+
+.student-mobile-hero {
+  min-height: 250px;
+  margin-bottom: 24px;
+  padding: 28px;
+  border-radius: 30px;
+}
+
+.student-mobile-hero h1 {
+  max-width: 620px;
+  font-size: clamp(2.35rem, 5vw, 4.8rem);
+}
+
+.student-mobile-hero p {
+  max-width: 560px;
+  font-size: 1.04rem;
+}
+
+.student-mobile-hero-art {
+  right: 48px;
+  bottom: -18px;
+  width: 190px;
+  height: 226px;
+  font-size: 6.7rem;
+}
+
+.home-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  min-height: 132px;
+  padding: 18px;
+  background: #FFF7E7;
+}
+
+.detail-block,
+.continue-learning-card,
+.student-activity-row,
+.home-achievement-card,
+.current-practice-panel,
+.practiceModeCard,
+.content-card,
+.assessment-card,
+.metric-card,
+.feedback-result,
+.settings-block,
+.settings-switch,
+.settings-theme-card,
+.preview-box {
+  background-color: #FFF7E7;
+  border-color: rgba(95, 82, 176, 0.14);
+}
+
+.word-of-the-day-featured,
+.homeHeroCard {
+  background: linear-gradient(135deg, #FFF7E7 0%, #F5F3FC 100%);
+}
+
+.practice-hero,
+.content-grid,
+.settings-content,
+.profile-layout,
+.badges-grid {
+  gap: 18px;
+}
+
+@media (max-width: 980px) {
+  .student-shell {
+    width: min(100% - 24px, 880px);
+    padding-bottom: 104px;
+  }
+
+  .student-sidebar {
+    position: fixed;
+    left: 50%;
+    top: auto;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    margin: 0;
+    padding: 8px;
+    transform: translateX(-50%);
+    border-radius: 24px;
+  }
+
+  .student-sidebar-nav {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .student-sidebar-link {
+    min-height: 58px;
+    padding: 4px 2px;
+    font-size: 0.66rem;
+  }
+
+  .home-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .student-shell {
+    width: calc(100% - 20px);
+    padding-top: 12px;
+  }
+
+  .student-mobile-hero {
+    min-height: 214px;
+    padding: 20px;
+  }
+
+  .student-mobile-hero h1 {
+    max-width: 72%;
+    font-size: 2.15rem;
+  }
+
+  .student-mobile-hero p {
+    max-width: 66%;
+    font-size: 0.92rem;
+  }
+
+  .student-mobile-hero-art {
+    right: 8px;
+    width: 118px;
+    height: 168px;
+    font-size: 4.4rem;
+  }
+}
