@@ -51,12 +51,19 @@ const getStudentProfile = async (student) => {
 };
 
 const resolveChildProgress = async (student) => {
-  const child = await safeMaybeSingle('children', (query) =>
-    query
-      .select('*')
-      .or(`student_id.eq.${student.id},user_id.eq.${student.user_id},auth_uid.eq.${student.user_id}`)
-      .maybeSingle()
-  );
+  let child = null;
+  const childLookups = [
+    student.child_id ? { column: 'id', value: student.child_id } : null,
+    student.id ? { column: 'student_id', value: student.id } : null,
+    student.user_id ? { column: 'auth_uid', value: student.user_id } : null,
+  ].filter(Boolean);
+
+  for (const lookup of childLookups) {
+    child = await safeMaybeSingle('children', (query) =>
+      query.select('*').eq(lookup.column, lookup.value).maybeSingle()
+    );
+    if (child) break;
+  }
 
   const childIds = [child?.id, student.child_id, student.id, student.user_id].filter(Boolean);
   if (!childIds.length) return { child, childProgress: null };
@@ -105,10 +112,12 @@ const buildRecentActivity = ({ history, attempts, lessons, curriculum }) => {
   return sortByRecent([...attemptActivity, ...lessonActivity, ...curriculumActivity, ...historyActivity]).slice(0, 10);
 };
 
-const buildBadges = async (student, stats) => {
+const buildBadges = async (student, stats, childProgress = null) => {
   const storedIds = [
     ...arrayOrEmpty(student.unlocked_achievement_ids),
     ...arrayOrEmpty(student.badges).map((badge) => (typeof badge === 'string' ? badge : badge?.id)).filter(Boolean),
+    ...arrayOrEmpty(childProgress?.achievements).map((badge) => (typeof badge === 'string' ? badge : badge?.id)).filter(Boolean),
+    ...arrayOrEmpty(childProgress?.badges).map((badge) => (typeof badge === 'string' ? badge : badge?.id)).filter(Boolean),
   ];
   const nextIds = new Set(storedIds);
 
@@ -136,23 +145,25 @@ export const getStudentStats = async (studentIdOrUserId) => {
   const student = await resolveStudent(studentIdOrUserId);
   if (!student) return null;
 
-  const [{ child, childProgress }, profile, attempts, lessons, curriculum, mastery, confusions, notifications] = await Promise.all([
-    resolveChildProgress(student),
+  const { child, childProgress } = await resolveChildProgress(student);
+  const progressStudentIds = [...new Set([student.id, student.user_id, student.child_id, child?.id].filter(Boolean))];
+
+  const [profile, attempts, lessons, curriculum, mastery, confusions, notifications] = await Promise.all([
     getStudentProfile(student),
     safeSelect('reading_attempts', (query) =>
-      query.select('*').eq('student_id', student.id).order('completed_at', { ascending: false }).limit(500)
+      query.select('*').in('student_id', progressStudentIds).order('completed_at', { ascending: false }).limit(500)
     ),
     safeSelect('lesson_progress', (query) =>
-      query.select('*').in('student_id', [student.id, student.user_id].filter(Boolean)).order('updated_at', { ascending: false }).limit(500)
+      query.select('*').in('student_id', progressStudentIds).order('updated_at', { ascending: false }).limit(500)
     ),
     safeSelect('curriculum_progress', (query) =>
-      query.select('*, curriculum_items(content)').eq('student_id', student.id).order('updated_at', { ascending: false }).limit(500)
+      query.select('*, curriculum_items(content)').in('student_id', progressStudentIds).order('updated_at', { ascending: false }).limit(500)
     ),
     safeSelect('word_mastery', (query) =>
-      query.select('word, mastery_status, avg_phoneme_accuracy, avg_syllable_accuracy, last_attempt_at').eq('student_id', student.id)
+      query.select('word, mastery_status, avg_phoneme_accuracy, avg_syllable_accuracy, last_attempt_at').in('student_id', progressStudentIds)
     ),
     safeSelect('confusion_patterns', (query) =>
-      query.select('pattern_type, occurrence_count').eq('student_id', student.id).order('occurrence_count', { ascending: false }).limit(5)
+      query.select('pattern_type, occurrence_count').in('student_id', progressStudentIds).order('occurrence_count', { ascending: false }).limit(5)
     ),
     safeSelect('notifications', (query) =>
       query.select('*').in('user_id', [student.user_id, student.id].filter(Boolean)).order('created_at', { ascending: false }).limit(20)
@@ -160,6 +171,10 @@ export const getStudentStats = async (studentIdOrUserId) => {
   ]);
 
   const history = arrayOrEmpty(student.history);
+  const completedWords = [
+    ...arrayOrEmpty(student.completed_words),
+    ...arrayOrEmpty(childProgress?.completed_words),
+  ].filter((word, index, list) => word && list.indexOf(word) === index);
   const completedLessons = lessons.filter((row) => String(row.status || '').toLowerCase() === 'completed').length;
   const completedCurriculum = curriculum.filter((row) => row.completed_at || row.is_completed || row.status === 'completed').length;
   const attemptScores = attempts.map((attempt) => numberOr(attempt.accuracy_score, null)).filter((score) => score != null);
@@ -184,7 +199,8 @@ export const getStudentStats = async (studentIdOrUserId) => {
   const completed = Math.min(numberOr(student.progress_in_level ?? childProgress?.progress_in_level, 0), required);
   const wordsCompleted = Math.max(
     numberOr(student.words_completed, 0),
-    arrayOrEmpty(student.completed_words).length,
+    numberOr(childProgress?.word_count, 0),
+    completedWords.length,
     mastery.filter((row) => row.mastery_status === 'mastered').length
   );
   const recentActivity = buildRecentActivity({ history, attempts, lessons, curriculum });
@@ -216,8 +232,8 @@ export const getStudentStats = async (studentIdOrUserId) => {
     completed: activitiesCompleted,
     wordsCompleted,
     words_completed: wordsCompleted,
-    completedWords: arrayOrEmpty(student.completed_words),
-    completed_words: arrayOrEmpty(student.completed_words),
+    completedWords,
+    completed_words: completedWords,
     lessonsCompleted: completedLessons,
     lessons_completed: completedLessons,
     baselineAccuracy: childProgress?.baseline_accuracy ?? student.baseline_accuracy ?? null,
@@ -268,7 +284,7 @@ export const getStudentStats = async (studentIdOrUserId) => {
     totalLessons: lessons.length,
   };
 
-  const badges = await buildBadges(student, statsBase);
+  const badges = await buildBadges(student, statsBase, childProgress);
   return {
     ...statsBase,
     badges,
