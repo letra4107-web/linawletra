@@ -9,6 +9,8 @@ import {
   FiStar,
   FiHome,
   FiBookOpen,
+  FiChevronLeft,
+  FiChevronRight,
   FiMic,
   FiTrendingUp,
   FiSettings,
@@ -211,6 +213,7 @@ const StudentDashboard = () => {
   const [wordMasteryDetail, setWordMasteryDetail] = useState({ mastered: [], needsPractice: [], difficult: [] });
   const [topConfusions, setTopConfusions] = useState([]);
   const [recommendedPracticeWords, setRecommendedPracticeWords] = useState([]);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const fontFamilies = {
     'Comic Sans': '"Comic Sans MS", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
@@ -1316,12 +1319,22 @@ const StudentDashboard = () => {
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
       style={rootStyles}
     >
-    <div className="student-shell">
+    <div className={`student-shell ${isSidebarCollapsed ? 'student-shell--nav-collapsed' : ''}`}>
       <aside className="student-sidebar">
         <div className="student-sidebar-top">
           <div className="student-sidebar-brand">
-            <img src="/logo.png" alt="LinawLetra logo" />
-            <span className="student-sidebar-brand-name">LinawLetra</span>
+            <div className="student-sidebar-brand-lockup">
+              <img src="/logo.png" alt="LinawLetra logo" />
+              <span className="student-sidebar-brand-name">LinawLetra</span>
+            </div>
+            <button
+              type="button"
+              className="student-sidebar-toggle"
+              aria-label={isSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
+              onClick={() => setIsSidebarCollapsed((current) => !current)}
+            >
+              {isSidebarCollapsed ? <FiChevronRight aria-hidden="true" /> : <FiChevronLeft aria-hidden="true" />}
+            </button>
           </div>
           <nav className="student-sidebar-nav">
             <button
@@ -1329,55 +1342,63 @@ const StudentDashboard = () => {
               className={`student-sidebar-link ${activeSection === 'home' ? 'active' : ''}`}
               onClick={() => handleNav('home')}
             >
-              <span className="student-sidebar-link-icon"><FiHome aria-hidden="true" /></span> Home
+              <span className="student-sidebar-link-icon"><FiHome aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Home</span>
             </button>
             <button
               type="button"
               className={`student-sidebar-link ${activeSection === 'content' ? 'active' : ''}`}
               onClick={() => handleNav('content')}
             >
-              <span className="student-sidebar-link-icon"><FiBookOpen aria-hidden="true" /></span> Learn
+              <span className="student-sidebar-link-icon"><FiBookOpen aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Learn</span>
             </button>
             <button
               type="button"
               className={`student-sidebar-link ${activeSection === 'practice' ? 'active' : ''}`}
               onClick={() => handleNav('practice')}
             >
-              <span className="student-sidebar-link-icon"><FiMic aria-hidden="true" /></span> Practice
+              <span className="student-sidebar-link-icon"><FiMic aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Practice</span>
             </button>
             <button
               type="button"
               className={`student-sidebar-link ${activeSection === 'progress' ? 'active' : ''}`}
               onClick={() => handleNav('progress')}
             >
-              <span className="student-sidebar-link-icon"><FiTrendingUp aria-hidden="true" /></span> Progress
+              <span className="student-sidebar-link-icon"><FiTrendingUp aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Progress</span>
             </button>
             <button
               type="button"
               className={`student-sidebar-link ${activeSection === 'badges' ? 'active' : ''}`}
               onClick={() => handleNav('badges')}
             >
-              <span className="student-sidebar-link-icon"><FiAward aria-hidden="true" /></span> Badges
+              <span className="student-sidebar-link-icon"><FiAward aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Badges</span>
             </button>
             <button
               type="button"
               className={`student-sidebar-link ${activeSection === 'profile' ? 'active' : ''}`}
               onClick={() => handleNav('profile')}
             >
-              <span className="student-sidebar-link-icon"><FiUser aria-hidden="true" /></span> Profile
+              <span className="student-sidebar-link-icon"><FiUser aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Profile</span>
             </button>
             <button
               type="button"
               className={`student-sidebar-link ${activeSection === 'settings' ? 'active' : ''}`}
               onClick={() => handleNav('settings')}
             >
-              <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span> Settings
+              <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span>
+              <span className="student-sidebar-link-label">Settings</span>
             </button>
           </nav>
         </div>
         <div className="student-sidebar-bottom">
           <button className="student-sidebar-logout" type="button" onClick={handleLogout}>
-            <FiLogOut aria-hidden="true" /> Logout
+            <FiLogOut aria-hidden="true" />
+            <span className="student-sidebar-link-label">Logout</span>
           </button>
         </div>
       </aside>
