@@ -48,14 +48,38 @@ const escapeSsml = (text = '') =>
 // can report back the exact playback offset each syllable starts at —
 // that's what makes real karaoke-style highlighting possible, instead of
 // the character-length estimate used for the OpenAI fallback path.
+//
+// A mark isolating a single-letter syllable (e.g. the "a" in "a-so") makes
+// Google's fil-PH voices read that letter as its English alphabet name
+// ("ay") instead of the Tagalog vowel sound ("ah") — confirmed by A/B
+// testing plain text vs. marked text with identical voice/endpoint. Since
+// Tagalog syllables frequently start with a lone vowel ("a-so", "u-lo",
+// "i-sa"...), a 1-letter syllable is merged into the following syllable
+// (or the preceding one, if it's word-final) so no mark ever isolates a
+// single letter. The merged unit gets one mark at its first syllable's
+// index; the syllable(s) folded into it don't get their own highlight
+// step, which is the accepted trade-off for correct pronunciation.
 const buildSyllableSsml = (text) => {
   const words = formatForTagalogSpeech(text).split(/\s+/).filter(Boolean);
   const parts = [];
   words.forEach((word, wordIndex) => {
-    const syllables = syllabify(word);
-    const list = syllables.length ? syllables : [word];
-    list.forEach((syllable, syllableIndex) => {
-      parts.push(`<mark name="w${wordIndex}_s${syllableIndex}"/>${escapeSsml(syllable)}`);
+    const rawSyllables = syllabify(word);
+    const syllables = rawSyllables.length ? rawSyllables : [word];
+
+    const units = [];
+    syllables.forEach((syllable, syllableIndex) => {
+      if (syllable.length === 1 && syllableIndex + 1 < syllables.length) {
+        units.push({ text: syllable, firstIndex: syllableIndex, pendingMerge: true });
+      } else if (units.length && units[units.length - 1].pendingMerge) {
+        units[units.length - 1].text += syllable;
+        delete units[units.length - 1].pendingMerge;
+      } else {
+        units.push({ text: syllable, firstIndex: syllableIndex });
+      }
+    });
+
+    units.forEach((unit) => {
+      parts.push(`<mark name="w${wordIndex}_s${unit.firstIndex}"/>${escapeSsml(unit.text)}`);
     });
     parts.push(' ');
   });
