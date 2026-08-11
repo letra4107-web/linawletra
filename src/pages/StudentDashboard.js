@@ -1253,16 +1253,6 @@ const StudentDashboard = () => {
     return days;
   }, [dateTime, history]);
   const weeklyMaxActivity = Math.max(1, ...weeklyActivity.map((day) => day.value));
-  const recentReadingActivity = useMemo(
-    () => [...history]
-      .sort((a, b) => {
-        const aTime = typeof getAttemptTimestamp(a) === 'number' ? getAttemptTimestamp(a) : new Date(getAttemptTimestamp(a)).getTime();
-        const bTime = typeof getAttemptTimestamp(b) === 'number' ? getAttemptTimestamp(b) : new Date(getAttemptTimestamp(b)).getTime();
-        return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
-      })
-      .slice(0, 3),
-    [history]
-  );
   const streakDays = progress.streak || 0;
   const greetingHour = dateTime.getHours();
   const timeGreeting = greetingHour < 12 ? 'Magandang umaga' : greetingHour < 18 ? 'Magandang hapon' : 'Magandang gabi';
@@ -1506,6 +1496,7 @@ const StudentDashboard = () => {
             ))}
           </div>
         )}
+        {activeSection !== 'home' && (
         <section className={`student-mobile-hero student-mobile-hero--${activeSection}`}>
           <div className="student-mobile-hero-top">
             <div className="student-mobile-hero-brand">
@@ -1527,6 +1518,7 @@ const StudentDashboard = () => {
             {activeSection === 'practice' ? <FiMic /> : activeSection === 'progress' ? <FiTrendingUp /> : activeSection === 'badges' ? <FiAward /> : activeSection === 'settings' ? <FiSettings /> : <FiBookOpen />}
           </div>
         </section>
+        )}
         {activeSection === 'home' && (
           <section className="student-home-redesign">
             <div className="home-greeting">
@@ -1562,6 +1554,7 @@ const StudentDashboard = () => {
               <div className="student-home-hero-art" aria-hidden="true">
                 <FiBookOpen />
               </div>
+              <img className="student-home-hero-image" src="/bg.png" alt="" aria-hidden="true" />
             </section>
 
             <div className="student-home-stats-grid">

@@ -4548,3 +4548,191 @@ body,
     grid-template-columns: 1fr;
   }
 }
+
+/* Home polish pass after local run check */
+.student-home-redesign {
+  gap: 16px;
+}
+
+.student-home-redesign .home-greeting {
+  padding: 2px 2px 0;
+}
+
+.student-home-redesign .home-greeting h2 {
+  font-size: clamp(1.9rem, 3vw, 2.75rem);
+  letter-spacing: 0;
+}
+
+.student-home-redesign .home-greeting p {
+  font-size: 0.98rem;
+}
+
+.student-home-hero-card {
+  min-height: 238px;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  isolation: isolate;
+  background:
+    linear-gradient(90deg, rgba(88, 45, 181, 0.98) 0%, rgba(113, 57, 211, 0.94) 48%, rgba(168, 34, 104, 0.84) 100%);
+}
+
+.student-home-hero-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(52, 31, 99, 0.12), transparent 62%);
+}
+
+.student-home-hero-card h3 {
+  font-size: clamp(2rem, 4vw, 3.25rem);
+}
+
+.student-home-hero-card p {
+  max-width: 540px;
+  margin-bottom: 18px;
+}
+
+.student-home-hero-art {
+  display: none;
+}
+
+.student-home-hero-image {
+  position: absolute;
+  right: -54px;
+  bottom: -74px;
+  z-index: -1;
+  width: min(620px, 52%);
+  max-width: none;
+  opacity: 0.46;
+  pointer-events: none;
+}
+
+.student-home-progress-ring {
+  width: 126px;
+  justify-self: end;
+}
+
+.student-home-progress-ring > div {
+  width: 94px;
+}
+
+.student-home-progress-ring strong {
+  font-size: 1.45rem;
+}
+
+.student-home-stats-grid {
+  gap: 12px;
+}
+
+.student-home-stat-card {
+  min-height: 112px;
+  padding: 16px;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.student-home-stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+}
+
+.student-home-stat-card p {
+  font-size: 0.88rem;
+}
+
+.student-home-stat-card strong {
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+}
+
+.student-home-card {
+  border-radius: 20px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.student-home-goal-card,
+.student-home-learning-card,
+.student-home-weekly-card,
+.student-home-today-card {
+  background: #ffffff;
+}
+
+.student-home-achievement-card {
+  background: linear-gradient(135deg, #F5F3FC 0%, #EEE8FF 100%);
+}
+
+.student-home-motivation-card {
+  background: linear-gradient(135deg, #FFF4C9 0%, #FFF8E8 100%);
+}
+
+.student-home-layout-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+}
+
+.student-home-main-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.student-home-goal-card {
+  border-left: 5px solid var(--mobile-lavender-dark);
+}
+
+.student-home-learning-card {
+  border-left: 5px solid #5C8047;
+}
+
+.student-home-action-grid {
+  align-items: stretch;
+}
+
+.student-home-practice-card {
+  background:
+    linear-gradient(135deg, rgba(242, 238, 255, 0.94), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+}
+
+.student-home-word-card {
+  background:
+    linear-gradient(135deg, rgba(255, 247, 231, 0.94), rgba(255, 255, 255, 0.98)),
+    #ffffff;
+}
+
+.student-home-side-column {
+  align-content: start;
+}
+
+.student-home-weekly-bars {
+  height: 116px;
+}
+
+.student-home-weekly-bar {
+  height: 88px;
+}
+
+@media (max-width: 1200px) {
+  .student-home-hero-card {
+    grid-template-columns: minmax(0, 1fr) 118px;
+    background:
+      linear-gradient(90deg, rgba(88, 45, 181, 0.98) 0%, rgba(113, 57, 211, 0.94) 58%, rgba(168, 34, 104, 0.82) 100%);
+  }
+}
+
+@media (max-width: 860px) {
+  .student-home-hero-card {
+    grid-template-columns: 1fr;
+    background:
+      linear-gradient(135deg, rgba(88, 45, 181, 0.98), rgba(143, 62, 215, 0.9));
+  }
+
+  .student-home-progress-ring {
+    justify-self: start;
+  }
+
+  .student-home-hero-image {
+    right: -180px;
+    bottom: -70px;
+    width: 620px;
+    opacity: 0.24;
+  }
+}
