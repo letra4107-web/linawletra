@@ -1219,6 +1219,8 @@ const StudentDashboard = () => {
     }),
     [searchValue, assessments]
   );
+  const lessonsGoal = progress.totalLessons || 7;
+  const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
   const nextLesson = filteredLessons[0] || null;
   const recommendedLesson = sharedLessons.find((item) => getLessonStatus(item) !== 'Completed') || sharedLessons[0] || null;
   const completedLessonCount = sharedLessons.filter((item) => getLessonStatus(item) === 'Completed').length;
@@ -1273,8 +1275,6 @@ const StudentDashboard = () => {
   }).format(dateTime);
   const progressXp = useMemo(() => Number(xp) || 0, [xp]);
   const tier = useMemo(() => getTierFromXp(progressXp), [progressXp]);
-  const lessonsGoal = progress.totalLessons || 7;
-  const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
   const history = Array.isArray(progress.history) ? progress.history : [];
   const totalAttempts = Number(progress.totalAttempts || progress.total_attempts || history.length || 0);
   const accuracySum = Number(progress.accuracySum || progress.accuracy_sum || history.reduce((sum, entry) => sum + getAttemptScore(entry), 0));
