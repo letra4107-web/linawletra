@@ -322,8 +322,7 @@ const toCamelCasePracticeWord = (row = {}) => ({
 
 export const practiceWordService = {
   // Fetches from Supabase (via backend); falls back to the last-known cache,
-  // then to the bundled offline snapshot if this is the very first load
-  // without a connection. See docs/practice_words_sources.md for content notes.
+  // and otherwise returns no words. Reading content must come from the backend.
   getPracticeWords: async () => {
     try {
       const response = await axiosInstance.get('/practice-words');
@@ -341,8 +340,7 @@ export const practiceWordService = {
       } catch (cacheError) {
         console.warn('Practice word cache read failed:', cacheError.message);
       }
-      const offlineSnapshot = await import('../data/practiceWords.json');
-      return (offlineSnapshot.default || []).map(toCamelCasePracticeWord);
+      return [];
     }
   },
 };

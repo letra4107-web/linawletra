@@ -43,25 +43,6 @@ const PRONUNCIATION_XP = {
 };
 const DAILY_GOAL = 5;
 const ENCOURAGEMENT_MESSAGES = ['YOU DID WELL!', 'GOOD JOB!', 'NICE TRY!', 'KEEP GOING!', 'GREAT EFFORT!'];
-// Phonetic progression system for LinawLetra
-const TAGALOG_PHONETIC_LEVELS = {
-  Easy: [
-    'pa-pa',
-    'ma-ma',
-    'sa-pa',
-    'la-ta',
-    'ma-ta',
-  ],
-  Medium: [
-    'a-so na-ta-kot',
-    'ba-ta na-la-ro',
-    'may ma-ta ang ta-o',
-  ],
-  Hard: [
-    'Ang ba-ta ay ma-ba-it.',
-    'Ma-sa-ya ang a-so.',
-  ],
-};
 const normalizeText = (text = '') =>
   text
     .toString()
@@ -111,11 +92,6 @@ const levelNames = {
   beginner: 'Beginner',
   intermediate: 'Intermediate',
   advanced: 'Advanced',
-};
-const getPhoneticWordForProgress = (level = 'Easy', progressCount = 0) => {
-  const list = TAGALOG_PHONETIC_LEVELS[level] || TAGALOG_PHONETIC_LEVELS.Easy;
-  const normalizedProgress = Math.max(0, progressCount);
-  return list[normalizedProgress % list.length];
 };
 const curriculumItemToPracticeWord = (item = {}) => ({
   id: item.id,
@@ -174,7 +150,7 @@ const StudentDashboard = () => {
   const [teacherUploads, setTeacherUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [expectedText, setExpectedText] = useState('aso');
+  const [expectedText, setExpectedText] = useState('');
   const [activePracticeWord, setActivePracticeWord] = useState(null);
   const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
   const [curriculumSummary, setCurriculumSummary] = useState(null);
@@ -331,10 +307,6 @@ const StudentDashboard = () => {
         }
         const nextLevel = userData.readingLevel || assignedLevel || 'beginner';
         setPracticeLevel(nextLevel);
-        // Use phonetic words for structured practice
-        const initialPhoneticLevel = progressData?.currentPhoneticLevel || 'Easy';
-        const initialProgressCount = progressData?.progressInCurrentLevel || 0;
-        setExpectedText(getPhoneticWordForProgress(initialPhoneticLevel, initialProgressCount));
         // Only now is it safe to let the save effect write to the backend, and
         // for the achievement check to run -- every real saved value has been
         // restored into state at this point.
@@ -797,12 +769,10 @@ const StudentDashboard = () => {
   // hits the count threshold; may fire again on later attempts if not ready yet.
   const attemptLevelAdvance = async () => {
     try {
-      const levelWords = TAGALOG_PHONETIC_LEVELS[currentPhoneticLevel] || [];
-      const response = await readingService.checkLevelReadiness(currentStudentId, levelWords);
+      const response = await readingService.checkLevelReadiness(currentStudentId, []);
       const result = response?.data || response || {};
       if (result.ready) {
         const nextLevel = advanceLevel();
-        setExpectedText(getPhoneticWordForProgress(nextLevel, 0));
         showReassurance('LEVEL UP!', 'perfect');
         showConfetti();
         playClapSound();
@@ -864,13 +834,10 @@ const StudentDashboard = () => {
       return;
     }
 
-    const nextExpectedWord = getPhoneticWordForProgress(currentPhoneticLevel, progressInCurrentLevel);
-    setExpectedText(nextExpectedWord);
     setActivePracticeWord(null);
+    setExpectedText('');
     resetPracticeAttemptState();
-    setTimeout(() => {
-      speakTagalog(nextExpectedWord, { trackSyllables: true });
-    }, 150);
+    setFeedback('No backend practice item is ready yet.');
   };
   // Only successfully pronouncing the Word of the Day advances the streak --
   // opening the app, listening to it, or reading it does not count. Called
@@ -1251,7 +1218,7 @@ const StudentDashboard = () => {
       message: 'Open the content section to review your latest lessons and assignments.',
     }];
   }, [uploadsLoading, teacherUploads]);
-  const previewSentence = 'The cat sat on the mat.';
+  const previewSentence = 'Aa Bb Cc';
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   }).format(dateTime);
@@ -1330,7 +1297,10 @@ const StudentDashboard = () => {
     setExpectedText(practiceWord.word);
     resetPracticeAttemptState();
   };
-  const visiblePracticeLabel = activePracticeWord ? activePracticeWord.accentedSpelling : expectedText;
+  const hasPracticePrompt = Boolean(activePracticeWord?.word || expectedText);
+  const visiblePracticeLabel = hasPracticePrompt
+    ? (activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)
+    : 'Practice item loading';
   return (
     <div
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
@@ -1711,7 +1681,7 @@ const StudentDashboard = () => {
                   <button
                     className={`button-large ${status === 'listening' ? 'button-danger listening-pulse' : status === 'correct' ? 'button-primary correct-highlight' : status === 'incorrect' ? 'button-danger incorrect-shake' : 'button-primary'}`}
                     onClick={handleMicClick}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !hasPracticePrompt}
                   >
                     <FiMic aria-hidden="true" />
                     {status === 'listening' ? 'Listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
@@ -1720,6 +1690,7 @@ const StudentDashboard = () => {
                     className="button-large button-secondary"
                     type="button"
                     onClick={() => speakTagalog(activePracticeWord ? activePracticeWord.accentedSpelling : expectedText, { trackSyllables: true })}
+                    disabled={!hasPracticePrompt}
                   >
                     <FiVolume2 aria-hidden="true" /> Listen
                   </button>
@@ -2022,22 +1993,23 @@ const StudentDashboard = () => {
         )}
         {activeSection === 'settings' && (
           <section id="settings-section" className="detail-block">
-            <div className="detail-block-title">Accessibility settings</div>
+            <div className="detail-block-title">Settings</div>
             <div className="settings-panel">
+              <div className="settings-group-title">Accessibility</div>
               <div className="settings-row">
+                <label className="settings-switch">
+                  <span>
+                    <strong>Dyslexia-Friendly Font</strong>
+                    <small>Use an easier-to-read font</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={accessibilitySettings.fontFamily === 'Comic Sans'}
+                    onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.checked ? 'Comic Sans' : 'DM Sans' })}
+                  />
+                </label>
                 <div className="settings-block">
-                  <label>Reading font</label>
-                  <select
-                    value={accessibilitySettings.fontFamily}
-                    onChange={(e) => persistAccessibilitySettings({ fontFamily: e.target.value })}
-                  >
-                    <option value="Comic Sans">Comic Sans</option>
-                    <option value="DM Sans">DM Sans</option>
-                    <option value="Josefin Sans">Josefin Sans</option>
-                  </select>
-                </div>
-                <div className="settings-block">
-                  <label>Text size</label>
+                  <label>Text Size</label>
                   <input
                     type="range"
                     min="12"
@@ -2050,21 +2022,44 @@ const StudentDashboard = () => {
               </div>
               <div className="settings-row">
                 <label className="settings-switch">
+                  <span>
+                    <strong>High Contrast</strong>
+                    <small>Increase text and panel contrast</small>
+                  </span>
                   <input
                     type="checkbox"
-                    checked={accessibilitySettings.letterSpacing === 'wide'}
-                    onChange={(e) => persistAccessibilitySettings({ letterSpacing: e.target.checked ? 'wide' : 'normal' })}
+                    checked={accessibilitySettings.highContrast}
+                    onChange={(e) => persistAccessibilitySettings({ highContrast: e.target.checked })}
                   />
-                  Wide letter spacing
                 </label>
                 <label className="settings-switch">
+                  <span>
+                    <strong>Reading Guide Overlay</strong>
+                    <small>Highlight text while reading</small>
+                  </span>
                   <input
                     type="checkbox"
                     checked={accessibilitySettings.wordHighlighting}
                     onChange={(e) => persistAccessibilitySettings({ wordHighlighting: e.target.checked })}
                   />
-                  Word highlighting
                 </label>
+              </div>
+              <div className="settings-group-title">Appearance</div>
+              <div className="settings-theme-row">
+                <button
+                  type="button"
+                  className={`settings-theme-card ${!accessibilitySettings.darkMode ? 'is-active' : ''}`}
+                  onClick={() => persistAccessibilitySettings({ darkMode: false })}
+                >
+                  Light
+                </button>
+                <button
+                  type="button"
+                  className={`settings-theme-card ${accessibilitySettings.darkMode ? 'is-active' : ''}`}
+                  onClick={() => persistAccessibilitySettings({ darkMode: true })}
+                >
+                  Dark
+                </button>
               </div>
               <div className="preview-box">
                 <p>Preview</p>

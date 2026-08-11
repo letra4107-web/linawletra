@@ -2544,3 +2544,449 @@ a {
     width: 100%;
   }
 }
+
+/* ============================================================================
+   Mobile palette alignment and settings parity
+   ============================================================================ */
+.dashboard-page {
+  --mobile-cream: #FBF3E2;
+  --mobile-ink: #3B322C;
+  --mobile-ink-soft: #5F5044;
+  --mobile-sun: #E3971A;
+  --mobile-coral: #E06B4C;
+  --mobile-sage: #5C8047;
+  --mobile-lavender: #7C6FCF;
+  --mobile-lavender-dark: #5F52B0;
+  --mobile-bg: #F4F1FB;
+  --surface: #FBF3E2;
+  --surface-soft: #FAF8F3;
+  --surface-muted: #EFECFB;
+  --border: #E7DCCB;
+  --text: var(--mobile-ink);
+  --text-secondary: var(--mobile-ink-soft);
+  --accent: var(--mobile-lavender);
+  --accent-strong: var(--mobile-lavender-dark);
+  --accent-soft: #EFECFB;
+  --success: var(--mobile-sage);
+  --warning: var(--mobile-sun);
+  --danger: var(--mobile-coral);
+  background: var(--mobile-bg);
+}
+
+body,
+.dashboard-container {
+  background: var(--mobile-bg);
+}
+
+.student-shell {
+  background:
+    linear-gradient(135deg, #F4F1FB 0%, #FBF3E2 54%, #F8E7DF 100%);
+}
+
+.student-sidebar {
+  background: #EFECFB;
+  border-right-color: #D9D2F1;
+  box-shadow: 12px 0 36px rgba(95, 82, 176, 0.08);
+}
+
+.student-sidebar-brand {
+  background: linear-gradient(135deg, var(--mobile-lavender-dark), var(--mobile-coral));
+  box-shadow: 0 14px 26px rgba(95, 82, 176, 0.2);
+}
+
+.student-sidebar-link {
+  color: var(--mobile-ink-soft);
+}
+
+.student-sidebar-link:hover {
+  background: #F8F7FF;
+  border-color: #D9D2F1;
+}
+
+.student-sidebar-link.active {
+  background: #FBF3E2;
+  border-color: var(--mobile-lavender);
+  color: var(--mobile-lavender-dark);
+  box-shadow: inset 4px 0 0 var(--mobile-lavender);
+}
+
+.student-sidebar-link-icon {
+  background: rgba(124, 111, 207, 0.12);
+}
+
+.detail-block,
+.student-panel-card,
+.stat-card,
+.word-card,
+.feedback-panel,
+.content-card,
+.assessment-card,
+.notification-item,
+.achievement-badge,
+.metric-card,
+.home-achievement-card {
+  background: #FAF8F3;
+  border-color: #E7DCCB;
+  box-shadow: 0 14px 30px rgba(59, 50, 44, 0.07);
+}
+
+.detail-block:nth-of-type(2n),
+.student-panel-card:nth-of-type(2n),
+.feedback-panel {
+  background: #F8F7FF;
+  border-color: #D9D2F1;
+}
+
+.detail-block-title {
+  color: var(--mobile-ink);
+}
+
+.detail-block-title::before {
+  background: linear-gradient(180deg, var(--mobile-lavender), var(--mobile-coral));
+}
+
+.home-greeting h2,
+.practice-header h3,
+.stat-card .stat-value,
+.continue-learning-title,
+.student-activity-title,
+.student-panel-card h4 {
+  color: var(--mobile-ink);
+}
+
+.home-greeting p,
+.practice-sub,
+.practice-level-note,
+.stat-card .stat-title,
+.stat-note,
+.student-activity-meta,
+.continue-learning-copy {
+  color: var(--mobile-ink-soft);
+}
+
+.stat-card::after {
+  background: #EFECFB;
+}
+
+.stat-card:nth-child(2)::after,
+.stat-card:nth-child(8)::after {
+  background: #FEF3D6;
+}
+
+.stat-card:nth-child(3)::after,
+.stat-card:nth-child(7)::after {
+  background: #E9F1E2;
+}
+
+.stat-card:nth-child(4)::after,
+.stat-card:nth-child(5)::after {
+  background: #F8E7DF;
+}
+
+.word-of-the-day-featured {
+  background:
+    linear-gradient(135deg, rgba(124, 111, 207, 0.2), rgba(224, 107, 76, 0.14)),
+    #FBF3E2;
+  border-color: #D9D2F1;
+}
+
+.button-primary,
+.practiceModeStartPill {
+  background: var(--mobile-lavender-dark);
+  box-shadow: 0 12px 22px rgba(95, 82, 176, 0.24);
+}
+
+.button-secondary,
+.continue-learning-card,
+.student-activity-row,
+.current-practice-panel,
+.recommended-practice-chip,
+.student-stat-chip {
+  background: #FBF3E2;
+  border-color: #E7DCCB;
+}
+
+.button-danger {
+  background: var(--mobile-coral);
+}
+
+.progress-fill,
+.mic-waveform-bar {
+  background: linear-gradient(90deg, var(--mobile-lavender), var(--mobile-sage));
+}
+
+.word-card {
+  background:
+    linear-gradient(145deg, rgba(124, 111, 207, 0.15), rgba(251, 243, 226, 0.92)),
+    #FBF3E2;
+}
+
+.practice-word,
+.word-of-the-day-featured .word-of-the-day-word {
+  color: var(--mobile-lavender-dark);
+}
+
+.syllable-divider {
+  color: var(--mobile-coral);
+}
+
+.practice-syllable.syllable-active {
+  color: #ffffff;
+  background: var(--mobile-lavender-dark);
+  box-shadow: 0 8px 18px rgba(95, 82, 176, 0.22);
+}
+
+.feedback-result {
+  background: #FBF3E2;
+  border-color: #E7DCCB;
+}
+
+.feedback-result.success {
+  background: #E9F1E2;
+  border-color: rgba(92, 128, 71, 0.32);
+}
+
+.feedback-result.almost,
+.accuracy-display {
+  background: #FEF3D6;
+  border-color: rgba(227, 151, 26, 0.32);
+}
+
+.feedback-result.error {
+  background: #F8E7DF;
+  border-color: rgba(224, 107, 76, 0.32);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-panel::before {
+  content: "Make LinawLetra work best for you.";
+  display: block;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--mobile-lavender-dark), var(--mobile-coral));
+  color: #ffffff;
+  font-size: 1.2rem;
+  font-weight: 900;
+  box-shadow: 0 16px 30px rgba(95, 82, 176, 0.2);
+}
+
+.settings-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+
+.settings-group-title {
+  margin: 2px 0 -4px;
+  color: var(--mobile-ink);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.settings-block,
+.settings-switch,
+.preview-box {
+  min-height: 74px;
+  padding: 16px;
+  border-radius: 18px;
+  background: #FAF8F3;
+  border: 1px solid #E7DCCB;
+  box-shadow: 0 8px 18px rgba(59, 50, 44, 0.05);
+}
+
+.settings-block {
+  margin: 0;
+}
+
+.settings-block label,
+.settings-switch {
+  color: var(--mobile-ink);
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.settings-block select {
+  border-radius: 999px;
+  background: #EFECFB;
+  border: 1.5px solid #D9D2F1;
+  color: var(--mobile-lavender-dark);
+  font-weight: 900;
+}
+
+.settings-block input[type="range"] {
+  padding: 0;
+  accent-color: var(--mobile-lavender);
+  background: transparent;
+  border: 0;
+}
+
+.slider-value {
+  color: var(--mobile-ink-soft);
+  font-weight: 800;
+  font-size: 0.86rem;
+}
+
+.settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings-switch span {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-switch strong {
+  color: var(--mobile-ink);
+  font-size: 0.95rem;
+}
+
+.settings-switch small {
+  color: var(--mobile-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.settings-switch input[type="checkbox"] {
+  width: 46px;
+  height: 26px;
+  accent-color: var(--mobile-lavender);
+}
+
+.settings-theme-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-theme-card {
+  position: relative;
+  min-height: 88px;
+  border: 1.5px solid #EEE9F9;
+  border-radius: 16px;
+  background: #FAF8F3;
+  color: var(--mobile-ink-soft);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(59, 50, 44, 0.05);
+}
+
+.settings-theme-card.is-active {
+  border-color: var(--mobile-lavender);
+  background: #F5F3FC;
+  color: var(--mobile-lavender-dark);
+}
+
+.settings-theme-card.is-active::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--mobile-lavender);
+}
+
+.preview-box {
+  background: #EFECFB;
+  border-color: #D9D2F1;
+}
+
+.preview-box p {
+  margin: 0;
+  color: var(--mobile-ink);
+  font-weight: 900;
+}
+
+.preview-text {
+  background: #FBF3E2;
+  border: 1px solid #E7DCCB;
+  color: var(--mobile-ink);
+}
+
+.preview-highlight {
+  background: #FEF3D6;
+}
+
+.dashboard-page.high-contrast {
+  --mobile-ink: #1F160F;
+  --mobile-ink-soft: #35271F;
+  --border: #5F52B0;
+}
+
+.dashboard-page.high-contrast .detail-block,
+.dashboard-page.high-contrast .student-panel-card,
+.dashboard-page.high-contrast .stat-card,
+.dashboard-page.high-contrast .word-card,
+.dashboard-page.high-contrast .feedback-panel,
+.dashboard-page.high-contrast .settings-block,
+.dashboard-page.high-contrast .settings-switch,
+.dashboard-page.high-contrast .preview-box {
+  border-width: 2px;
+  border-color: var(--mobile-lavender-dark);
+}
+
+.dashboard-page.dark-mode {
+  --mobile-bg: #2D2636;
+  --surface: #3B322C;
+  --surface-soft: #453A33;
+  --surface-muted: #312A3E;
+  --border: #6F628A;
+  --text: #FBF3E2;
+  --text-secondary: #E7DCCB;
+  background: #2D2636;
+}
+
+.dashboard-page.dark-mode .student-shell {
+  background: linear-gradient(135deg, #2D2636 0%, #3B322C 60%, #4A2E35 100%);
+}
+
+.dashboard-page.dark-mode .student-sidebar,
+.dashboard-page.dark-mode .detail-block,
+.dashboard-page.dark-mode .student-panel-card,
+.dashboard-page.dark-mode .stat-card,
+.dashboard-page.dark-mode .word-card,
+.dashboard-page.dark-mode .feedback-panel,
+.dashboard-page.dark-mode .content-card,
+.dashboard-page.dark-mode .assessment-card,
+.dashboard-page.dark-mode .settings-block,
+.dashboard-page.dark-mode .settings-switch,
+.dashboard-page.dark-mode .preview-box,
+.dashboard-page.dark-mode .settings-theme-card {
+  background: #3B322C;
+  border-color: #6F628A;
+  color: #FBF3E2;
+}
+
+.dashboard-page.dark-mode .home-greeting h2,
+.dashboard-page.dark-mode .practice-header h3,
+.dashboard-page.dark-mode .stat-card .stat-value,
+.dashboard-page.dark-mode .settings-group-title,
+.dashboard-page.dark-mode .settings-switch strong,
+.dashboard-page.dark-mode .settings-block label,
+.dashboard-page.dark-mode .preview-box p {
+  color: #FBF3E2;
+}
+
+.dashboard-page.dark-mode .home-greeting p,
+.dashboard-page.dark-mode .stat-card .stat-title,
+.dashboard-page.dark-mode .stat-note,
+.dashboard-page.dark-mode .settings-switch small,
+.dashboard-page.dark-mode .slider-value {
+  color: #E7DCCB;
+}
+
+@media (max-width: 760px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+}
