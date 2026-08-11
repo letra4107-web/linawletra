@@ -1646,7 +1646,9 @@ const StudentDashboard = () => {
                   </div>
                   {activePracticeWord ? (
                     <>
-                      {activePracticeWord.meaning && <p className="word-meaning">{activePracticeWord.meaning}</p>}
+                      {activePracticeWord.meaning && activePracticeWord.isHomograph && (
+                        <p className="word-meaning">{activePracticeWord.meaning}</p>
+                      )}
                       {activePracticeWord.isHomograph && (
                         <>
                           <button
@@ -1670,6 +1672,23 @@ const StudentDashboard = () => {
                                 ang ginagamit dito.
                               </p>
                             </div>
+                          )}
+                        </>
+                      )}
+                      {activePracticeWord.meaning && !activePracticeWord.isHomograph && (
+                        <>
+                          <button
+                            type="button"
+                            className="homograph-toggle"
+                            onClick={() => setHomographPanelOpenId(
+                              homographPanelOpenId === activePracticeWord.id ? null : activePracticeWord.id
+                            )}
+                          >
+                            <span className={`homograph-toggle-chevron ${homographPanelOpenId === activePracticeWord.id ? 'is-open' : ''}`} aria-hidden="true">▸</span>
+                            {' '}Ano ang ibig sabihin?
+                          </button>
+                          {homographPanelOpenId === activePracticeWord.id && (
+                            <p className="word-meaning">{activePracticeWord.meaning}</p>
                           )}
                         </>
                       )}
@@ -1739,7 +1758,7 @@ const StudentDashboard = () => {
                 )}
               </div>
               <div className="feedback-panel">
-                <h4>Live pronunciation feedback</h4>
+                <h4>Pronunciation check</h4>
                 <div className={`feedback-result ${recognitionResult}`}>
                   <div className="feedback-icon">
                     {recognitionResult === 'success' ? (
