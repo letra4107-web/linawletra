@@ -198,6 +198,50 @@ export const getDashboardData =async (req, res) => {
       .order('occurrence_count', { ascending: false })
       .limit(5);
 
+    const { data: lessonProgressRows } = await supabase
+      .from('lesson_progress')
+      .select('*')
+      .in('student_id', [student.id, student.user_id].filter(Boolean));
+
+    const history = Array.isArray(student.history) ? student.history : [];
+    const totalAttempts = Number(student.total_attempts || history.length || 0);
+    const accuracySum = Number(
+      student.accuracy_sum ||
+      history.reduce((sum, entry) => sum + (Number(entry?.score ?? entry?.accuracy ?? entry?.accuracy_percentage ?? 0) || 0), 0)
+    );
+    const activitiesCompleted = (lessonProgressRows || []).filter((row) =>
+      String(row.status || '').toLowerCase().includes('completed')
+    ).length;
+    const recentActivities = [
+      ...(lessonProgressRows || [])
+        .sort((a, b) => {
+          const aTime = new Date(a.completed_at || a.completedAt || a.updated_at || a.updatedAt || a.created_at || a.createdAt || 0).getTime();
+          const bTime = new Date(b.completed_at || b.completedAt || b.updated_at || b.updatedAt || b.created_at || b.createdAt || 0).getTime();
+          return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+        })
+        .slice(0, 5)
+        .map((row) => ({
+        id: row.id,
+        lessonTitle: row.lesson_title || row.lessonTitle || row.title || 'Lesson',
+        status: row.status || 'completed',
+        score: row.score,
+        timeSpent: row.time_spent || row.timeSpent || row.duration,
+        completedAt: row.completed_at || row.completedAt || row.updated_at || row.updatedAt || row.created_at || row.createdAt,
+        activityType: 'lesson',
+      })),
+      ...history.slice(-10).map((entry) => ({
+        ...entry,
+        lessonTitle: entry.word || entry.target || 'Reading practice',
+        status: entry.correct ? 'completed' : 'practice',
+        completedAt: entry.timestamp || entry.created_at || entry.createdAt || entry.date,
+        activityType: entry.activityType || 'pronunciation_practice',
+      })),
+    ].sort((a, b) => {
+      const aTime = new Date(a.completedAt || a.timestamp || 0).getTime();
+      const bTime = new Date(b.completedAt || b.timestamp || 0).getTime();
+      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+    }).slice(0, 8);
+
     res.json({
       wordMastery: { mastered: mastered.length, needsPractice: needsPractice.length, difficult: difficult.length },
       phonemeAccuracy,
@@ -208,13 +252,21 @@ export const getDashboardData =async (req, res) => {
         .map((w) => w.word),
       xp: student.xp ?? 0,
       streak: student.streak ?? 0,
+      longestStreak: student.longest_streak ?? student.streak ?? 0,
       lastLoginDate: student.last_login_date ?? null,
+      lastPracticeDate: student.last_practice_date ?? student.last_login_date ?? null,
       wordsCompleted: student.words_completed ?? 0,
       completedWords: student.completed_words ?? [],
-      achievements: student.achievements ?? 0,
-      accuracy: student.accuracy ?? 0,
-      completed: student.completed ?? 0,
-      history: student.history ?? [],
+      achievements: Array.isArray(student.unlocked_achievement_ids) ? student.unlocked_achievement_ids.length : (student.achievements ?? 0),
+      accuracy: totalAttempts > 0 ? Math.round(accuracySum / totalAttempts) : (student.accuracy ?? 0),
+      completed: activitiesCompleted || student.completed || 0,
+      activitiesCompleted: activitiesCompleted || student.completed || 0,
+      lessonsCompleted: activitiesCompleted || student.completed || 0,
+      totalAttempts,
+      accuracySum,
+      baselineAccuracy: student.baseline_accuracy ?? null,
+      history,
+      recentActivities,
       currentPhoneticLevel: student.current_phonetic_level ?? 'Easy',
       progressInCurrentLevel: student.progress_in_level ?? 0,
       highestPhoneticLevel: student.highest_phonetic_level ?? 'Easy',

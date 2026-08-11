@@ -44,6 +44,13 @@ const normalizeChild = (child = {}) => {
     streak: child.streak ?? metadata.streak ?? 0,
     longestStreak: child.longestStreak ?? child.longest_streak ?? metadata.longestStreak ?? 0,
     achievements: child.achievements ?? metadata.achievements ?? 0,
+    unlockedAchievementIds: child.unlockedAchievementIds ?? child.unlocked_achievement_ids ?? metadata.unlockedAchievementIds ?? [],
+    history: child.history ?? metadata.history ?? [],
+    totalAttempts: child.totalAttempts ?? child.total_attempts ?? metadata.totalAttempts,
+    accuracySum: child.accuracySum ?? child.accuracy_sum ?? metadata.accuracySum,
+    activitiesCompleted: child.activitiesCompleted ?? child.activities_completed ?? child.completedLessons ?? child.completed_lessons ?? child.completed ?? 0,
+    baselineAccuracy: child.baselineAccuracy ?? child.baseline_accuracy ?? metadata.baselineAccuracy,
+    lastPracticeDate: child.lastPracticeDate ?? child.last_practice_date ?? child.last_login_date ?? metadata.lastPracticeDate,
     currentPhoneticLevel: child.currentPhoneticLevel ?? child.current_phonetic_level ?? metadata.currentPhoneticLevel ?? 'Easy',
     progressInCurrentLevel: child.progressInCurrentLevel ?? child.progress_in_level ?? metadata.progressInCurrentLevel ?? 0,
     wordOfDayCompletedDate: child.wordOfDayCompletedDate ?? child.word_of_day_completed_date ?? metadata.wordOfDayCompletedDate ?? null,
@@ -76,11 +83,18 @@ export const parentDashboardApi = {
 
   getProgressByChildId: async (childId) => {
     try {
-      const res = await studentService.getStudentDashboard(childId);
-      const data = res?.data?.data ?? res?.data ?? {};
-      const student = data.student ? normalizeChild(data.student) : null;
+      const [studentRes, dashboardRes] = await Promise.all([
+        studentService.getStudentDashboard(childId),
+        progressService.getDashboardData(childId),
+      ]);
+      const studentData = studentRes?.data?.data ?? studentRes?.data ?? {};
+      const dashboardData = dashboardRes?.data?.data ?? dashboardRes?.data ?? {};
+      const student = normalizeChild({
+        ...(studentData.student || studentData || {}),
+        ...(dashboardData || {}),
+      });
       return {
-        ...data,
+        ...dashboardData,
         student,
       };
     } catch (e) {

@@ -380,7 +380,17 @@ export default function ParentDashboard() {
       {
         label: 'Words Finished',
         value: typeof wordsFinished === 'number' || typeof wordsFinished === 'string' ? `${wordsFinished}` : '—',
-        note: 'Completed pronunciation words',
+        note: `${summary.lessonsCompleted} lessons completed`,
+      },
+      {
+        label: 'All-Time Accuracy',
+        value: `${summary.allTimeAccuracy}%`,
+        note: `${summary.totalAttempts} practice sessions`,
+      },
+      {
+        label: 'Today\'s Reading Goal',
+        value: `${summary.dailyGoalDone}/${summary.dailyGoalTarget}`,
+        note: `${summary.weeklyPracticeDays} practice days this week`,
       },
       {
         label: 'Alerts / Issues',
@@ -515,7 +525,7 @@ export default function ParentDashboard() {
             wordMastery={wordMastery}
             confusionPatterns={confusionPatterns}
             recommendedWords={recommendedWords}
-            recentActivity={activities?.recentActivities ?? activities?.items ?? activities ?? []}
+            recentActivity={progress?.recentActivities ?? activities?.recentActivities ?? activities?.items ?? activities ?? []}
           />
         )}
 
@@ -636,7 +646,7 @@ export default function ParentDashboard() {
                 <div className="parent-section__sub">Latest lessons & time spent</div>
               </div>
             </div>
-            <RecentActivityList items={activities?.recentActivities ?? activities?.items ?? activities ?? []} />
+            <RecentActivityList items={progress?.recentActivities ?? activities?.recentActivities ?? activities?.items ?? activities ?? []} />
           </section>
         )}
 
@@ -698,10 +708,26 @@ export default function ParentDashboard() {
                         <span>Total XP</span>
                         <strong>{selectedStudentSummary.xp}</strong>
                       </div>
+                      <div className="parent-child-detail__metric">
+                        <span>All-Time Accuracy</span>
+                        <strong>{selectedStudentSummary.allTimeAccuracy}%</strong>
+                      </div>
+                      <div className="parent-child-detail__metric">
+                        <span>Practice Sessions</span>
+                        <strong>{selectedStudentSummary.totalAttempts}</strong>
+                      </div>
+                      <div className="parent-child-detail__metric">
+                        <span>Lessons Completed</span>
+                        <strong>{selectedStudentSummary.lessonsCompleted}</strong>
+                      </div>
+                      <div className="parent-child-detail__metric">
+                        <span>Today's Goal</span>
+                        <strong>{selectedStudentSummary.dailyGoalDone}/{selectedStudentSummary.dailyGoalTarget}</strong>
+                      </div>
                     </div>
                     <div className="parent-child-detail__activity">
                       <div className="parent-section__sub">Recent activity</div>
-                      <RecentActivityList items={activities?.recentActivities ?? activities?.items ?? activities ?? []} />
+                      <RecentActivityList items={progress?.recentActivities ?? activities?.recentActivities ?? activities?.items ?? activities ?? []} />
                     </div>
                   </div>
                 )}

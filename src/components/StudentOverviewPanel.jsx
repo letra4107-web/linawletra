@@ -63,6 +63,26 @@ export default function StudentOverviewPanel({
           <span className="student-overview-panel__stat-label">Longest streak</span>
         </div>
         <div className="student-overview-panel__stat">
+          <span className="student-overview-panel__stat-value">{summary.allTimeAccuracy}%</span>
+          <span className="student-overview-panel__stat-label">All-time accuracy</span>
+        </div>
+        <div className="student-overview-panel__stat">
+          <span className="student-overview-panel__stat-value">{summary.totalAttempts}</span>
+          <span className="student-overview-panel__stat-label">Practice sessions</span>
+        </div>
+        <div className="student-overview-panel__stat">
+          <span className="student-overview-panel__stat-value">{summary.lessonsCompleted}</span>
+          <span className="student-overview-panel__stat-label">Lessons completed</span>
+        </div>
+        <div className="student-overview-panel__stat">
+          <span className="student-overview-panel__stat-value">{summary.dailyGoalDone}/{summary.dailyGoalTarget}</span>
+          <span className="student-overview-panel__stat-label">Today's goal</span>
+        </div>
+        <div className="student-overview-panel__stat">
+          <span className="student-overview-panel__stat-value">{summary.weeklyPracticeDays}</span>
+          <span className="student-overview-panel__stat-label">Practice days this week</span>
+        </div>
+        <div className="student-overview-panel__stat">
           <span className="student-overview-panel__stat-value">{summary.xp}</span>
           <span className="student-overview-panel__stat-label">Total XP</span>
         </div>

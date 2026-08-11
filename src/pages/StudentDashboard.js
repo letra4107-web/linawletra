@@ -41,6 +41,7 @@ const PRONUNCIATION_XP = {
   close: 0,
   practice: 0,
 };
+const DAILY_GOAL = 5;
 const ENCOURAGEMENT_MESSAGES = ['YOU DID WELL!', 'GOOD JOB!', 'NICE TRY!', 'KEEP GOING!', 'GREAT EFFORT!'];
 // Phonetic progression system for LinawLetra
 const TAGALOG_PHONETIC_LEVELS = {
@@ -76,6 +77,28 @@ const normalizeGradeLevel = (value) => {
   const gradeMatch = raw.match(/grade[\s_-]*(\d+)/i);
   if (gradeMatch) return `Grade ${gradeMatch[1]}`;
   return raw;
+};
+const getAttemptTimestamp = (entry = {}) =>
+  entry.timestamp || entry.created_at || entry.createdAt || entry.completed_at || entry.completedAt || entry.date || null;
+const getAttemptDateLabel = (entry = {}) => {
+  const raw = getAttemptTimestamp(entry);
+  const time = typeof raw === 'number' ? raw : new Date(raw).getTime();
+  if (!Number.isFinite(time)) return 'Recent';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(time));
+};
+const getAttemptScore = (entry = {}) => Number(entry.score ?? entry.accuracy ?? entry.accuracy_percentage ?? 0) || 0;
+const getActivityTitle = (entry = {}) => entry.lessonTitle || entry.lesson_name || entry.word || entry.target || 'Reading practice';
+const countWeeklyPracticeDays = (history = [], nowDate = new Date()) => {
+  const now = nowDate.getTime();
+  const weekAgo = now - (7 * 24 * 60 * 60 * 1000);
+  const days = new Set();
+  history.forEach((entry) => {
+    const raw = getAttemptTimestamp(entry);
+    const time = typeof raw === 'number' ? raw : new Date(raw).getTime();
+    if (!Number.isFinite(time) || time < weekAgo) return;
+    days.add(new Date(time).toISOString().slice(0, 10));
+  });
+  return days.size;
 };
 const getTierFromXp = (xp = 0) => {
   if (xp >= 200) return 'Champion';
@@ -277,7 +300,7 @@ const StudentDashboard = () => {
           setHighestPhoneticLevel(progressData.highestPhoneticLevel || progressData.currentPhoneticLevel || 'Easy');
           setHardCyclesCompleted(progressData.hardCyclesCompleted || 0);
           setHadStreakBreak(Boolean(progressData.hadStreakBreak));
-          setUnlockedAchievementIds(progressData.unlockedAchievementIds || []);
+          setUnlockedAchievementIds(progressData.unlockedAchievementIds || progressData.unlocked_achievement_ids || []);
           // Streak is driven entirely by Word of the Day completions (see
           // completeWordOfDayStreak) -- just restore the saved streak value
           // and the last completed date, no recalculation on mount.
@@ -403,12 +426,21 @@ const StudentDashboard = () => {
       streak: progress.streak || 0,
       accuracy: progress.accuracy || 0,
       completed: progress.completed || 0,
+      activitiesCompleted: progress.activitiesCompleted || progress.activities_completed || progress.completed || 0,
+      totalAttempts: progress.totalAttempts || progress.total_attempts || progress.history?.length || 0,
+      accuracySum: progress.accuracySum || progress.accuracy_sum || (progress.history || []).reduce((sum, entry) => sum + getAttemptScore(entry), 0),
+      baselineAccuracy: progress.baselineAccuracy ?? progress.baseline_accuracy,
+      lastPracticeDate: progress.lastPracticeDate || progress.last_practice_date || progress.lastLoginDate,
+      level: practiceLevel,
+      readingLevel: practiceLevel,
       history: progress.history || [],
+      perfectWords,
+      wordMasteryDetail,
       highestPhoneticLevel,
       hardCyclesCompleted,
       hadStreakBreak,
     };
-    const unlockedNow = getUnlockedAchievementIds(stats);
+    const unlockedNow = getUnlockedAchievementIds(stats, unlockedAchievementIds);
     setUnlockedAchievementIds((prev) => {
       const newlyUnlockedIds = unlockedNow.filter((id) => !prev.includes(id));
       if (newlyUnlockedIds.length === 0) {
@@ -417,7 +449,11 @@ const StudentDashboard = () => {
       setNewlyUnlockedAchievements(newlyUnlockedIds.map(getAchievementById).filter(Boolean));
       return [...prev, ...newlyUnlockedIds];
     });
-  }, [xp, progress.streak, progress.accuracy, progress.completed, progress.history, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, hasLoadedProgress]);
+  }, [xp, progress.streak, progress.accuracy, progress.completed, progress.activitiesCompleted, progress.activities_completed, progress.totalAttempts, progress.total_attempts, progress.accuracySum, progress.accuracy_sum, progress.baselineAccuracy, progress.baseline_accuracy, progress.history, progress.lastPracticeDate, progress.last_practice_date, progress.lastLoginDate, perfectWords, practiceLevel, wordMasteryDetail, highestPhoneticLevel, hardCyclesCompleted, hadStreakBreak, hasLoadedProgress, unlockedAchievementIds]);
+
+  useEffect(() => {
+    setAchievements(unlockedAchievementIds.length);
+  }, [unlockedAchievementIds.length]);
   useEffect(() => {
     if (!studentGrade || userRole !== 'student') {
       setTeacherUploads([]);
@@ -1304,7 +1340,27 @@ const StudentDashboard = () => {
   const tier = useMemo(() => getTierFromXp(progressXp), [progressXp]);
   const lessonsGoal = progress.totalLessons || 7;
   const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
-  const activitiesCompleted = progress.completed || 0;
+  const history = Array.isArray(progress.history) ? progress.history : [];
+  const totalAttempts = Number(progress.totalAttempts || progress.total_attempts || history.length || 0);
+  const accuracySum = Number(progress.accuracySum || progress.accuracy_sum || history.reduce((sum, entry) => sum + getAttemptScore(entry), 0));
+  const allTimeAccuracy = totalAttempts > 0
+    ? Math.round(accuracySum / totalAttempts)
+    : Number(progress.accuracy || 0);
+  const activitiesCompleted = Number(progress.activitiesCompleted || progress.activities_completed || progress.completed || 0);
+  // Parity note: this intentionally mirrors mobile's current X/5 formula.
+  // It is not a true midnight-reset daily counter; it rolls over every 5 attempts.
+  const todayGoalDone = Math.min(totalAttempts % DAILY_GOAL, DAILY_GOAL);
+  const weeklyPracticeDays = countWeeklyPracticeDays(history, dateTime);
+  const recentReadingActivity = useMemo(
+    () => [...history]
+      .sort((a, b) => {
+        const aTime = typeof getAttemptTimestamp(a) === 'number' ? getAttemptTimestamp(a) : new Date(getAttemptTimestamp(a)).getTime();
+        const bTime = typeof getAttemptTimestamp(b) === 'number' ? getAttemptTimestamp(b) : new Date(getAttemptTimestamp(b)).getTime();
+        return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+      })
+      .slice(0, 3),
+    [history]
+  );
   const streakDays = progress.streak || 0;
   const greetingHour = dateTime.getHours();
   const timeGreeting = greetingHour < 12 ? 'Magandang umaga' : greetingHour < 18 ? 'Magandang hapon' : 'Magandang gabi';
@@ -1547,7 +1603,7 @@ const StudentDashboard = () => {
               <div className="detail-block-title">Today's progress</div>
               <div className="home-summary-grid">
                 <article className="stat-card">
-                  <p className="stat-title">Activities</p>
+                  <p className="stat-title">Lessons completed</p>
                   <p className="stat-value">{activitiesCompleted}</p>
                 </article>
                 <article className="stat-card">
@@ -1563,7 +1619,49 @@ const StudentDashboard = () => {
                   <p className="stat-title">Words mastered</p>
                   <p className="stat-value">{wordMasterySummary.mastered}</p>
                 </article>
+                <article className="stat-card">
+                  <p className="stat-title">All-time accuracy</p>
+                  <p className="stat-value">{allTimeAccuracy}%</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Practice sessions</p>
+                  <p className="stat-value">{totalAttempts}</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Longest streak</p>
+                  <p className="stat-value">{longestStreak} days</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Today's reading goal</p>
+                  <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
+                  <p className="stat-note">Matches mobile's current rollover logic</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Practice days this week</p>
+                  <p className="stat-value">{weeklyPracticeDays}</p>
+                </article>
               </div>
+            </section>
+
+            <section className="detail-block">
+              <div className="detail-block-title">Recent reading activity</div>
+              {recentReadingActivity.length > 0 ? (
+                <div className="student-activity-list">
+                  {recentReadingActivity.map((entry, index) => (
+                    <div key={`${getActivityTitle(entry)}-${getAttemptTimestamp(entry)}-${index}`} className="student-activity-row">
+                      <div>
+                        <div className="student-activity-title">{getActivityTitle(entry)}</div>
+                        <div className="student-activity-meta">{getAttemptDateLabel(entry)} &middot; Accuracy {getAttemptScore(entry)}%</div>
+                      </div>
+                      <span className={`student-activity-status ${entry.correct ? 'is-passed' : ''}`}>{entry.correct ? 'Passed' : 'Practice'}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state-card">
+                  <p>No recent reading activity yet.</p>
+                </div>
+              )}
             </section>
 
             <section className="detail-block">
@@ -1868,7 +1966,7 @@ const StudentDashboard = () => {
               </div>
               <div className="metric-card">
                 <FiAward className="metric-icon" aria-hidden="true" />
-                <strong>{Number(achievements) || 0}</strong>
+                <strong>{unlockedAchievementIds.length}</strong>
                 <span>Achievements</span>
               </div>
               <div className="metric-card">
@@ -1966,7 +2064,7 @@ const StudentDashboard = () => {
             <div className="progress-metrics">
               <div className="metric-card">
                 <strong>{activitiesCompleted}</strong>
-                <span>Words finished</span>
+                <span>Lessons completed</span>
               </div>
               <div className="metric-card">
                 <strong>{streakDays}</strong>
@@ -1975,6 +2073,26 @@ const StudentDashboard = () => {
               <div className="metric-card">
                 <strong>{progressXp}</strong>
                 <span>Total XP</span>
+              </div>
+              <div className="metric-card">
+                <strong>{allTimeAccuracy}%</strong>
+                <span>All-time accuracy</span>
+              </div>
+              <div className="metric-card">
+                <strong>{totalAttempts}</strong>
+                <span>Practice sessions</span>
+              </div>
+              <div className="metric-card">
+                <strong>{longestStreak}</strong>
+                <span>Longest streak</span>
+              </div>
+              <div className="metric-card">
+                <strong>{todayGoalDone}/{DAILY_GOAL}</strong>
+                <span>Today's reading goal</span>
+              </div>
+              <div className="metric-card">
+                <strong>{weeklyPracticeDays}</strong>
+                <span>Practice days this week</span>
               </div>
             </div>
             <div className="chart-card">
@@ -2113,7 +2231,7 @@ const StudentDashboard = () => {
             <div className="detail-block-title">Statistics</div>
             <div className="home-summary-grid">
               <article className="stat-card">
-                <p className="stat-title">Activities</p>
+                <p className="stat-title">Lessons completed</p>
                 <p className="stat-value">{activitiesCompleted}</p>
               </article>
               <article className="stat-card">
@@ -2127,6 +2245,22 @@ const StudentDashboard = () => {
               <article className="stat-card">
                 <p className="stat-title">Learning tier</p>
                 <p className="stat-value">{tier}</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">All-time accuracy</p>
+                <p className="stat-value">{allTimeAccuracy}%</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">Practice sessions</p>
+                <p className="stat-value">{totalAttempts}</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">Longest streak</p>
+                <p className="stat-value">{longestStreak} days</p>
+              </article>
+              <article className="stat-card">
+                <p className="stat-title">Today's reading goal</p>
+                <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
               </article>
             </div>
             <div className="achievements-section">
