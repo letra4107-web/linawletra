@@ -3979,3 +3979,18 @@ body,
     border-radius: 13px;
   }
 }
+
+/* Keep the desktop side navigation pinned while the page scrolls. */
+@media (min-width: 761px) {
+  .student-sidebar {
+    position: fixed;
+    top: 20px;
+    left: max(20px, calc((100vw - var(--student-page-max)) / 2));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  .student-sidebar {
+    left: max(14px, calc((100vw - 980px) / 2));
+  }
+}
