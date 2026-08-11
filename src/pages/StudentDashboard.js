@@ -1301,6 +1301,37 @@ const StudentDashboard = () => {
   const visiblePracticeLabel = hasPracticePrompt
     ? (activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)
     : 'Practice item loading';
+  const heroCopy = {
+    home: {
+      title: `Kumusta,\n${studentName?.split(' ')[0] || 'Student'}!`,
+      subtitle: 'Handa ka na bang matuto ngayon?',
+    },
+    content: {
+      title: `Matuto tayo,\n${studentName?.split(' ')[0] || 'Student'}!`,
+      subtitle: 'Piliin ang aralin at ipagpatuloy ang iyong paglalakbay sa pagbasa.',
+    },
+    practice: {
+      title: 'Voice Reading\nPractice',
+      subtitle: 'Basahin nang malakas at hayaan ang AI na suriin ang bigkas mo.',
+    },
+    progress: {
+      title: 'My Reading\nProgress',
+      subtitle: 'See how much you have improved on your reading journey.',
+    },
+    badges: {
+      title: 'My Learning\nBadges',
+      subtitle: 'Celebrate every reading milestone you achieve.',
+    },
+    profile: {
+      title: 'My\nProfile',
+      subtitle: 'Review your learning account and reading stats.',
+    },
+    settings: {
+      title: 'Settings',
+      subtitle: 'Make LinawLetra work best for you.',
+    },
+  };
+  const activeHero = heroCopy[activeSection] || heroCopy.home;
   return (
     <div
       className={`dashboard-page ${accessibilitySettings.darkMode ? 'dark-mode' : ''} ${accessibilitySettings.highContrast ? 'high-contrast' : ''}`}
@@ -1319,7 +1350,7 @@ const StudentDashboard = () => {
               className={`student-sidebar-link ${activeSection === 'home' ? 'active' : ''}`}
               onClick={() => handleNav('home')}
             >
-              <span className="student-sidebar-link-icon"><FiHome aria-hidden="true" /></span> Overview
+              <span className="student-sidebar-link-icon"><FiHome aria-hidden="true" /></span> Home
             </button>
             <button
               type="button"
@@ -1410,6 +1441,27 @@ const StudentDashboard = () => {
             ))}
           </div>
         )}
+        <section className={`student-mobile-hero student-mobile-hero--${activeSection}`}>
+          <div className="student-mobile-hero-top">
+            <div className="student-mobile-hero-brand">
+              <img src="/logo.png" alt="" />
+              <span>LinawLetra</span>
+            </div>
+            <button type="button" className="student-mobile-hero-bell" onClick={() => handleNav('settings')} aria-label="Open settings">
+              <FiBell aria-hidden="true" />
+            </button>
+          </div>
+          <h1>{activeHero.title.split('\n').map((line, index) => (
+            <React.Fragment key={`${line}-${index}`}>
+              {line}
+              {index < activeHero.title.split('\n').length - 1 && <br />}
+            </React.Fragment>
+          ))}</h1>
+          <p>{activeHero.subtitle}</p>
+          <div className="student-mobile-hero-art" aria-hidden="true">
+            {activeSection === 'practice' ? <FiMic /> : activeSection === 'progress' ? <FiTrendingUp /> : activeSection === 'badges' ? <FiAward /> : activeSection === 'settings' ? <FiSettings /> : <FiBookOpen />}
+          </div>
+        </section>
         {activeSection === 'home' && (
           <>
             <div className="home-greeting">
