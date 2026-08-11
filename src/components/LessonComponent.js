@@ -50,10 +50,8 @@ export default function LessonComponent() {
 
     try {
       setIsReading(true);
-      const response = await speechService.textToSpeech(lesson.tagalogText);
-      const audioBlob = new Blob([response.data], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
+      const { data } = await speechService.textToSpeech(lesson.tagalogText);
+      const audio = new Audio(data.audioUrl);
       audio.play();
       audio.onended = () => setIsReading(false);
     } catch (error) {

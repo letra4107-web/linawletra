@@ -1,10 +1,13 @@
 ﻿import express from 'express';
 import multer from 'multer';
 import OpenAI from 'openai';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authMiddleware } from '../middleware/auth.js';
+import { supabase } from '../config/supabase.js';
+import { syllabify } from '../services/tagalogPhonetics.js';
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -16,8 +19,9 @@ const TTS_MODEL = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
 const TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'marin';
 const STT_MODEL = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
 const GOOGLE_TTS_API_KEY = process.env.GOOGLE_TTS_API_KEY;
-const GOOGLE_TTS_VOICE = process.env.GOOGLE_TTS_VOICE || 'fil-PH-Standard-A';
+const GOOGLE_TTS_VOICE = process.env.GOOGLE_TTS_VOICE || 'fil-PH-Wavenet-A';
 const GOOGLE_TTS_LANGUAGE_CODE = 'fil-PH';
+const GOOGLE_TTS_CACHE_BUCKET = 'tts-cache';
 const isOpenAIConfigured = () =>
   Boolean(process.env.OPENAI_API_KEY) && process.env.OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY';
 const TAGALOG_TTS_INSTRUCTIONS = [
@@ -34,19 +38,93 @@ const formatForTagalogSpeech = (text = '') =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const callGoogleTTS = async (text, { speed } = {}) => {
+const escapeSsml = (text = '') =>
+  String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+// Builds SSML with a <mark> before each syllable so Google's timepoint API
+// can report back the exact playback offset each syllable starts at —
+// that's what makes real karaoke-style highlighting possible, instead of
+// the character-length estimate used for the OpenAI fallback path.
+const buildSyllableSsml = (text) => {
+  const words = formatForTagalogSpeech(text).split(/\s+/).filter(Boolean);
+  const parts = [];
+  words.forEach((word, wordIndex) => {
+    const syllables = syllabify(word);
+    const list = syllables.length ? syllables : [word];
+    list.forEach((syllable, syllableIndex) => {
+      parts.push(`<mark name="w${wordIndex}_s${syllableIndex}"/>${escapeSsml(syllable)}`);
+    });
+    parts.push(' ');
+  });
+  return `<speak>${parts.join('')}</speak>`;
+};
+
+const hashCacheKey = (text, voice, speed) =>
+  crypto.createHash('sha256').update(`${text}|${voice}|${speed}`).digest('hex');
+
+const getCachedTts = async (textHash) => {
+  const { data, error } = await supabase
+    .from('tts_cache')
+    .select('audio_url, timepoints')
+    .eq('text_hash', textHash)
+    .maybeSingle();
+  if (error) {
+    console.warn('[TTS] Cache lookup failed:', error.message);
+    return null;
+  }
+  return data || null;
+};
+
+const storeCachedTts = async ({ textHash, voice, speed, buffer, timepoints }) => {
+  const audioPath = `${textHash}.mp3`;
+  const { error: uploadError } = await supabase.storage
+    .from(GOOGLE_TTS_CACHE_BUCKET)
+    .upload(audioPath, buffer, { contentType: 'audio/mpeg', upsert: true });
+  if (uploadError) {
+    console.warn('[TTS] Cache upload failed:', uploadError.message);
+    return null;
+  }
+
+  const { data: publicData } = supabase.storage.from(GOOGLE_TTS_CACHE_BUCKET).getPublicUrl(audioPath);
+  const audioUrl = publicData?.publicUrl;
+  if (!audioUrl) return null;
+
+  const { error: insertError } = await supabase
+    .from('tts_cache')
+    .upsert({
+      text_hash: textHash,
+      voice,
+      speed,
+      audio_path: audioPath,
+      audio_url: audioUrl,
+      timepoints,
+    });
+  if (insertError) {
+    console.warn('[TTS] Cache index write failed:', insertError.message);
+  }
+
+  return audioUrl;
+};
+
+// v1beta1 is required for SSML <mark> timepoints on fil-PH-Wavenet voices —
+// v1 accepts the same request shape but silently ignores enableTimePointing.
+const callGoogleTTSWithTimepoints = async (text, { speed, voice } = {}) => {
   const response = await fetch(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_API_KEY}`,
+    `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${GOOGLE_TTS_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        input: { text: formatForTagalogSpeech(text) },
-        voice: { languageCode: GOOGLE_TTS_LANGUAGE_CODE, name: GOOGLE_TTS_VOICE },
+        input: { ssml: buildSyllableSsml(text) },
+        voice: { languageCode: GOOGLE_TTS_LANGUAGE_CODE, name: voice || GOOGLE_TTS_VOICE },
         audioConfig: {
           audioEncoding: 'MP3',
           speakingRate: Number(speed) || 0.88,
         },
+        enableTimePointing: ['SSML_MARK'],
       }),
     }
   );
@@ -56,7 +134,17 @@ const callGoogleTTS = async (text, { speed } = {}) => {
     throw new Error(data?.error?.message || 'Google TTS request failed');
   }
 
-  return Buffer.from(data.audioContent, 'base64');
+  const timepoints = (data.timepoints || []).map((tp) => {
+    const match = /^w(\d+)_s(\d+)$/.exec(tp.markName || '');
+    return {
+      markName: tp.markName,
+      wordIndex: match ? Number(match[1]) : null,
+      syllableIndex: match ? Number(match[2]) : null,
+      timeSeconds: tp.timeSeconds,
+    };
+  });
+
+  return { buffer: Buffer.from(data.audioContent, 'base64'), timepoints };
 };
 
 // Configure multer for audio file uploads with temp storage
@@ -118,12 +206,53 @@ router.post('/stt', authMiddleware, upload.single('audio'), async (req, res) => 
   }
 });
 
-// Text-to-Speech endpoint
+// Text-to-Speech endpoint. Google Cloud (Wavenet + SSML mark timepoints) is
+// primary so the client can drive real syllable-level highlighting; OpenAI
+// is the fallback when Google is unavailable, with no real timepoints (the
+// client falls back further to its own character-length estimate for that
+// case — see useSyllableHighlight.js).
 router.post('/tts', authMiddleware, async (req, res) => {
-  const { text, instructions, voice, speed } = req.body;
+  const { text, voice, speed, instructions } = req.body;
 
   if (!text) {
     return res.status(400).json({ error: 'No text provided' });
+  }
+
+  const normalizedSpeed = Number(speed) || 0.88;
+  const effectiveVoice = voice || GOOGLE_TTS_VOICE;
+
+  if (GOOGLE_TTS_API_KEY) {
+    const textHash = hashCacheKey(formatForTagalogSpeech(text), effectiveVoice, normalizedSpeed);
+
+    const cached = await getCachedTts(textHash);
+    if (cached) {
+      return res.json({ audioUrl: cached.audio_url, timepoints: cached.timepoints, source: 'google-cache' });
+    }
+
+    try {
+      const { buffer, timepoints } = await callGoogleTTSWithTimepoints(text, {
+        speed: normalizedSpeed,
+        voice: effectiveVoice,
+      });
+
+      const audioUrl = await storeCachedTts({
+        textHash, voice: effectiveVoice, speed: normalizedSpeed, buffer, timepoints,
+      });
+
+      if (audioUrl) {
+        return res.json({ audioUrl, timepoints, source: 'google' });
+      }
+
+      // Cache write failed but synthesis succeeded — serve directly rather
+      // than losing the audio, just without a durable URL to reuse later.
+      return res.json({
+        audioUrl: `data:audio/mpeg;base64,${buffer.toString('base64')}`,
+        timepoints,
+        source: 'google',
+      });
+    } catch (error) {
+      console.error('Google TTS Error, falling back to OpenAI:', error.message || error);
+    }
   }
 
   if (isOpenAIConfigured()) {
@@ -131,38 +260,22 @@ router.post('/tts', authMiddleware, async (req, res) => {
       const openaiClient = getOpenAIClient();
       const mp3 = await openaiClient.audio.speech.create({
         model: TTS_MODEL,
-        voice: voice || TTS_VOICE,
+        voice: (voice && voice.startsWith('fil-PH') ? null : voice) || TTS_VOICE,
         input: formatForTagalogSpeech(text),
         instructions: instructions || TAGALOG_TTS_INSTRUCTIONS,
-        speed: Number(speed) || 0.88,
-        response_format: 'mp3'
+        speed: normalizedSpeed,
+        response_format: 'mp3',
       });
 
       const buffer = Buffer.from(await mp3.arrayBuffer());
 
-      res.set({
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': buffer.length,
+      return res.json({
+        audioUrl: `data:audio/mpeg;base64,${buffer.toString('base64')}`,
+        timepoints: [],
+        source: 'openai-fallback',
       });
-
-      return res.send(buffer);
     } catch (error) {
-      console.error('OpenAI TTS Error, falling back to Google TTS:', error.message || error);
-    }
-  }
-
-  if (GOOGLE_TTS_API_KEY) {
-    try {
-      const buffer = await callGoogleTTS(text, { speed });
-
-      res.set({
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': buffer.length,
-      });
-
-      return res.send(buffer);
-    } catch (error) {
-      console.error('Google TTS Error:', error.message || error);
+      console.error('OpenAI TTS Error:', error.message || error);
     }
   }
 

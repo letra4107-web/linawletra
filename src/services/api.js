@@ -296,9 +296,10 @@ export const speechService = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
-  textToSpeech: (text, options = {}) => axiosInstance.post('/speech/tts', { text, ...options }, {
-    responseType: 'blob' // For audio data
-  }),
+  // Returns { audioUrl, timepoints, source } — audioUrl is a playable URL
+  // (Storage URL, cache hit, or a data: URL for the OpenAI fallback), and
+  // timepoints (per-syllable Google marks) is [] when it came from OpenAI.
+  textToSpeech: (text, options = {}) => axiosInstance.post('/speech/tts', { text, ...options }),
 };
 
 // Practice Words Service

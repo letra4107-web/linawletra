@@ -45,7 +45,7 @@ export default function StudentReadingAssistant() {
   const [pageNumber, setPageNumber] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [rate, setRate] = useState(0.85);
-  const { activeWordIndex, activeSyllableIndex, prepare, updateFromProgress, highlightWholeWord, reset: resetHighlight } = useSyllableHighlight(syllabify);
+  const { activeWordIndex, activeSyllableIndex, prepare, prepareFromTimepoints, updateFromProgress, highlightWholeWord, reset: resetHighlight } = useSyllableHighlight(syllabify);
   const [listening, setListening] = useState(false);
   const [spokenText, setSpokenText] = useState('');
   const [feedback, setFeedback] = useState(null);
@@ -143,25 +143,26 @@ export default function StudentReadingAssistant() {
     setAudioPlaying(false);
 
     try {
-      const response = await speechService.textToSpeech(text, {
+      const { data } = await speechService.textToSpeech(text, {
         speed: rate,
         instructions: 'Read this Filipino/Tagalog sentence naturally for a young learner. Use Philippine Tagalog pronunciation, gentle pacing, and clear syllables.',
       });
-      const audioUrl = URL.createObjectURL(response.data);
-      const audio = new Audio(audioUrl);
+      const audio = new Audio(data.audioUrl);
       audioRef.current = audio;
       prepare(text, wordIndexOffset);
+      const offsetTimepoints = (data.timepoints || []).map((tp) => ({
+        ...tp, wordIndex: tp.wordIndex + wordIndexOffset,
+      }));
+      prepareFromTimepoints(offsetTimepoints);
       audio.ontimeupdate = () => updateFromProgress(audio.currentTime, audio.duration);
       audio.onplay = () => setAudioPlaying(true);
       audio.onpause = () => setAudioPlaying(false);
       audio.onended = () => {
         setAudioPlaying(false);
         resetHighlight();
-        URL.revokeObjectURL(audioUrl);
       };
       audio.onerror = () => {
         setAudioPlaying(false);
-        URL.revokeObjectURL(audioUrl);
         readWithBrowserVoice(text, wordIndexOffset);
       };
       await audio.play();

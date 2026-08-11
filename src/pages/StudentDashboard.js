@@ -182,6 +182,7 @@ const StudentDashboard = () => {
   const {
     activeSyllableIndex: activePracticeSyllableIndex,
     prepare: prepareSyllableHighlight,
+    prepareFromTimepoints: prepareSyllableTimepoints,
     updateFromProgress: updateSyllableHighlight,
     reset: resetSyllableHighlight,
   } = useSyllableHighlight(syllabify);
@@ -597,24 +598,19 @@ const StudentDashboard = () => {
     else resetSyllableHighlight();
 
     try {
-      const response = await speechService.textToSpeech(formatForTagalogSpeech(text), {
+      const { data } = await speechService.textToSpeech(formatForTagalogSpeech(text), {
         speed: options.speed || options.rate || 0.82,
-        // Omit instructions unless the caller overrides them, so the server's
-        // more detailed Tagalog-specific default (TAGALOG_TTS_INSTRUCTIONS) is used.
-        ...(options.instructions ? { instructions: options.instructions } : {}),
       });
-      const audioUrl = URL.createObjectURL(response.data);
-      const audio = new Audio(audioUrl);
+      if (options.trackSyllables) prepareSyllableTimepoints(data.timepoints);
+      const audio = new Audio(data.audioUrl);
       ttsAudioRef.current = audio;
       if (options.trackSyllables) {
         audio.ontimeupdate = () => updateSyllableHighlight(audio.currentTime, audio.duration);
       }
       audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
         if (options.trackSyllables) resetSyllableHighlight();
       };
       audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
         speakTagalogFallback(text, options);
       };
       await audio.play();

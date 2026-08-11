@@ -52,10 +52,9 @@ const SpeechPractice = ({ expectedText }) => {
       setFeedback(feedbackText);
 
       try {
-        const ttsResponse = await speechService.textToSpeech(feedbackText);
-        const audioUrl = URL.createObjectURL(ttsResponse.data);
-        setAudioUrl(audioUrl);
-        const audio = new Audio(audioUrl);
+        const { data } = await speechService.textToSpeech(feedbackText);
+        setAudioUrl(data.audioUrl);
+        const audio = new Audio(data.audioUrl);
         audio.play();
       } catch (ttsError) {
         console.warn('Text-to-speech feedback is unavailable:', ttsError);
