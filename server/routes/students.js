@@ -3,6 +3,8 @@ import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { createStudent,
   getStudentsByParent,
   getStudent,
+  findStudentByIdOrUserId,
+  ensureStudentRecordForAuthenticatedUser,
   updateStudent,
   deleteStudent, } from '../controllers/studentController.js';
 import { supabase } from '../config/supabase.js';
@@ -83,11 +85,13 @@ router.get('/:id/dashboard', authMiddleware, async (req, res) => {
     const studentId = req.params.id;
 
     // Get student and attach profile separately to avoid depending on FK cache names.
-    const { data: student, error } = await supabase
-      .from('students')
-      .select('*')
-      .or(`id.eq.${studentId},user_id.eq.${studentId}`)
-      .single();
+    let { student, error } = await findStudentByIdOrUserId(studentId);
+
+    if (error || !student) {
+      const ensured = await ensureStudentRecordForAuthenticatedUser(req, studentId);
+      student = ensured.student;
+      error = ensured.error;
+    }
 
     if (error || !student) {
       return res.status(404).json({ message: 'Student not found' });

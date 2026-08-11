@@ -48,6 +48,71 @@ const isValidReadingLevel = (readingLevel) =>
   readingLevel === null ||
   VALID_READING_LEVELS.includes(readingLevel);
 
+export const findStudentByIdOrUserId = async (studentIdOrUserId) => {
+  const normalizedId = String(studentIdOrUserId || '').trim();
+  if (!normalizedId) return { student: null, error: null };
+
+  const { data: student, error } = await supabase
+    .from('students')
+    .select('*')
+    .or(`id.eq.${normalizedId},user_id.eq.${normalizedId}`)
+    .maybeSingle();
+
+  return { student: student || null, error };
+};
+
+export const ensureStudentRecordForAuthenticatedUser = async (req, requestedId) => {
+  const authUserId = String(req?.user?.id || '').trim();
+  const normalizedRequestedId = String(requestedId || '').trim();
+  const role = String(req?.user?.role || '').toLowerCase();
+
+  if (!authUserId || role !== 'student' || normalizedRequestedId !== authUserId) {
+    return { student: null, error: null };
+  }
+
+  const { data: userProfile, error: userError } = await supabase
+    .from('users')
+    .select('id, role, parent_id, metadata')
+    .eq('id', authUserId)
+    .maybeSingle();
+
+  if (userError || !userProfile) {
+    return { student: null, error: userError || null };
+  }
+
+  const metadata = userProfile.metadata || {};
+  const gradeLevel = metadata.gradeLevel ?? metadata.grade_level ?? null;
+  const readingLevel = normalizeReadingLevel(
+    metadata.readingLevel ?? metadata.reading_level ?? 'beginner'
+  );
+
+  const payload = {
+    user_id: authUserId,
+    parent_id: userProfile.parent_id ?? metadata.parentId ?? metadata.parent_id ?? null,
+    teacher_id: metadata.teacherId ?? metadata.teacher_id ?? null,
+    grade_level: gradeLevel == null ? null : String(gradeLevel),
+    reading_level: readingLevel,
+    enrollment_date: new Date().toISOString().split('T')[0],
+  };
+
+  const { data: createdStudent, error: createError } = await supabase
+    .from('students')
+    .insert(payload)
+    .select('*')
+    .single();
+
+  if (createError?.code === '23505') {
+    return findStudentByIdOrUserId(authUserId);
+  }
+
+  if (createError) {
+    return { student: null, error: createError };
+  }
+
+  console.log('[Get Student] Created missing student record for auth user:', authUserId);
+  return { student: createdStudent, error: null };
+};
+
 // Create student (Parent enrollment)
 export const createStudent =async (req, res) => {
   try {
@@ -320,14 +385,21 @@ export const getStudent =async (req, res) => {
     console.log('[Get Student] Fetching student:', studentId, 'for user:', userId, 'role:', userRole);
 
     // Get student, then attach profile data separately to avoid brittle FK embed names.
-    const { data: student, error } = await supabase
-      .from('students')
-      .select('*')
-      .or(`id.eq.${studentId},user_id.eq.${studentId}`)
-      .single();
+    let { student, error } = await findStudentByIdOrUserId(studentId);
 
     if (error || !student) {
-      console.error('[Get Student] Student not found:', error);
+      const ensured = await ensureStudentRecordForAuthenticatedUser(req, studentId);
+      student = ensured.student;
+      error = ensured.error;
+    }
+
+    if (error || !student) {
+      console.warn('[Get Student] Student not found:', {
+        studentId,
+        userId,
+        code: error?.code,
+        message: error?.message,
+      });
       return res.status(404).json({
         success: false,
         message: 'Student not found',
