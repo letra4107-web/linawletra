@@ -5245,3 +5245,47 @@ body,
     opacity: 0.2;
   }
 }
+
+/* Final sidebar placement cleanup */
+@media (min-width: 761px) {
+  .student-sidebar {
+    left: 0;
+    top: 0;
+    height: 100vh;
+    min-height: 100vh;
+    border-radius: 0 28px 28px 0;
+    border-left: 0;
+  }
+
+  .student-sidebar-brand img {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .student-shell,
+  .student-shell--nav-collapsed {
+    padding-left: calc(var(--student-nav-width) + 28px);
+  }
+}
+
+@media (min-width: 1500px) {
+  .student-sidebar {
+    left: 0;
+  }
+
+  .student-shell,
+  .student-shell--nav-collapsed {
+    padding-left: calc(var(--student-nav-width) + 28px);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  .student-sidebar {
+    left: 0;
+  }
+
+  .student-shell,
+  .student-shell--nav-collapsed {
+    padding-left: calc(var(--student-nav-width) + 18px);
+  }
+}
