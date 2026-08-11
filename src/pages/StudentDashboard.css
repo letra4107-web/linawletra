@@ -4736,3 +4736,78 @@ body,
     opacity: 0.24;
   }
 }
+
+/* Fixed left sidebar page geometry. Keeps the main dashboard from being squeezed. */
+@media (min-width: 761px) {
+  .student-shell,
+  .student-shell--nav-collapsed {
+    display: block;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 20px 28px 48px calc(var(--student-nav-width) + 56px);
+  }
+
+  .student-shell--nav-collapsed {
+    padding-left: calc(var(--student-nav-width) + 40px);
+  }
+
+  .student-main {
+    width: min(1180px, 100%);
+    max-width: none;
+    margin: 0 auto;
+  }
+
+  .student-sidebar {
+    left: 20px;
+    width: var(--student-nav-width);
+  }
+}
+
+@media (min-width: 1500px) {
+  .student-shell,
+  .student-shell--nav-collapsed {
+    padding-right: calc((100vw - 1480px) / 2 + 28px);
+  }
+
+  .student-shell {
+    padding-left: calc((100vw - 1480px) / 2 + var(--student-nav-width) + 56px);
+  }
+
+  .student-shell--nav-collapsed {
+    padding-left: calc((100vw - 1480px) / 2 + var(--student-nav-width) + 40px);
+  }
+
+  .student-sidebar {
+    left: calc((100vw - 1480px) / 2 + 20px);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  .student-shell,
+  .student-shell--nav-collapsed {
+    --student-nav-width: 92px;
+    padding-left: 126px;
+    padding-right: 18px;
+  }
+
+  .student-sidebar {
+    left: 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  .student-shell,
+  .student-shell--nav-collapsed {
+    display: block;
+    width: calc(100% - 20px);
+    margin: 0 auto;
+    padding: 12px 0 100px;
+  }
+
+  .student-main {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+}
