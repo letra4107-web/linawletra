@@ -1450,10 +1450,10 @@ const StudentDashboard = () => {
             </button>
             <button
               type="button"
-              className={`student-sidebar-link ${activeSection === 'settings' ? 'active' : ''}`}
-              onClick={() => handleNav('settings')}
+              className={`student-sidebar-link ${activeSection === 'badges' ? 'active' : ''}`}
+              onClick={() => handleNav('badges')}
             >
-              <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span> Settings
+              <span className="student-sidebar-link-icon"><FiAward aria-hidden="true" /></span> Badges
             </button>
             <button
               type="button"
@@ -1461,6 +1461,13 @@ const StudentDashboard = () => {
               onClick={() => handleNav('profile')}
             >
               <span className="student-sidebar-link-icon"><FiUser aria-hidden="true" /></span> Profile
+            </button>
+            <button
+              type="button"
+              className={`student-sidebar-link ${activeSection === 'settings' ? 'active' : ''}`}
+              onClick={() => handleNav('settings')}
+            >
+              <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span> Settings
             </button>
           </nav>
         </div>
@@ -1654,7 +1661,7 @@ const StudentDashboard = () => {
                     <strong>{recentAchievement.name}</strong>
                     <p>{recentAchievement.description}</p>
                   </div>
-                  <button type="button" className="button-secondary button-small" onClick={() => handleNav('progress')}>
+                  <button type="button" className="button-secondary button-small" onClick={() => handleNav('badges')}>
                     View all
                   </button>
                 </div>
@@ -2070,6 +2077,11 @@ const StudentDashboard = () => {
                 </div>
               </div>
             )}
+          </section>
+        )}
+        {activeSection === 'badges' && (
+          <section id="badges-section" className="detail-block">
+            <div className="detail-block-title">Badges</div>
             <div className="achievements-section">
               <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
               <div className="achievement-badge-grid">
