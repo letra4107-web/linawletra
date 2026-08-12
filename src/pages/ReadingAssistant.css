@@ -457,6 +457,12 @@ textarea:focus-visible {
   flex-wrap: wrap;
 }
 
+.tts-error-note {
+  margin-top: 10px;
+  color: #d94d4d;
+  font-weight: 800;
+}
+
 .read-button,
 .mic-button {
   border: none;

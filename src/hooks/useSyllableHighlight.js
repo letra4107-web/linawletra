@@ -60,19 +60,29 @@ export function useSyllableHighlight(syllabifyFn) {
     timepointsRef.current = [];
   }, [syllabifyFn]);
 
-  // Real Google TTS timepoints — one per WORD's start offset (see
-  // buildWordMarkedSsml in server/routes/speech.js; marking every syllable
-  // measurably distorted the audio's natural pacing, so only word starts are
-  // real). Falls back to `updateFromProgress`'s estimate when timepoints is
-  // [], e.g. the OpenAI fallback path, which carries no real timing data.
+  // Real Google TTS timepoints. Two shapes are accepted:
+  //  - Word-level: { wordIndex, timeSeconds } — one per WORD's start offset
+  //    (see buildWordMarkedSsml in server/routes/speech.js; marking every
+  //    syllable of a whole sentence measurably distorted the audio's natural
+  //    pacing, so only word starts are real there). Syllable position within
+  //    the word is then estimated (see updateFromTimepoints below).
+  //  - Exact syllable-level: { wordIndex, syllableIndex, timeSeconds } — one
+  //    per SYLLABLE, real (see buildSyllableMarkedSsml / the /tts-syllables
+  //    endpoint, used for single-word karaoke practice, mirroring the mobile
+  //    app's proven speak-syllables path). No estimation needed; used as-is.
+  // Falls back to `updateFromProgress`'s character-length estimate when
+  // timepoints is [], e.g. the OpenAI fallback path, which carries no real
+  // timing data at all.
   const prepareFromTimepoints = useCallback((timepoints) => {
     timepointsRef.current = Array.isArray(timepoints) ? timepoints : [];
   }, []);
 
-  // Anchors on the real per-word timepoint, then estimates which syllable
-  // within that word is active from the fraction of the word's time window
-  // (this word's start to the next word's start, or to `duration` for the
-  // last word) elapsed so far — same character-weight technique as the
+  // Anchors on the real timepoint at-or-before currentTime. If it already
+  // carries an exact syllableIndex, uses it directly — no estimation, no
+  // faked timing. Otherwise (word-level-only timepoints), estimates which
+  // syllable within that word is active from the fraction of the word's time
+  // window (this word's start to the next word's start, or to `duration` for
+  // the last word) elapsed so far — same character-weight technique as the
   // no-timepoints fallback below, just scoped to one word instead of the
   // whole sentence, so estimation error stays small.
   const updateFromTimepoints = useCallback((currentTime, duration) => {
@@ -85,6 +95,12 @@ export function useSyllableHighlight(syllabifyFn) {
       else break;
     }
     const current = timepoints[index];
+
+    if (current.syllableIndex !== undefined && current.syllableIndex !== null) {
+      setActive({ wordIndex: current.wordIndex ?? 0, syllableIndex: current.syllableIndex });
+      return true;
+    }
+
     const next = timepoints[index + 1];
     const windowStart = current.timeSeconds;
     const windowEnd = next

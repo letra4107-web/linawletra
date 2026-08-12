@@ -168,6 +168,11 @@ const StudentDashboard = () => {
     history: [],
   });
   const [feedback, setFeedback] = useState('');
+  // Brief, dismissible message shown only when TTS playback fails completely
+  // (cloud synthesis AND the browser speechSynthesis fallback both failed) --
+  // kept separate from `feedback`/`statusMessage` above, which are for the
+  // Say-the-word/STT pronunciation-check flow, not TTS.
+  const [ttsError, setTtsError] = useState('');
   const [studentName, setStudentName] = useState('Student');
   const [studentGrade, setStudentGrade] = useState('');
   const [studentRoom, setStudentRoom] = useState('');
@@ -220,6 +225,12 @@ const StudentDashboard = () => {
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const ttsAudioRef = useRef(null);
+  // Bumped at the start of every speakTagalog*() call. A request only gets to
+  // touch shared audio/highlight state if it's still the latest one when its
+  // network call resolves -- otherwise an older, slower request finishing
+  // after a newer one (rapid clicking, quick word-to-word navigation) would
+  // start playing stale audio on top of what's already playing.
+  const ttsRequestIdRef = useRef(0);
   const {
     activeSyllableIndex: activePracticeSyllableIndex,
     prepare: prepareSyllableHighlight,
@@ -227,6 +238,21 @@ const StudentDashboard = () => {
     updateFromProgress: updateSyllableHighlight,
     reset: resetSyllableHighlight,
   } = useSyllableHighlight(syllabify);
+  // Stops any in-flight/playing TTS audio and invalidates in-flight TTS
+  // requests on navigation away from this page (or unmount for any other
+  // reason) -- without this, a slow /tts or /tts-syllables call that resolves
+  // after the student has already left could still start playing audio.
+  useEffect(() => () => {
+    ttsRequestIdRef.current += 1;
+    const audio = ttsAudioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.ontimeupdate = null;
+      try { audio.pause(); } catch (e) { /* already stopped/released */ }
+    }
+    window.speechSynthesis?.cancel?.();
+  }, []);
   // Gates the save effect (and the achievement recompute) so neither runs
   // against default/zeroed state while the real saved progress is still
   // being fetched on load. Must be real state, not a ref: the achievement
@@ -524,28 +550,73 @@ const StudentDashboard = () => {
       .replace(/\./g, '. ')
       .trim();
 
-  const speakTagalogFallback = (text, options = {}) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    const utterance = new SpeechSynthesisUtterance(formatForTagalogSpeech(text));
-    const tagalogVoice = getBestTagalogVoice();
-    if (tagalogVoice) {
-      utterance.voice = tagalogVoice;
-      utterance.lang = tagalogVoice.lang;
-    } else {
-      utterance.lang = 'fil-PH';
-    }
-    utterance.rate = options.rate || 0.68;
-    utterance.pitch = options.pitch || 1.02;
-    utterance.volume = 1;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+  // Shown only when BOTH TTS layers (cloud + browser fallback) failed --
+  // clears itself so it doesn't linger once the student moves on.
+  const showTtsError = (message) => {
+    setTtsError(message);
+    setTimeout(() => setTtsError((current) => (current === message ? '' : current)), 4000);
   };
 
-  const speakTagalog = async (text, options = {}) => {
-    if (!text) return;
+  // Stops/detaches whatever is currently in ttsAudioRef so its onended/onerror/
+  // ontimeupdate handlers can never fire again -- without this, an audio
+  // element superseded by a newer speakTagalog*() call could still fire a
+  // late event (e.g. onended) that clobbers highlight/loading state set up
+  // by the request that replaced it.
+  const stopTtsAudio = () => {
+    const audio = ttsAudioRef.current;
+    ttsAudioRef.current = null;
+    if (!audio) return;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.ontimeupdate = null;
+    try { audio.pause(); } catch (e) { /* already stopped/released */ }
+  };
 
-    ttsAudioRef.current?.pause?.();
-    window.speechSynthesis?.cancel?.();
+  // Only fires the browser TTS fallback if this request is still current --
+  // callers pass their captured requestId so a superseded request (e.g. the
+  // student already tapped a different word) can't start narrating over
+  // whatever is now playing. Surfaces a real, user-facing error only when
+  // this fallback itself is unavailable/fails too, i.e. BOTH TTS layers
+  // failed -- matches requirement to never fail silently, and never spam an
+  // error for the common case where the fallback covers the failure fine.
+  const speakTagalogFallback = (text, options = {}, requestId = ttsRequestIdRef.current) => {
+    if (requestId !== ttsRequestIdRef.current) return;
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      console.error('[TTS] both cloud synthesis and browser speechSynthesis are unavailable');
+      showTtsError('Unable to play the pronunciation. Please try again.');
+      return;
+    }
+    try {
+      const utterance = new SpeechSynthesisUtterance(formatForTagalogSpeech(text));
+      const tagalogVoice = getBestTagalogVoice();
+      if (tagalogVoice) {
+        utterance.voice = tagalogVoice;
+        utterance.lang = tagalogVoice.lang;
+      } else {
+        utterance.lang = 'fil-PH';
+      }
+      utterance.rate = options.rate || 0.68;
+      utterance.pitch = options.pitch || 1.02;
+      utterance.volume = 1;
+      utterance.onerror = (event) => {
+        console.error('[TTS] browser speechSynthesis fallback failed', { error: event?.error });
+        if (requestId === ttsRequestIdRef.current) {
+          showTtsError('Unable to play the pronunciation. Please try again.');
+        }
+      };
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.error('[TTS] browser speechSynthesis fallback threw', { message: error?.message });
+      showTtsError('Unable to play the pronunciation. Please try again.');
+    }
+  };
+
+  // Plain (non-karaoke) cloud synthesis, used both directly (no highlighting
+  // requested) and as the fallback when syllable karaoke below fails --
+  // mirrors the mobile app's plain speakWordCloud path. `requestId` guards
+  // against this call's async work landing after a newer request started.
+  const speakTagalogPlain = async (text, requestId, options = {}) => {
     if (options.trackSyllables) prepareSyllableHighlight(text, 0);
     else resetSyllableHighlight();
 
@@ -553,21 +624,105 @@ const StudentDashboard = () => {
       const { data } = await speechService.textToSpeech(formatForTagalogSpeech(text), {
         speed: options.speed || options.rate || 0.82,
       });
+      if (requestId !== ttsRequestIdRef.current) return; // superseded while the request was in flight
+
       if (options.trackSyllables) prepareSyllableTimepoints(data.timepoints);
       const audio = new Audio(data.audioUrl);
+      stopTtsAudio();
       ttsAudioRef.current = audio;
       if (options.trackSyllables) {
-        audio.ontimeupdate = () => updateSyllableHighlight(audio.currentTime, audio.duration);
+        audio.ontimeupdate = () => {
+          if (requestId === ttsRequestIdRef.current) updateSyllableHighlight(audio.currentTime, audio.duration);
+        };
       }
       audio.onended = () => {
-        if (options.trackSyllables) resetSyllableHighlight();
+        if (requestId === ttsRequestIdRef.current && options.trackSyllables) resetSyllableHighlight();
       };
       audio.onerror = () => {
-        speakTagalogFallback(text, options);
+        console.warn('[TTS] audio element playback error', {
+          code: audio.error?.code,
+          message: audio.error?.message,
+        });
+        if (requestId === ttsRequestIdRef.current) speakTagalogFallback(text, options, requestId);
+      };
+      // Browsers can reject play() for autoplay-policy reasons even after a
+      // direct user click in some edge cases (e.g. a delayed setTimeout-driven
+      // call, used for the "try again" replay below) -- treated the same as
+      // any other playback failure: fall back rather than leaving the UI
+      // stuck with a loaded-but-silent audio element.
+      await audio.play();
+    } catch (error) {
+      console.warn('[TTS] /tts request failed', {
+        status: error?.response?.status,
+        message: error?.response?.data?.error || error?.message,
+      });
+      if (requestId === ttsRequestIdRef.current) speakTagalogFallback(text, options, requestId);
+    }
+  };
+
+  // Single-word syllable karaoke, mirroring the mobile app's speakSyllablesCloud
+  // (cloudTtsService.ts) -- real per-syllable Google timepoints, not an
+  // estimate. `syllabify` here is the SAME function used to render the
+  // syllable spans on screen (word-display below), so the syllable indices
+  // the server returns always line up with what's actually on screen.
+  const speakTagalogSyllables = async (text, requestId, options = {}) => {
+    const syllableParts = syllabify(text);
+    if (syllableParts.length < 2) {
+      // Nothing meaningful to highlight for a single-syllable word -- mirrors
+      // mobile's playSyllableKaraoke early-out.
+      return speakTagalogPlain(text, requestId, options);
+    }
+
+    prepareSyllableHighlight(text, 0);
+
+    try {
+      const { data } = await speechService.textToSpeechSyllables(syllableParts, {
+        speed: options.speed || options.rate,
+      });
+      if (requestId !== ttsRequestIdRef.current) return;
+
+      prepareSyllableTimepoints(data.timepoints);
+      const audio = new Audio(data.audioUrl);
+      stopTtsAudio();
+      ttsAudioRef.current = audio;
+      audio.ontimeupdate = () => {
+        if (requestId === ttsRequestIdRef.current) updateSyllableHighlight(audio.currentTime, audio.duration);
+      };
+      audio.onended = () => {
+        if (requestId === ttsRequestIdRef.current) resetSyllableHighlight();
+      };
+      audio.onerror = () => {
+        console.warn('[TTS] syllable karaoke audio element playback error', {
+          code: audio.error?.code,
+          message: audio.error?.message,
+        });
+        // No highlighting-capable fallback for this path (same reasoning as
+        // mobile: an alternate voice carries no per-syllable timing) -- fall
+        // back to plain playback so the student still hears the word.
+        if (requestId === ttsRequestIdRef.current) speakTagalogPlain(text, requestId, options);
       };
       await audio.play();
     } catch (error) {
-      speakTagalogFallback(text, options);
+      console.warn('[TTS] /tts-syllables request failed, falling back to plain playback', {
+        status: error?.response?.status,
+        message: error?.response?.data?.error || error?.message,
+      });
+      if (requestId === ttsRequestIdRef.current) await speakTagalogPlain(text, requestId, options);
+    }
+  };
+
+  const speakTagalog = async (text, options = {}) => {
+    if (!text) return;
+
+    const requestId = ++ttsRequestIdRef.current;
+    setTtsError('');
+    stopTtsAudio();
+    window.speechSynthesis?.cancel?.();
+
+    if (options.trackSyllables) {
+      await speakTagalogSyllables(text, requestId, options);
+    } else {
+      await speakTagalogPlain(text, requestId, options);
     }
   };
 
@@ -1168,20 +1323,36 @@ const StudentDashboard = () => {
       console.error('Error starting audio recording:', error);
       // Continue without recording if audio access fails
     }
+    // Web Speech API fires `result` then `end` almost immediately after for
+    // continuous=false. `end` used to unconditionally reset isProcessing and
+    // status back to idle right after `result` fired the (unawaited)
+    // comparePronunciation call — so the "Checking your voice..." spinner
+    // disappeared and the mic button went idle instantly, while the actual
+    // check (network round trip) was still running for another 1-3+ seconds
+    // with nothing on screen showing that. This flag lets `end` know a
+    // result (or error) already took over the processing state, so it only
+    // resets to idle for the no-speech-detected case where neither fired.
+    let resultHandled = false;
     recognition.onstart = () => {
       setIsListening(true);
       setStatus('listening');
       setFeedback('Listening... Say the word clearly.');
       setStatusMessage('Listening for Tagalog pronunciation.');
     };
-    recognition.onresult = (event) => {
+    recognition.onresult = async (event) => {
+      resultHandled = true;
       setIsListening(false);
+      setStatus('idle');
       mediaRecorderRef.current?.stop();
       const spokenWord = event.results[0][0].transcript.toLowerCase().trim();
-      comparePronunciation(spokenWord);
-      setIsProcessing(false);
+      try {
+        await comparePronunciation(spokenWord);
+      } finally {
+        setIsProcessing(false);
+      }
     };
     recognition.onerror = (event) => {
+      resultHandled = true;
       setIsListening(false);
       setIsProcessing(false);
       setStatus('idle');
@@ -1192,9 +1363,11 @@ const StudentDashboard = () => {
     };
     recognition.onend = () => {
       setIsListening(false);
-      setIsProcessing(false);
-      setStatus('idle');
       mediaRecorderRef.current?.stop();
+      if (!resultHandled) {
+        setIsProcessing(false);
+        setStatus('idle');
+      }
     };
     recognitionRef.current = recognition;
     recognition.start();
@@ -2250,6 +2423,7 @@ const StudentDashboard = () => {
                     <FiCheck aria-hidden="true" /> {curriculumLoading ? 'Loading...' : 'Next Word'}
                   </button>
                 </div>
+                {ttsError && <p className="tts-error-note" role="alert">{ttsError}</p>}
                 {canAdvanceCurrentWord && accuracy < 100 && (
                   <p className="next-word-note">
                     You reached 80%. Move on now, or try this word again for 100% and more XP.

@@ -65,6 +65,33 @@ const buildWordMarkedSsml = (text) => {
   return `<speak>${parts.join('')}</speak>`;
 };
 
+// Builds SSML with a <mark> before each SYLLABLE of a single already-split
+// word (caller passes the syllable parts, e.g. ["ka","li","ka","san"]) — this
+// mirrors the mobile app's proven karaoke path (mobile-app-backend/backend/
+// routes/tts.js buildMarkedSsml), which is always used for exactly one word
+// at a deliberately slow rate, never a full sentence. Marking every syllable
+// of a whole sentence measurably distorts natural prosody (see
+// buildWordMarkedSsml above); marking every syllable of a single word at
+// slow speed is the mobile-confirmed-working case this reproduces.
+const buildSyllableMarkedSsml = (syllables) => {
+  const body = syllables.map((syllable, index) => `<mark name="s${index}"/>${escapeSsml(syllable)}`).join('');
+  return `<speak>${body}</speak>`;
+};
+
+// Google documents SSML mark timepoints as returned unordered; the mobile
+// backend explicitly re-sorts by the numeric mark suffix rather than trusting
+// array order (mobile-app-backend/backend/routes/tts.js). The web endpoints
+// below were missing this, which could silently scramble which word/syllable
+// gets highlighted at which timestamp when Google's ordering didn't match.
+const sortTimepointsByMarkIndex = (timepoints, prefix) => {
+  const re = new RegExp(`^${prefix}(\\d+)$`);
+  return [...timepoints].sort((a, b) => {
+    const aMatch = re.exec(a.markName || '');
+    const bMatch = re.exec(b.markName || '');
+    return (aMatch ? Number(aMatch[1]) : 0) - (bMatch ? Number(bMatch[1]) : 0);
+  });
+};
+
 // Bumping this invalidates previously cached audio synthesized with the old
 // per-syllable-marked SSML (see buildWordMarkedSsml above) so stale, choppier
 // clips aren't served from tts_cache forever after the fix.
@@ -118,31 +145,48 @@ const storeCachedTts = async ({ textHash, voice, speed, buffer, timepoints }) =>
 };
 
 // v1beta1 is required for SSML <mark> timepoints on fil-PH-Wavenet voices —
-// v1 accepts the same request shape but silently ignores enableTimePointing.
-const callGoogleTTSWithTimepoints = async (text, { speed, voice } = {}) => {
+// v1 accepts the same request shape but silently ignores enableTimePointing
+// (confirmed by the mobile backend too: it 400s with "Unknown name
+// enableTimePointing" on v1). Only used by the two marked-SSML paths below;
+// plain-text synthesis (no highlighting requested) stays on v1 unchanged.
+const GOOGLE_TTS_ENDPOINT_V1 = 'https://texttospeech.googleapis.com/v1/text:synthesize';
+const GOOGLE_TTS_ENDPOINT_V1BETA = 'https://texttospeech.googleapis.com/v1beta1/text:synthesize';
+
+const callGoogleTTS = async ({ ssml, text, speed, voice, enableTimePointing }) => {
   const response = await fetch(
-    `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${GOOGLE_TTS_API_KEY}`,
+    `${enableTimePointing ? GOOGLE_TTS_ENDPOINT_V1BETA : GOOGLE_TTS_ENDPOINT_V1}?key=${GOOGLE_TTS_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        input: { ssml: buildWordMarkedSsml(text) },
+        input: ssml ? { ssml } : { text },
         voice: { languageCode: GOOGLE_TTS_LANGUAGE_CODE, name: voice || GOOGLE_TTS_VOICE },
         audioConfig: {
           audioEncoding: 'MP3',
           speakingRate: Number(speed) || 0.88,
         },
-        enableTimePointing: ['SSML_MARK'],
+        ...(enableTimePointing ? { enableTimePointing: ['SSML_MARK'] } : {}),
       }),
     }
   );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Google TTS request failed');
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.audioContent) {
+    const err = new Error(data?.error?.message || `Google TTS request failed (status ${response.status})`);
+    err.status = response.status;
+    err.googleError = data?.error || null;
+    throw err;
   }
 
-  const timepoints = (data.timepoints || []).map((tp) => {
+  return { buffer: Buffer.from(data.audioContent, 'base64'), rawTimepoints: data.timepoints || [] };
+};
+
+const callGoogleTTSWithTimepoints = async (text, { speed, voice } = {}) => {
+  const { buffer, rawTimepoints } = await callGoogleTTS({
+    ssml: buildWordMarkedSsml(text), speed, voice, enableTimePointing: true,
+  });
+
+  const timepoints = sortTimepointsByMarkIndex(rawTimepoints, 'w').map((tp) => {
     const match = /^w(\d+)$/.exec(tp.markName || '');
     return {
       markName: tp.markName,
@@ -151,7 +195,37 @@ const callGoogleTTSWithTimepoints = async (text, { speed, voice } = {}) => {
     };
   });
 
-  return { buffer: Buffer.from(data.audioContent, 'base64'), timepoints };
+  return { buffer, timepoints };
+};
+
+// Mirrors mobile's speak-syllables path: one <mark> per syllable of a single
+// word, forced to a slow speaking rate so the per-syllable marks (which
+// distort prosody at normal/sentence speed — see buildWordMarkedSsml) sound
+// like deliberate, clear pronunciation practice instead of choppy speech.
+const MIN_KARAOKE_RATE = 0.25;
+const MAX_KARAOKE_RATE = 1.0;
+const DEFAULT_KARAOKE_RATE = 0.5;
+
+const callGoogleTTSSyllables = async (syllables, { speed, voice } = {}) => {
+  const rate = Number.isFinite(Number(speed))
+    ? Math.min(MAX_KARAOKE_RATE, Math.max(MIN_KARAOKE_RATE, Number(speed)))
+    : DEFAULT_KARAOKE_RATE;
+
+  const { buffer, rawTimepoints } = await callGoogleTTS({
+    ssml: buildSyllableMarkedSsml(syllables), speed: rate, voice, enableTimePointing: true,
+  });
+
+  const timepoints = sortTimepointsByMarkIndex(rawTimepoints, 's').map((tp) => {
+    const match = /^s(\d+)$/.exec(tp.markName || '');
+    return {
+      markName: tp.markName,
+      wordIndex: 0,
+      syllableIndex: match ? Number(match[1]) : null,
+      timeSeconds: tp.timeSeconds,
+    };
+  });
+
+  return { buffer, timepoints, rate };
 };
 
 // Configure multer for audio file uploads with temp storage
@@ -233,6 +307,7 @@ router.post('/tts', authMiddleware, async (req, res) => {
 
     const cached = await getCachedTts(textHash);
     if (cached) {
+      console.log('[TTS] /tts cache hit', { voice: effectiveVoice, characters: text.length });
       return res.json({ audioUrl: cached.audio_url, timepoints: cached.timepoints, source: 'google-cache' });
     }
 
@@ -246,6 +321,8 @@ router.post('/tts', authMiddleware, async (req, res) => {
         textHash, voice: effectiveVoice, speed: normalizedSpeed, buffer, timepoints,
       });
 
+      console.log('[TTS] /tts synthesized via google', { voice: effectiveVoice, characters: text.length, cached: false });
+
       if (audioUrl) {
         return res.json({ audioUrl, timepoints, source: 'google' });
       }
@@ -258,7 +335,12 @@ router.post('/tts', authMiddleware, async (req, res) => {
         source: 'google',
       });
     } catch (error) {
-      console.error('Google TTS Error, falling back to OpenAI:', error.message || error);
+      // Never log the request URL here — it carries ?key=<GOOGLE_TTS_API_KEY>.
+      console.error('[TTS] /tts Google synthesis failed, falling back to OpenAI:', {
+        status: error.status || null,
+        message: error.message,
+        googleError: error.googleError || null,
+      });
     }
   }
 
@@ -276,17 +358,94 @@ router.post('/tts', authMiddleware, async (req, res) => {
 
       const buffer = Buffer.from(await mp3.arrayBuffer());
 
+      console.log('[TTS] /tts synthesized via openai-fallback', { characters: text.length });
+
       return res.json({
         audioUrl: `data:audio/mpeg;base64,${buffer.toString('base64')}`,
         timepoints: [],
         source: 'openai-fallback',
       });
     } catch (error) {
-      console.error('OpenAI TTS Error:', error.message || error);
+      console.error('[TTS] /tts OpenAI fallback also failed:', {
+        status: error.status || null,
+        message: error.message,
+      });
     }
   }
 
+  console.error('[TTS] /tts exhausted all providers', {
+    googleConfigured: Boolean(GOOGLE_TTS_API_KEY),
+    openaiConfigured: isOpenAIConfigured(),
+  });
   res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
+});
+
+// Syllable karaoke endpoint. Mirrors the mobile app's proven /tts/speak-syllables
+// path (mobile-app-backend/backend/routes/tts.js): takes an already-split
+// single word's syllables, marks each one in SSML, synthesizes at a slow
+// rate, and returns real per-syllable timepoints (not estimated). There is
+// intentionally no OpenAI fallback here — mobile's own comment explains why:
+// an alternate voice/provider carries no timing data, so there is no way to
+// keep highlighting in sync. On failure the client falls back to plain
+// (non-highlighted) playback via /tts instead.
+router.post('/tts-syllables', authMiddleware, async (req, res) => {
+  const { syllables, voice, speed } = req.body || {};
+
+  if (!Array.isArray(syllables) || !syllables.length) {
+    return res.status(400).json({ error: 'syllables must be a non-empty array' });
+  }
+  const cleanSyllables = syllables.map((s) => String(s || '').trim()).filter(Boolean);
+  if (!cleanSyllables.length) {
+    return res.status(400).json({ error: 'syllables must be a non-empty array' });
+  }
+  if (cleanSyllables.length > 12) {
+    return res.status(400).json({ error: 'Too many syllables (max 12)' });
+  }
+
+  if (!GOOGLE_TTS_API_KEY) {
+    console.error('[TTS] /tts-syllables requested but GOOGLE_TTS_API_KEY is not configured');
+    return res.status(503).json({ error: 'Syllable read-along is not configured on this server' });
+  }
+
+  const effectiveVoice = voice || GOOGLE_TTS_VOICE;
+  const rateForCacheKey = Number.isFinite(Number(speed))
+    ? Math.min(MAX_KARAOKE_RATE, Math.max(MIN_KARAOKE_RATE, Number(speed)))
+    : DEFAULT_KARAOKE_RATE;
+  const textHash = hashCacheKey(`SYL:${cleanSyllables.join('|')}`, effectiveVoice, rateForCacheKey);
+
+  const cached = await getCachedTts(textHash);
+  if (cached) {
+    console.log('[TTS] /tts-syllables cache hit', { voice: effectiveVoice, syllableCount: cleanSyllables.length });
+    return res.json({ audioUrl: cached.audio_url, timepoints: cached.timepoints, source: 'google-cache' });
+  }
+
+  try {
+    const { buffer, timepoints, rate } = await callGoogleTTSSyllables(cleanSyllables, {
+      speed, voice: effectiveVoice,
+    });
+
+    const audioUrl = await storeCachedTts({
+      textHash, voice: effectiveVoice, speed: rate, buffer, timepoints,
+    });
+
+    console.log('[TTS] /tts-syllables synthesized via google', { voice: effectiveVoice, syllableCount: cleanSyllables.length, rate, cached: false });
+
+    if (audioUrl) {
+      return res.json({ audioUrl, timepoints, source: 'google' });
+    }
+    return res.json({
+      audioUrl: `data:audio/mpeg;base64,${buffer.toString('base64')}`,
+      timepoints,
+      source: 'google',
+    });
+  } catch (error) {
+    console.error('[TTS] /tts-syllables Google synthesis failed:', {
+      status: error.status || null,
+      message: error.message,
+      googleError: error.googleError || null,
+    });
+    return res.status(502).json({ error: 'Could not generate syllable read-along right now' });
+  }
 });
 
 // Lightweight scoring endpoint: compares expected text to a transcript

@@ -902,6 +902,13 @@ a {
   font-weight: 700;
 }
 
+.tts-error-note {
+  margin: 12px 0 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .word-hint {
   color: var(--text-secondary);
 }

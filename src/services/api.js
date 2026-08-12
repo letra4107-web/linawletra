@@ -301,8 +301,15 @@ export const speechService = {
   },
   // Returns { audioUrl, timepoints, source } — audioUrl is a playable URL
   // (Storage URL, cache hit, or a data: URL for the OpenAI fallback), and
-  // timepoints (per-syllable Google marks) is [] when it came from OpenAI.
+  // timepoints (per-word Google marks) is [] when it came from OpenAI.
   textToSpeech: (text, options = {}) => axiosInstance.post('/speech/tts', { text, ...options }),
+  // Syllable karaoke for a single already-split word. Returns
+  // { audioUrl, timepoints, source } where each timepoint is
+  // { syllableIndex, timeSeconds } in order — real Google timing, no
+  // estimation. No OpenAI fallback exists server-side for this path (see
+  // server/routes/speech.js); callers should fall back to plain
+  // textToSpeech() on failure.
+  textToSpeechSyllables: (syllables, options = {}) => axiosInstance.post('/speech/tts-syllables', { syllables, ...options }),
 };
 
 // Practice Words Service

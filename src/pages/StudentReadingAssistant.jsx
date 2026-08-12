@@ -55,8 +55,18 @@ export default function StudentReadingAssistant() {
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [readingSettings, setReadingSettings] = useState(getStoredReadingSettings);
+  // Shown only when BOTH TTS layers (cloud + browser speechSynthesis
+  // fallback) fail for the same read request -- kept separate from
+  // `feedback`, which is for the STT pronunciation-check result, not TTS.
+  const [ttsError, setTtsError] = useState('');
   const recognitionRef = useRef(null);
   const audioRef = useRef(null);
+  // Bumped at the start of every readText()/pause/navigation. A request only
+  // gets to touch audio/highlight state if it's still the latest one when its
+  // network call resolves -- otherwise an older, slower request finishing
+  // after a newer one (rapid word clicks, changing sentence mid-fetch) would
+  // start playing stale audio on top of what's already playing.
+  const ttsRequestIdRef = useRef(0);
 
   const sentences = useMemo(() => splitIntoSentences(material?.extracted_text || material?.extractedText || ''), [material]);
   const currentSentence = sentences[sentenceIndex] || '';
@@ -97,8 +107,17 @@ export default function StudentReadingAssistant() {
   }, [selectedId]);
 
   useEffect(() => () => {
+    ttsRequestIdRef.current += 1;
     window.speechSynthesis?.cancel();
-    audioRef.current?.pause?.();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onplay = null;
+      audio.onpause = null;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.ontimeupdate = null;
+      try { audio.pause(); } catch (e) { /* already stopped/released */ }
+    }
     recognitionRef.current?.abort?.();
   }, []);
 
@@ -111,8 +130,45 @@ export default function StudentReadingAssistant() {
     return voices.find((voice) => /fil|tl|ph/i.test(`${voice.lang} ${voice.name}`)) || voices.find((voice) => /en/i.test(voice.lang)) || null;
   };
 
-  const readWithBrowserVoice = (text = currentSentence, wordIndexOffset = 0) => {
-    if (!text || !window.speechSynthesis) return;
+  // Shown only when BOTH TTS layers failed for this request -- resets on the
+  // next successful read/speak attempt (auto-clears here so it doesn't
+  // linger once the student moves on).
+  const showTtsError = (message) => {
+    setTtsError(message);
+    setTimeout(() => setTtsError((current) => (current === message ? '' : current)), 4000);
+  };
+
+  // Stops/detaches whatever is currently in audioRef so its onplay/onpause/
+  // onended/onerror/ontimeupdate handlers can never fire again -- without
+  // this, an audio element superseded by a newer readText() call could still
+  // fire a late event (e.g. onended) that clobbers highlight/playing state
+  // set up by the request that replaced it.
+  const stopAudio = () => {
+    const audio = audioRef.current;
+    audioRef.current = null;
+    if (!audio) return;
+    audio.onplay = null;
+    audio.onpause = null;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.ontimeupdate = null;
+    try { audio.pause(); } catch (e) { /* already stopped/released */ }
+  };
+
+  // Only fires (and updates state) if this request is still the current one
+  // -- callers pass their captured requestId so a superseded request (e.g.
+  // the student moved to another sentence) can't start narrating over
+  // whatever is now on screen. Surfaces a real, user-facing error only when
+  // this fallback itself is unavailable/fails too, i.e. BOTH TTS layers
+  // failed for this request.
+  const readWithBrowserVoice = (text = currentSentence, wordIndexOffset = 0, requestId = ttsRequestIdRef.current) => {
+    if (requestId !== ttsRequestIdRef.current) return;
+    if (!text) return;
+    if (!window.speechSynthesis) {
+      console.error('[TTS] both cloud synthesis and browser speechSynthesis are unavailable');
+      showTtsError('Unable to play the pronunciation. Please try again.');
+      return;
+    }
     window.speechSynthesis.cancel();
     setAudioPlaying(true);
     highlightWholeWord(wordIndexOffset);
@@ -122,13 +178,21 @@ export default function StudentReadingAssistant() {
     utterance.pitch = 1;
     utterance.voice = getTagalogVoice();
     utterance.onboundary = (event) => {
-      if (event.name !== 'word') return;
+      if (event.name !== 'word' || requestId !== ttsRequestIdRef.current) return;
       const spokenPrefix = text.slice(0, event.charIndex);
       highlightWholeWord(wordIndexOffset + spokenPrefix.split(/\s+/).filter(Boolean).length);
     };
     utterance.onend = () => {
+      if (requestId !== ttsRequestIdRef.current) return;
       resetHighlight();
       setAudioPlaying(false);
+    };
+    utterance.onerror = (event) => {
+      console.error('[TTS] browser speechSynthesis fallback failed', { error: event?.error });
+      if (requestId !== ttsRequestIdRef.current) return;
+      setAudioPlaying(false);
+      resetHighlight();
+      showTtsError('Unable to play the pronunciation. Please try again.');
     };
     window.speechSynthesis.speak(utterance);
   };
@@ -136,7 +200,9 @@ export default function StudentReadingAssistant() {
   const readText = async (text = currentSentence, wordIndexOffset = 0) => {
     if (!text) return;
 
-    audioRef.current?.pause?.();
+    const requestId = ++ttsRequestIdRef.current;
+    setTtsError('');
+    stopAudio();
     window.speechSynthesis?.cancel();
     resetHighlight();
     setSpeechLoading(true);
@@ -147,29 +213,44 @@ export default function StudentReadingAssistant() {
         speed: rate,
         instructions: 'Read this Filipino/Tagalog sentence naturally for a young learner. Use Philippine Tagalog pronunciation, gentle pacing, and clear syllables.',
       });
+      if (requestId !== ttsRequestIdRef.current) return; // superseded while the request was in flight
+
       const audio = new Audio(data.audioUrl);
+      stopAudio();
       audioRef.current = audio;
       prepare(text, wordIndexOffset);
       const offsetTimepoints = (data.timepoints || []).map((tp) => ({
         ...tp, wordIndex: tp.wordIndex + wordIndexOffset,
       }));
       prepareFromTimepoints(offsetTimepoints);
-      audio.ontimeupdate = () => updateFromProgress(audio.currentTime, audio.duration);
-      audio.onplay = () => setAudioPlaying(true);
-      audio.onpause = () => setAudioPlaying(false);
+      audio.ontimeupdate = () => {
+        if (requestId === ttsRequestIdRef.current) updateFromProgress(audio.currentTime, audio.duration);
+      };
+      audio.onplay = () => { if (requestId === ttsRequestIdRef.current) setAudioPlaying(true); };
+      audio.onpause = () => { if (requestId === ttsRequestIdRef.current) setAudioPlaying(false); };
       audio.onended = () => {
+        if (requestId !== ttsRequestIdRef.current) return;
         setAudioPlaying(false);
         resetHighlight();
       };
       audio.onerror = () => {
+        console.warn('[TTS] audio element playback error', {
+          code: audio.error?.code,
+          message: audio.error?.message,
+        });
+        if (requestId !== ttsRequestIdRef.current) return;
         setAudioPlaying(false);
-        readWithBrowserVoice(text, wordIndexOffset);
+        readWithBrowserVoice(text, wordIndexOffset, requestId);
       };
       await audio.play();
     } catch (error) {
-      readWithBrowserVoice(text, wordIndexOffset);
+      console.warn('[TTS] /tts request failed', {
+        status: error?.response?.status,
+        message: error?.response?.data?.error || error?.message,
+      });
+      if (requestId === ttsRequestIdRef.current) readWithBrowserVoice(text, wordIndexOffset, requestId);
     } finally {
-      setSpeechLoading(false);
+      if (requestId === ttsRequestIdRef.current) setSpeechLoading(false);
     }
   };
 
@@ -177,13 +258,15 @@ export default function StudentReadingAssistant() {
   const readWord = (word, index) => readText(word, index);
 
   const pauseSpeech = () => {
+    ttsRequestIdRef.current += 1; // invalidate any in-flight read so it can't start playing after this pause
     audioRef.current?.pause?.();
     if (window.speechSynthesis?.speaking) window.speechSynthesis.pause();
     setAudioPlaying(false);
+    setSpeechLoading(false);
   };
 
   const replaySpeech = () => {
-    audioRef.current?.pause?.();
+    stopAudio();
     window.speechSynthesis?.cancel();
     readCurrentSentence();
   };
@@ -238,12 +321,15 @@ export default function StudentReadingAssistant() {
   };
 
   const moveSentence = (direction) => {
+    ttsRequestIdRef.current += 1; // invalidate any in-flight read for the sentence being left
     setSentenceIndex((current) => Math.max(0, Math.min(sentences.length - 1, current + direction)));
     setFeedback(null);
     setSpokenText('');
     resetHighlight();
-    audioRef.current?.pause?.();
+    stopAudio();
     window.speechSynthesis?.cancel();
+    setAudioPlaying(false);
+    setSpeechLoading(false);
   };
 
   const updateReadingSetting = (key, value) => {
@@ -386,6 +472,7 @@ export default function StudentReadingAssistant() {
               <button type="button" className="icon-reading-button" onClick={pauseSpeech} aria-label="Pause speech"><Pause size={20} /></button>
               <button type="button" className="icon-reading-button" onClick={replaySpeech} aria-label="Replay speech"><RotateCcw size={20} /></button>
             </div>
+            {ttsError && <p className="tts-error-note" role="alert">{ttsError}</p>}
 
             <label className="speed-control">
               Reading speed
