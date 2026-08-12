@@ -5067,6 +5067,11 @@ body,
   color: var(--mobile-lavender-dark);
 }
 
+.student-learn-status.assessment-ready {
+  background: #FFF1BE;
+  color: #925E00;
+}
+
 .student-learn-status.not-started {
   background: #E8F0FF;
   color: #2869B8;
@@ -5946,7 +5951,8 @@ body,
   outline: 3px solid rgba(109, 53, 246, 0.18);
 }
 
-.student-module-card.status-assessment_ready {
+.student-module-card.status-assessment_ready,
+.student-module-card.status-assessment-ready {
   outline: 3px solid rgba(245, 158, 11, 0.22);
 }
 

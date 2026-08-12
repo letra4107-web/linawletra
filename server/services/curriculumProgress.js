@@ -3,7 +3,12 @@ import { compareReadingText } from './readingAccuracy.js';
 import { authorizeStudent, resolveStudent } from '../utils/studentAccess.js';
 import { recordWordOutcome } from '../controllers/attemptsController.js';
 import { getStudentStats } from './studentStatsService.js';
-import { assertStudentCanAttemptModuleItem, getStudentModulesForLevel, syncModuleProgressForItem } from './curriculumModules.js';
+import {
+  assertStudentCanAttemptModuleItem,
+  canStudentAdvanceFromLevel,
+  getStudentModulesForLevel,
+  syncModuleProgressForItem,
+} from './curriculumModules.js';
 
 const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'];
 const PASS_ACCURACY = 80;
@@ -324,7 +329,15 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
   const moduleProgress = await syncModuleProgressForItem(student.id, item.id);
   const { summary } = await getStudentCurriculumSummary(student.id);
   let updatedLevel = student.reading_level;
-  if (summary.readyForNextLevel && summary.nextLevel && normalizeLevel(student.reading_level) === summary.level) {
+  const moduleAdvance = summary.readyForNextLevel
+    ? await canStudentAdvanceFromLevel(student.id, summary.level)
+    : { canAdvance: false };
+  if (
+    summary.readyForNextLevel &&
+    moduleAdvance.canAdvance &&
+    summary.nextLevel &&
+    normalizeLevel(student.reading_level) === summary.level
+  ) {
     const { error: levelError } = await supabase
       .from('students')
       .update({ reading_level: summary.nextLevel, updated_at: now })
@@ -345,7 +358,14 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
       passUnlocked: accuracy >= PASS_ACCURACY,
       masteryUnlocked: accuracy >= MASTERY_ACCURACY,
       moduleProgress,
-      summary: { ...summary, updatedLevel },
+      summary: {
+        ...summary,
+        updatedLevel,
+        moduleGate: {
+          finalModuleCompleted: moduleAdvance.finalModuleCompleted ?? false,
+          requirementsMet: moduleAdvance.requirementsMet ?? summary.readyForNextLevel,
+        },
+      },
       studentStats,
     },
   };

@@ -672,7 +672,9 @@ const StudentDashboard = () => {
       if (!isMounted || item) return;
       setFeedback('No curriculum item is ready yet. Loading a recommended practice word if one is available.');
     });
-    loadCurriculumModules({ level: 'Beginner', silent: true });
+    ['Beginner', 'Intermediate', 'Advanced'].forEach((level) => {
+      loadCurriculumModules({ level, silent: true });
+    });
     return () => {
       isMounted = false;
     };
@@ -1418,9 +1420,22 @@ const StudentDashboard = () => {
     level: module.level || levelNames[module.readingLevel] || selectedLibraryLevel,
     number: module.number || module.moduleNumber,
     subtitle: module.description || module.subtitle || '',
-    type: module.type || (module.contentType === 'word' ? 'Words' : module.contentType === 'phonetic' ? 'Phonetics' : module.contentType),
+    type: module.type || ({
+      phonetic: 'Phonetics',
+      word: 'Words',
+      phrase: 'Phrases',
+      sentence: 'Sentences',
+      paragraph: 'Reading',
+    }[module.contentType] || module.contentType),
     accent: module.accent || 'violet',
     progress: Number(module.progress || 0),
+    status: ({
+      unlocked: 'available',
+      in_progress: 'in-progress',
+      assessment_ready: 'assessment-ready',
+      completed: 'completed',
+      locked: 'locked',
+    }[module.status] || module.status || 'available'),
     helper: module.helper || 'Ready to start',
     items: (module.items || []).map((item) => ({
       ...item,
@@ -1473,9 +1488,11 @@ const StudentDashboard = () => {
   const moduleRoadmap = buildModuleRoadmapForLevel(selectedLibraryLevel);
   const activeLevelRoadmap = buildModuleRoadmapForLevel(activeReadingLevelLabel);
   const activeCurrentModule = activeLevelRoadmap.find((module) => module.status === 'in-progress')
+    || activeLevelRoadmap.find((module) => module.status === 'assessment-ready')
     || activeLevelRoadmap.find((module) => module.status === 'available')
     || activeLevelRoadmap[activeLevelRoadmap.length - 1];
   const currentModule = moduleRoadmap.find((module) => module.status === 'in-progress')
+    || moduleRoadmap.find((module) => module.status === 'assessment-ready')
     || moduleRoadmap.find((module) => module.status === 'available')
     || moduleRoadmap[moduleRoadmap.length - 1];
   const completedModules = moduleRoadmap.filter((module) => module.status === 'completed');
@@ -1488,14 +1505,17 @@ const StudentDashboard = () => {
   const filteredModuleRoadmap = moduleRoadmap.filter((module) => {
     if (libraryFilter === 'Phonetics') return module.type === 'Phonetics';
     if (libraryFilter === 'Words') return module.type === 'Words';
-    if (libraryFilter === 'Assessments') return module.type === 'Assessment' || module.number === moduleRoadmap.length;
+    if (libraryFilter === 'Phrases') return module.type === 'Phrases';
+    if (libraryFilter === 'Reading') return ['Sentences', 'Reading'].includes(module.type);
+    if (libraryFilter === 'Assessments') return module.status === 'assessment-ready' || module.number === moduleRoadmap.length;
     return true;
   });
   const selectedModuleCompletedItems = Math.min(
     selectedModule.items.length,
     Math.round((selectedModule.progress / 100) * selectedModule.items.length)
   );
-  const beginnerModulesComplete = completedModules.length === moduleRoadmap.length;
+  const selectedLevelComplete = moduleRoadmap.length > 0 && completedModules.length === moduleRoadmap.length;
+  const beginnerModulesComplete = buildModuleRoadmapForLevel('Beginner').every((module) => module.status === 'completed');
   const openAssessmentPreview = async (module) => {
     if (!module || module.items.length === 0) return;
     setCurriculumLoading(true);
@@ -1596,7 +1616,11 @@ const StudentDashboard = () => {
         ? item.kind === 'syllable_practice'
           ? 'Syllable practice from your current module.'
           : item.definition || 'Practice word from your current module.'
-        : 'Practice sound from your current phonetics module.',
+        : module.type === 'Phrases'
+          ? 'Practice phrase from your current module.'
+          : ['Sentences', 'Reading'].includes(module.type)
+            ? 'Reading practice from your current module.'
+            : 'Practice sound from your current phonetics module.',
       example: null,
       isHomograph: false,
       homographGroup: null,
@@ -2347,7 +2371,7 @@ const StudentDashboard = () => {
               <div className="student-library-main">
                 <section className="student-library-panel student-library-toolbar">
                   <div className="student-library-tabs" aria-label="Library filters">
-                    {['All Modules', 'Phonetics', 'Words', 'Assessments'].map((filter) => (
+                    {['All Modules', 'Phonetics', 'Words', 'Phrases', 'Reading', 'Assessments'].map((filter) => (
                       <button
                         key={filter}
                         type="button"
@@ -2358,6 +2382,9 @@ const StudentDashboard = () => {
                             if (module.status === 'locked') return false;
                             if (filter === 'Phonetics') return module.type === 'Phonetics';
                             if (filter === 'Words') return module.type === 'Words';
+                            if (filter === 'Phrases') return module.type === 'Phrases';
+                            if (filter === 'Reading') return ['Sentences', 'Reading'].includes(module.type);
+                            if (filter === 'Assessments') return module.status === 'assessment-ready' || module.number === moduleRoadmap.length;
                             return true;
                           });
                           if (firstMatchingModule) setSelectedModuleNumber(firstMatchingModule.number);
@@ -2382,7 +2409,11 @@ const StudentDashboard = () => {
                 <section className="student-level-switcher" aria-label="Reading level modules">
                   {levelOrder.map((level) => {
                     const index = levelOrder.indexOf(level);
-                    const locked = index > activeLevelIndex + (beginnerModulesComplete ? 1 : 0);
+                    const targetRoadmap = buildModuleRoadmapForLevel(level);
+                    const hasServerModules = Array.isArray(curriculumModulesByLevel[level]) && curriculumModulesByLevel[level].length > 0;
+                    const locked = hasServerModules
+                      ? targetRoadmap.length > 0 && targetRoadmap.every((module) => module.status === 'locked')
+                      : index > activeLevelIndex + (beginnerModulesComplete ? 1 : 0);
                     return (
                       <button
                         key={level}
@@ -2442,12 +2473,12 @@ const StudentDashboard = () => {
                     </div>
                     <span>{completedModules.length}/{moduleRoadmap.length} completed</span>
                   </div>
-                  {beginnerModulesComplete && (
+                  {selectedLevelComplete && (
                     <div className="student-level-complete-callout">
                       <FiAward aria-hidden="true" />
                       <div>
-                        <strong>Beginner Complete!</strong>
-                        <span>You're ready for Intermediate.</span>
+                        <strong>{selectedLibraryLevel} Complete!</strong>
+                        <span>Great work. The next path unlocks when the server requirements are met.</span>
                       </div>
                     </div>
                   )}
@@ -2487,7 +2518,11 @@ const StudentDashboard = () => {
                       <p>
                         {selectedModule.type === 'Words'
                           ? 'Words only. These use sounds introduced in earlier modules.'
-                          : 'Phonetics only. Practice each sound clearly before the assessment.'}
+                          : selectedModule.type === 'Phrases'
+                            ? 'Phrases only. Practice each phrase clearly before the assessment.'
+                            : ['Sentences', 'Reading'].includes(selectedModule.type)
+                              ? 'Reading only. Practice the passage carefully before the assessment.'
+                              : 'Phonetics only. Practice each sound clearly before the assessment.'}
                       </p>
                     </div>
                     <span className={`student-learn-status ${selectedModule.status}`}>{selectedModule.helper}</span>

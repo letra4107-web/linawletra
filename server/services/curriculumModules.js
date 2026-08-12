@@ -4,6 +4,15 @@ import { resolveStudent } from '../utils/studentAccess.js';
 
 const PASSED_STATUSES = new Set(['passed_80', 'mastered_100']);
 const PASS_ACCURACY = 80;
+const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'];
+
+const TYPE_REQUIREMENT_KEYS = {
+  word: 'required_words',
+  phonetic: 'required_phonetics',
+  phrase: 'required_phrases',
+  sentence: 'required_sentences',
+  paragraph: 'required_paragraphs',
+};
 
 const LEVEL_LABELS = {
   beginner: 'Beginner',
@@ -15,6 +24,17 @@ const normalizeLevel = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   return ['beginner', 'intermediate', 'advanced'].includes(normalized) ? normalized : 'beginner';
 };
+
+const nextLevelFor = (level) => {
+  const index = LEVEL_ORDER.indexOf(normalizeLevel(level));
+  if (index < 0 || index >= LEVEL_ORDER.length - 1) return null;
+  return LEVEL_ORDER[index + 1];
+};
+
+const requiredTypesFor = (requirement = {}) =>
+  Object.entries(TYPE_REQUIREMENT_KEYS)
+    .filter(([, key]) => Number(requirement[key] || 0) > 0)
+    .map(([type]) => type);
 
 const normalizeModuleStatus = (status) =>
   ['locked', 'unlocked', 'in_progress', 'assessment_ready', 'completed'].includes(status) ? status : 'unlocked';
@@ -93,7 +113,138 @@ const fetchStudentRows = async (studentId, modules) => {
   };
 };
 
-const computeModuleView = (module, index, previousModule, rows) => {
+const typeLabelFor = (contentType) => ({
+  phonetic: 'Phonetics',
+  word: 'Words',
+  phrase: 'Phrases',
+  sentence: 'Sentences',
+  paragraph: 'Reading',
+}[contentType] || contentType);
+
+const getModuleLevel = async (moduleId) => {
+  const { data, error } = await supabase
+    .from('curriculum_modules')
+    .select('reading_level')
+    .eq('id', moduleId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.reading_level || null;
+};
+
+const getLevelRequirementStatus = async (studentId, levelValue) => {
+  const level = normalizeLevel(levelValue);
+  const { data: requirement, error: requirementError } = await supabase
+    .from('curriculum_level_requirements')
+    .select('*')
+    .eq('reading_level', level)
+    .maybeSingle();
+
+  if (requirementError) throw requirementError;
+  const requiredTypes = requiredTypesFor(requirement || {});
+  if (!requiredTypes.length) return { met: true, counts: {} };
+
+  const { data: items, error: itemsError } = await supabase
+    .from('curriculum_items')
+    .select('id,item_type')
+    .eq('reading_level', level)
+    .in('item_type', requiredTypes)
+    .eq('is_active', true);
+
+  if (itemsError) throw itemsError;
+
+  const itemIds = (items || []).map((item) => item.id);
+  const { data: progressRows, error: progressError } = itemIds.length
+    ? await supabase
+        .from('curriculum_progress')
+        .select('curriculum_item_id,status')
+        .eq('student_id', studentId)
+        .in('curriculum_item_id', itemIds)
+    : { data: [], error: null };
+
+  if (progressError) throw progressError;
+
+  const progressByItem = new Map((progressRows || []).map((row) => [row.curriculum_item_id, row]));
+  const counts = {};
+  requiredTypes.forEach((type) => {
+    const required = Number(requirement?.[TYPE_REQUIREMENT_KEYS[type]] || 0);
+    const typeItems = (items || []).filter((item) => item.item_type === type);
+    const passed = typeItems.filter((item) => PASSED_STATUSES.has(progressByItem.get(item.id)?.status)).length;
+    counts[type] = {
+      required,
+      available: typeItems.length,
+      passed,
+      met: passed >= required,
+    };
+  });
+
+  return {
+    met: requiredTypes.every((type) => counts[type]?.met),
+    counts,
+  };
+};
+
+const isFinalRequiredModuleCompleted = async (studentId, levelValue) => {
+  const level = normalizeLevel(levelValue);
+  const { data: finalModule, error: moduleError } = await supabase
+    .from('curriculum_modules')
+    .select('id')
+    .eq('reading_level', level)
+    .eq('is_active', true)
+    .eq('required', true)
+    .order('sequence_no', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (moduleError) throw moduleError;
+  if (!finalModule) return true;
+
+  const { data: progress, error: progressError } = await supabase
+    .from('student_module_progress')
+    .select('status,assessment_passed')
+    .eq('student_id', studentId)
+    .eq('module_id', finalModule.id)
+    .maybeSingle();
+
+  if (progressError) throw progressError;
+  return progress?.status === 'completed' && Boolean(progress?.assessment_passed);
+};
+
+export async function canStudentAdvanceFromLevel(studentId, levelValue) {
+  const level = normalizeLevel(levelValue);
+  const requirementStatus = await getLevelRequirementStatus(studentId, level);
+  const finalModuleCompleted = await isFinalRequiredModuleCompleted(studentId, level);
+  return {
+    canAdvance: requirementStatus.met && finalModuleCompleted,
+    requirementsMet: requirementStatus.met,
+    finalModuleCompleted,
+    nextLevel: nextLevelFor(level),
+    counts: requirementStatus.counts,
+  };
+}
+
+const isLevelUnlockedForStudent = async (studentId, targetLevelValue) => {
+  const targetLevel = normalizeLevel(targetLevelValue);
+  const targetIndex = LEVEL_ORDER.indexOf(targetLevel);
+  if (targetIndex <= 0) return { unlocked: true };
+
+  for (const previousLevel of LEVEL_ORDER.slice(0, targetIndex)) {
+    const advanceStatus = await canStudentAdvanceFromLevel(studentId, previousLevel);
+    if (!advanceStatus.canAdvance) {
+      return {
+        unlocked: false,
+        blockedByLevel: previousLevel,
+        requirementsMet: advanceStatus.requirementsMet,
+        finalModuleCompleted: advanceStatus.finalModuleCompleted,
+      };
+    }
+  }
+
+  return { unlocked: true };
+};
+
+const computeModuleView = (module, index, previousModule, rows, options = {}) => {
   const row = rows.moduleProgressById.get(module.id);
   const unlockedBySequence = index === 0 || previousModule?.status === 'completed';
   const moduleItems = module.items.map((link) => {
@@ -122,7 +273,9 @@ const computeModuleView = (module, index, previousModule, rows) => {
     ? Math.round((passedRequired / requiredItems.length) * 100)
     : 0;
   const assessmentPassed = Boolean(row?.assessment_passed);
-  const computedStatus = !unlockedBySequence
+  const computedStatus = options.forceLocked
+    ? 'locked'
+    : !unlockedBySequence
     ? 'locked'
     : assessmentPassed
       ? 'completed'
@@ -142,7 +295,7 @@ const computeModuleView = (module, index, previousModule, rows) => {
     description: module.description,
     subtitle: module.description,
     contentType: module.content_type,
-    type: module.content_type === 'word' ? 'Words' : module.content_type === 'phonetic' ? 'Phonetics' : module.content_type,
+    type: typeLabelFor(module.content_type),
     required: module.required,
     assessmentId: module.assessment_id,
     passingScore: Number(module.passing_score || PASS_ACCURACY),
@@ -153,7 +306,7 @@ const computeModuleView = (module, index, previousModule, rows) => {
     assessmentPassed,
     completedAt: row?.completed_at || null,
     items: moduleItems,
-    helper: computedStatus === 'locked'
+    helper: options.lockedReason || (computedStatus === 'locked'
       ? `Complete Module ${module.module_number - 1} first`
       : computedStatus === 'completed'
         ? 'Completed'
@@ -161,7 +314,7 @@ const computeModuleView = (module, index, previousModule, rows) => {
           ? 'Assessment ready'
           : computedStatus === 'in_progress'
             ? `${itemProgressPercent}% complete`
-            : 'Ready to start',
+            : 'Ready to start'),
   };
 };
 
@@ -172,10 +325,19 @@ export async function getStudentModulesForLevel(studentIdOrUserId, levelValue = 
   const level = normalizeLevel(levelValue);
   const modules = await fetchModulesWithItems(level);
   const rows = await fetchStudentRows(student.id, modules);
+  const levelUnlock = await isLevelUnlockedForStudent(student.id, level);
+  const lockedReason = levelUnlock.unlocked
+    ? null
+    : levelUnlock.requirementsMet
+      ? `Pass the final ${LEVEL_LABELS[levelUnlock.blockedByLevel]} module assessment first`
+      : `Complete ${LEVEL_LABELS[levelUnlock.blockedByLevel]} level requirements first`;
 
   const views = [];
   modules.forEach((module, index) => {
-    views.push(computeModuleView(module, index, views[index - 1], rows));
+    views.push(computeModuleView(module, index, views[index - 1], rows, {
+      forceLocked: !levelUnlock.unlocked,
+      lockedReason,
+    }));
   });
 
   return { student, modules: views };
@@ -192,7 +354,8 @@ export async function getStudentModuleDetail(req, moduleId) {
   const studentResult = await getCurrentStudent(req);
   if (!studentResult.student) return studentResult;
 
-  const level = normalizeLevel(studentResult.student.reading_level);
+  const level = await getModuleLevel(moduleId);
+  if (!level) return { status: 404, body: { success: false, message: 'Module not found' } };
   const { modules } = await getStudentModulesForLevel(studentResult.student.id, level);
   const module = modules.find((item) => item.id === moduleId);
   if (!module) return { status: 404, body: { success: false, message: 'Module not found' } };
@@ -205,7 +368,17 @@ export async function assertStudentCanAttemptModuleItem(studentId, curriculumIte
   const student = await resolveStudent(studentId);
   if (!student) return { allowed: false, status: 404, message: 'Student profile not found' };
 
-  const { modules } = await getStudentModulesForLevel(student.id, student.reading_level);
+  const { data: item, error: itemError } = await supabase
+    .from('curriculum_items')
+    .select('reading_level')
+    .eq('id', curriculumItemId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (itemError) throw itemError;
+  if (!item) return { allowed: false, status: 404, message: 'Curriculum item not found' };
+
+  const { modules } = await getStudentModulesForLevel(student.id, item.reading_level);
   const module = modules.find((candidate) => candidate.items.some((item) => item.id === curriculumItemId));
   if (!module) return { allowed: true, module: null };
   if (module.status === 'locked') {
@@ -217,7 +390,17 @@ export async function assertStudentCanAttemptModuleItem(studentId, curriculumIte
 export async function syncModuleProgressForItem(studentId, curriculumItemId) {
   const student = await resolveStudent(studentId);
   if (!student) return null;
-  const { modules } = await getStudentModulesForLevel(student.id, student.reading_level);
+  const { data: item, error: itemError } = await supabase
+    .from('curriculum_items')
+    .select('reading_level')
+    .eq('id', curriculumItemId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (itemError) throw itemError;
+  if (!item) return null;
+
+  const { modules } = await getStudentModulesForLevel(student.id, item.reading_level);
   const module = modules.find((candidate) => candidate.items.some((item) => item.id === curriculumItemId));
   if (!module || module.status === 'locked' || module.assessmentPassed) return module || null;
 
@@ -242,7 +425,9 @@ export async function submitModuleAssessment(req, moduleId) {
   const studentResult = await getCurrentStudent(req);
   if (!studentResult.student) return studentResult;
 
-  const { modules } = await getStudentModulesForLevel(studentResult.student.id, studentResult.student.reading_level);
+  const level = await getModuleLevel(moduleId);
+  if (!level) return { status: 404, body: { success: false, message: 'Module not found' } };
+  const { modules } = await getStudentModulesForLevel(studentResult.student.id, level);
   const module = modules.find((item) => item.id === moduleId);
   if (!module) return { status: 404, body: { success: false, message: 'Module not found' } };
   if (module.status === 'locked') return { status: 403, body: { success: false, message: 'This module is locked' } };
@@ -314,7 +499,20 @@ export async function submitModuleAssessment(req, moduleId) {
 
   if (error) throw error;
 
-  const refreshed = await getStudentModulesForLevel(studentResult.student.id, studentResult.student.reading_level);
+  let updatedLevel = normalizeLevel(studentResult.student.reading_level);
+  if (passed) {
+    const advanceStatus = await canStudentAdvanceFromLevel(studentResult.student.id, level);
+    if (advanceStatus.canAdvance && advanceStatus.nextLevel && updatedLevel === level) {
+      const { error: levelError } = await supabase
+        .from('students')
+        .update({ reading_level: advanceStatus.nextLevel, updated_at: now })
+        .eq('id', studentResult.student.id);
+      if (levelError) throw levelError;
+      updatedLevel = advanceStatus.nextLevel;
+    }
+  }
+
+  const refreshed = await getStudentModulesForLevel(studentResult.student.id, level);
   return {
     status: 200,
     body: {
@@ -328,6 +526,7 @@ export async function submitModuleAssessment(req, moduleId) {
         items: module.items.map((item) => item.displayText),
       },
       progress,
+      updatedLevel,
       modules: refreshed.modules,
     },
   };
