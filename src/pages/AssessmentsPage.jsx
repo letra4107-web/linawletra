@@ -104,7 +104,8 @@ export default function AssessmentsPage() {
               <p className="empty-copy">There are no assessments matching your filters.</p>
             </div>
           ) : (
-            <table>
+            <div className="table-scroll">
+            <table className="simple-table">
               <thead>
                 <tr>
                   <th>Student</th>
@@ -165,6 +166,7 @@ export default function AssessmentsPage() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </div>

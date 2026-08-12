@@ -1,5 +1,7 @@
-:root{
-  --primary:#4F46E5;
+/* Scoped to the page's own root wrapper, not :root -- see the shared-token
+   comment in src/index.css for why a plain :root block here would leak. */
+.parent-dashboard-page{
+  --primary: var(--color-primary);
   --bg:#F7F3E9;
   --text:#1F2937;
   --success:#10B981;

@@ -2,12 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   LinawLetra shared design tokens.
+   Every page/component below this point historically declared its OWN
+   `:root { --shadow-sm: ...; --color-red-600: ...; }` block with slightly
+   different values under the SAME variable names. Because `:root` is always
+   the document root regardless of which file (or CSS module) declares it,
+   those blocks collide globally — whichever stylesheet happened to load
+   last silently won, app-wide, for any name two files both used. These
+   tokens are the single source of truth; per-page files now alias their
+   local token names to these instead of hardcoding their own values, so the
+   whole app pulls from one palette without every individual CSS rule needing
+   to be rewritten.
+   ============================================================================ */
 :root {
   color-scheme: light;
   --font-primary: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
   font-family: var(--font-primary);
   background-color: #f8fafc;
   color: #0f172a;
+
+  /* Brand */
+  --color-primary: #4F46E5;
+  --color-primary-hover: #4338CA;
+  --color-primary-soft: #eef2ff;
+  --color-secondary: #2A9D8F;
+  --color-secondary-soft: #DDF5EF;
+
+  /* Feedback */
+  --color-success: #16A34A;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #D97706;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #DC2626;
+  --color-danger-soft: #fee2e2;
+
+  /* Neutrals / text */
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-bg-page: #f4f6fb;
+
+  /* Radius scale */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-pill: 999px;
+
+  /* Shadow scale */
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 22px 48px rgba(15, 23, 42, 0.1);
+
+  /* Spacing scale (4px base unit) — already used consistently by the auth
+     forms; promoted here so every page can share it. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2rem;
+  --space-6: 2.5rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 5rem;
+
+  /* Transitions */
+  --transition-fast: all 0.15s ease;
+  --transition-base: all 0.2s ease;
 }
 
 html.is-android {

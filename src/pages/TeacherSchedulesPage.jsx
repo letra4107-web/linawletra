@@ -342,7 +342,7 @@ export default function TeacherSchedulesPage() {
                       flexDirection: 'column',
                       lineHeight: 1.3,
                       fontSize: '0.75rem',
-                      background: '#2A9D8F',
+                      background: '#4F46E5',
                     }}>
                       <span style={{ fontSize: '1.15rem', fontWeight: 800 }}>
                         {badgeDate.day}

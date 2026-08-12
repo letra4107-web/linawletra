@@ -1,14 +1,18 @@
-:root {
-  --primary: #4F46E5;
+/* Scoped to the page's own root wrapper, not :root -- :root is always the
+   document root regardless of which file declares it, so a plain :root
+   block here would leak these values into every other page's CSS too
+   (see the shared-token comment in src/index.css). */
+.admin-dashboard-shell {
+  --primary: var(--color-primary);
   --bg: #F7F3E9;
-  --surface: #FFFFFF;
+  --surface: var(--color-surface);
   --surface-strong: #F8F8FF;
   --text: #1F2937;
   --muted: rgba(31, 41, 55, 0.68);
   --muted-soft: rgba(31, 41, 55, 0.4);
   --success: #10B981;
   --error: #EF4444;
-  --radius: 20px;
+  --radius: var(--radius-xl);
   --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
 }
 
@@ -397,6 +401,14 @@
 .communication-card {
   display: grid;
   gap: 16px;
+}
+
+/* .table-scroll's name implies it scrolls a wide table horizontally instead
+   of overflowing the page, but nothing actually set that -- .simple-table
+   (used by Users.jsx, Content.jsx) has no responsive column-hiding, so on
+   narrow viewports it needs this to avoid horizontal page overflow. */
+.table-scroll {
+  overflow-x: auto;
 }
 
 .line-chart,

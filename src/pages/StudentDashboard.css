@@ -1,17 +1,46 @@
 
-:root {
-  --surface: #fcfbf7;
-  --surface-soft: #ffffff;
-  --surface-muted: #f5f6f8;
-  --border: #e7e2da;
-  --text: #162a44;
-  --text-secondary: #556b85;
-  --accent: #4F46E5;
-  --accent-soft: #d7f0ec;
-  --success: #23a455;
-  --danger: #dc4b4b;
-  --radius: 20px;
-  --shadow: 0 16px 40px rgba(22, 42, 68, 0.07);
+/* Scoped to the page's own root wrapper, not :root -- see the shared-token
+   comment in src/index.css for why a plain :root block here would leak.
+
+   CONSOLIDATED FROM THREE LAYERED THEMES: this file used to have three
+   separate, unconditional `.dashboard-page { ... }` token blocks -- an
+   original set (was here), a "Polished student dashboard experience" set
+   (was further down, marker left in place), and a "Mobile palette
+   alignment" set (was further down still, marker left in place). Same
+   selector + same specificity + later source order meant each one silently
+   overrode the last for any property name more than one of them touched.
+   Every value below is the one that was ALREADY winning that cascade before
+   this change (verified property-by-property, not guessed), so this is a
+   structural cleanup only -- the page's rendered appearance is unchanged.
+   `--radius`/`--shadow` are the one exception worth calling out: only the
+   "Polished" block defined them (8px / a softer shadow), and the "Mobile
+   palette" block never touched those two names, so the "Polished" values
+   were and still are what's live, not the mobile-palette look. */
+.dashboard-page {
+  --mobile-cream: #FBF3E2;
+  --mobile-ink: #3B322C;
+  --mobile-ink-soft: #5F5044;
+  --mobile-sun: #E3971A;
+  --mobile-coral: #E06B4C;
+  --mobile-sage: #5C8047;
+  --mobile-lavender: #7C6FCF;
+  --mobile-lavender-dark: #5F52B0;
+  --mobile-bg: #F4F1FB;
+  --surface: #FBF3E2;
+  --surface-soft: #FAF8F3;
+  --surface-muted: #EFECFB;
+  --border: #E7DCCB;
+  --text: var(--mobile-ink);
+  --text-secondary: var(--mobile-ink-soft);
+  --accent: var(--mobile-lavender);
+  --accent-strong: var(--mobile-lavender-dark);
+  --accent-soft: #EFECFB;
+  --success: var(--mobile-sage);
+  --warning: var(--mobile-sun);
+  --danger: var(--mobile-coral);
+  --radius: 8px;
+  --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  background: var(--mobile-bg);
 }
 
 * {
@@ -1995,25 +2024,12 @@ a {
 
 /* ============================================================================
    Polished student dashboard experience
+   (token block that used to be here was merged into the single
+   `.dashboard-page` token block near the top of this file -- see the
+   CONSOLIDATED FROM THREE LAYERED THEMES comment there. Its --radius/--shadow
+   values are the ones that carried forward; its background gradient did not,
+   since the "Mobile palette alignment" block below used to override it.)
    ============================================================================ */
-.dashboard-page {
-  --surface: #fbfaf7;
-  --surface-soft: #ffffff;
-  --surface-muted: #eef3f7;
-  --border: #dce3ea;
-  --text: #172033;
-  --text-secondary: #607086;
-  --accent: #3157d5;
-  --accent-strong: #243b93;
-  --accent-soft: #eaf0ff;
-  --success: #148a5b;
-  --warning: #b7791f;
-  --danger: #d14343;
-  --radius: 8px;
-  --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
-  background:
-    linear-gradient(180deg, #f7fafc 0%, #eef3f7 100%);
-}
 
 .student-shell {
   background:
@@ -2554,31 +2570,12 @@ a {
 
 /* ============================================================================
    Mobile palette alignment and settings parity
+   (token block that used to be here was merged into the single
+   `.dashboard-page` token block near the top of this file, since it was
+   already the theme actually winning the cascade -- see the CONSOLIDATED
+   FROM THREE LAYERED THEMES comment there. All --mobile-* tokens and the
+   page background it set are still defined there, just relocated.)
    ============================================================================ */
-.dashboard-page {
-  --mobile-cream: #FBF3E2;
-  --mobile-ink: #3B322C;
-  --mobile-ink-soft: #5F5044;
-  --mobile-sun: #E3971A;
-  --mobile-coral: #E06B4C;
-  --mobile-sage: #5C8047;
-  --mobile-lavender: #7C6FCF;
-  --mobile-lavender-dark: #5F52B0;
-  --mobile-bg: #F4F1FB;
-  --surface: #FBF3E2;
-  --surface-soft: #FAF8F3;
-  --surface-muted: #EFECFB;
-  --border: #E7DCCB;
-  --text: var(--mobile-ink);
-  --text-secondary: var(--mobile-ink-soft);
-  --accent: var(--mobile-lavender);
-  --accent-strong: var(--mobile-lavender-dark);
-  --accent-soft: #EFECFB;
-  --success: var(--mobile-sage);
-  --warning: var(--mobile-sun);
-  --danger: var(--mobile-coral);
-  background: var(--mobile-bg);
-}
 
 body,
 .dashboard-container {

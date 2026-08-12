@@ -1,16 +1,24 @@
 /* Teacher Dashboard: Dyslexia-friendly production UI */
-:root {
+/* Scoped to the page's own root wrapper, not :root -- see the shared-token
+   comment in src/index.css for why a plain :root block here would leak.
+   --accent now points at the shared indigo brand color (--color-primary),
+   same as every other dashboard and the auth flow -- Teacher pages
+   previously ran their own teal theme (#2A9D8F), which made them look like
+   a separate application. Teal remains available as --color-secondary for
+   genuine category/status distinctions (see TeacherActivitiesPage.jsx's
+   activity-type legend), just not as the page's primary brand color. */
+.teacher-dashboard-page {
   --bg-soft: #FDFAF5;
-  --panel-bg: #FFFFFF;
+  --panel-bg: var(--color-surface);
   --panel-border: #E8E4DC;
   --panel-shadow: 0 16px 40px rgba(88, 84, 78, 0.08);
   --text-primary: #1A1D23;
   --text-secondary: #4B4F56;
-  --accent: #2A9D8F;
-  --accent-soft: #DDF5EF;
-  --warning-color: #D97706;
+  --accent: var(--color-primary);
+  --accent-soft: var(--color-primary-soft);
+  --warning-color: var(--color-warning);
   --muted: #787C82;
-  --success: #16A34A;
+  --success: var(--color-success);
   --border-radius: 28px;
   --section-gap: 24px;
 }
@@ -39,7 +47,7 @@
   width: 260px !important;
   max-width: 260px;
   z-index: 50;
-  background: #1F7A6E !important;
+  background: #3730A3 !important;
   color: #FFFFFF;
   display: flex !important;
   flex-direction: column;
@@ -89,7 +97,7 @@
 
 .sidebar-role {
   font-size: 0.7rem;
-  color: #A7F3D0;  letter-spacing: 0.18em;
+  color: #C7D2FE;  letter-spacing: 0.18em;
 }
 
 .sidebar-menu {
@@ -137,7 +145,7 @@
 }
 
 .sidebar-item.active {
-  background: #2A9D8F;
+  background: var(--accent);
   color: #FFFFFF;
   font-weight: 700;
 }
@@ -352,7 +360,7 @@
   border-radius: 20px;
   padding: 22px 24px;
   border: 1px solid #E8E4DC;
-  border-left: 4px solid #2A9D8F;
+  border-left: 4px solid var(--accent);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 
@@ -469,8 +477,8 @@
 }
 
 .filter-pill.active {
-  background: #2A9D8F;
-  border-color: #2A9D8F;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #FFFFFF;
 }
 
@@ -494,7 +502,7 @@
 
 .student-card:hover {
   background: #E8F5F4;
-  border-color: #2A9D8F;
+  border-color: var(--accent);
   transform: translateY(-1px);
 }
 
@@ -506,13 +514,13 @@
 
 .student-card:hover {
   background: #E8F5F4;
-  border-color: #2A9D8F;
+  border-color: var(--accent);
   transform: translateY(-1px);
 }
 
 .student-card.selected {
   background: #E8F5F4;
-  border-left: 3px solid #2A9D8F;
+  border-left: 3px solid var(--accent);
 }
 
 .student-card-left {
@@ -527,7 +535,7 @@
   border-radius: 18px;
   display: grid;
   place-items: center;
-  background: #2A9D8F;
+  background: var(--accent);
   color: #FFFFFF;
   font-weight: 700;
 }
@@ -585,8 +593,8 @@
 }
 
 .tier-pill {
-  border: 1px solid #2A9D8F;
-  color: #2A9D8F;
+  border: 1px solid var(--accent);
+  color: var(--accent);
   background: transparent;
 }
 
@@ -601,8 +609,8 @@
 }
 
 .status-pill-large {
-  background: rgba(42, 157, 143, 0.12);
-  color: #136F62;
+  background: var(--accent-soft);
+  color: var(--color-primary-hover);
 }
 
 .tier-pill-large {
@@ -676,7 +684,7 @@
   font-size: 1.75rem;
   display: grid;
   place-items: center;
-  background: #2A9D8F;
+  background: var(--accent);
   color: #FFFFFF;
 }
 
@@ -773,8 +781,8 @@
   width: fit-content;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(42, 157, 143, 0.12);
-  color: #136F62;
+  background: var(--accent-soft);
+  color: var(--color-primary-hover);
   font-weight: 700;
 }
 
@@ -810,7 +818,7 @@
 
 .tab-button.active {
   background: #FFFFFF;
-  border-color: rgba(42, 157, 143, 0.3);
+  border-color: rgba(79, 70, 229, 0.3);
 }
 
 .dashboard-hero {
@@ -829,8 +837,8 @@
   display: inline-flex;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(42, 157, 143, 0.12);
-  color: #2A9D8F;
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 700;
   letter-spacing: 0.16em;  font-size: 0.8rem;
 }
@@ -1007,7 +1015,7 @@
 .progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: #2A9D8F;
+  background: var(--accent);
 }
 
 .recommendation-box {
@@ -1475,4 +1483,30 @@
 
 @media (max-width: 640px){
   .student-overview-panel__stats{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+/* Same recipe as .simple-table/.table-scroll in AdminDashboard.css, so
+   plain data tables look consistent across roles instead of each page
+   inventing its own (AssessmentsPage.jsx previously rendered a bare,
+   unstyled <table> with no responsive handling at all -- real horizontal
+   overflow risk on narrow screens). */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.simple-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.simple-table th,
+.simple-table td {
+  text-align: left;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.simple-table th {
+  color: var(--text-secondary);
+  font-weight: 700;
 }

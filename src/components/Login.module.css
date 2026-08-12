@@ -1,22 +1,14 @@
 /* ============================================================
    DESIGN SYSTEM - CSS CUSTOM PROPERTIES
+   Scoped to .pageWrapper (this page's own root), not :root -- :root is
+   always the document root regardless of which file/CSS-module declares it,
+   so this would otherwise leak into every other page (see src/index.css).
+   --space-* and --font-primary are dropped here entirely: identical to the
+   global tokens in src/index.css, which every element already inherits, so
+   redeclaring them per-page was pure duplication.
    ============================================================ */
 
-:root {
-  /* Spacing Scale (4px base unit) */
-  --space-1: 0.25rem; /* 4px */
-  --space-2: 0.5rem;  /* 8px */
-  --space-3: 1rem;    /* 16px */
-  --space-4: 1.5rem;  /* 24px */
-  --space-5: 2rem;    /* 32px */
-  --space-6: 2.5rem;  /* 40px */
-  --space-7: 3rem;    /* 48px */
-  --space-8: 4rem;    /* 64px */
-  --space-9: 5rem;    /* 80px */
-
-  /* Typography */
-  --font-primary: 'Comic Sans MS', 'Trebuchet MS', Verdana, Arial, sans-serif;
-
+.pageWrapper {
   /* Color Palette */
   --color-slate-50: #eef2ff;
   --color-slate-100: #f8fafc;
@@ -29,16 +21,16 @@
   --color-slate-900: #0f172a;
 
   --color-red-500: #ef4444;
-  --color-red-600: #dc2626;
+  --color-red-600: var(--color-danger);
   --color-orange-500: #f97316;
-  --color-indigo-500: #4f46e5;
-  --color-indigo-600: #4338ca;
+  --color-indigo-500: var(--color-primary);
+  --color-indigo-600: var(--color-primary-hover);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 20px 60px rgba(15, 23, 42, 0.12);
 
-  /* Transitions */
+  /* Transitions (base here is 0.22s, not the global 0.2s -- kept explicit) */
   --transition-fast: all 0.15s ease;
   --transition-base: all 0.22s ease;
 }
