@@ -7,7 +7,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authMiddleware } from '../middleware/auth.js';
 import { supabase } from '../config/supabase.js';
-import { syllabify } from '../services/tagalogPhonetics.js';
 import { computeTranscriptScore } from '../services/pronunciationScoring.js';
 import readingProgression from '../services/readingProgression.js';
 
@@ -46,50 +45,33 @@ const escapeSsml = (text = '') =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-// Builds SSML with a <mark> before each syllable so Google's timepoint API
-// can report back the exact playback offset each syllable starts at —
-// that's what makes real karaoke-style highlighting possible, instead of
-// the character-length estimate used for the OpenAI fallback path.
-//
-// A mark isolating a single-letter syllable (e.g. the "a" in "a-so") makes
-// Google's fil-PH voices read that letter as its English alphabet name
-// ("ay") instead of the Tagalog vowel sound ("ah") — confirmed by A/B
-// testing plain text vs. marked text with identical voice/endpoint. Since
-// Tagalog syllables frequently start with a lone vowel ("a-so", "u-lo",
-// "i-sa"...), a 1-letter syllable is merged into the following syllable
-// (or the preceding one, if it's word-final) so no mark ever isolates a
-// single letter. The merged unit gets one mark at its first syllable's
-// index; the syllable(s) folded into it don't get their own highlight
-// step, which is the accepted trade-off for correct pronunciation.
-const buildSyllableSsml = (text) => {
+// Builds SSML with a <mark> before each WORD (not each syllable) so Google's
+// timepoint API can report back real per-word playback offsets. Marking every
+// syllable was measured to add ~20% to the synthesized audio duration
+// (verified: 39,168 bytes marked vs. 32,640 bytes plain, same text/voice/
+// speed — the mark density visibly breaks up natural prosody, producing the
+// choppy/robotic sound). Word-level marks produce byte-identical audio to
+// unmarked plain text, so this keeps natural pacing while still giving the
+// client a real per-word timing anchor; syllable position within a word is
+// then estimated client-side (see useSyllableHighlight.js), same technique
+// already used for the no-timepoints OpenAI fallback, just scoped to a much
+// smaller (single-word) time window instead of the whole sentence.
+const buildWordMarkedSsml = (text) => {
   const words = formatForTagalogSpeech(text).split(/\s+/).filter(Boolean);
   const parts = [];
   words.forEach((word, wordIndex) => {
-    const rawSyllables = syllabify(word);
-    const syllables = rawSyllables.length ? rawSyllables : [word];
-
-    const units = [];
-    syllables.forEach((syllable, syllableIndex) => {
-      if (syllable.length === 1 && syllableIndex + 1 < syllables.length) {
-        units.push({ text: syllable, firstIndex: syllableIndex, pendingMerge: true });
-      } else if (units.length && units[units.length - 1].pendingMerge) {
-        units[units.length - 1].text += syllable;
-        delete units[units.length - 1].pendingMerge;
-      } else {
-        units.push({ text: syllable, firstIndex: syllableIndex });
-      }
-    });
-
-    units.forEach((unit) => {
-      parts.push(`<mark name="w${wordIndex}_s${unit.firstIndex}"/>${escapeSsml(unit.text)}`);
-    });
-    parts.push(' ');
+    parts.push(`<mark name="w${wordIndex}"/>${escapeSsml(word)} `);
   });
   return `<speak>${parts.join('')}</speak>`;
 };
 
+// Bumping this invalidates previously cached audio synthesized with the old
+// per-syllable-marked SSML (see buildWordMarkedSsml above) so stale, choppier
+// clips aren't served from tts_cache forever after the fix.
+const TTS_CACHE_VERSION = 'v2';
+
 const hashCacheKey = (text, voice, speed) =>
-  crypto.createHash('sha256').update(`${text}|${voice}|${speed}`).digest('hex');
+  crypto.createHash('sha256').update(`${TTS_CACHE_VERSION}|${text}|${voice}|${speed}`).digest('hex');
 
 const getCachedTts = async (textHash) => {
   const { data, error } = await supabase
@@ -144,7 +126,7 @@ const callGoogleTTSWithTimepoints = async (text, { speed, voice } = {}) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        input: { ssml: buildSyllableSsml(text) },
+        input: { ssml: buildWordMarkedSsml(text) },
         voice: { languageCode: GOOGLE_TTS_LANGUAGE_CODE, name: voice || GOOGLE_TTS_VOICE },
         audioConfig: {
           audioEncoding: 'MP3',
@@ -161,11 +143,10 @@ const callGoogleTTSWithTimepoints = async (text, { speed, voice } = {}) => {
   }
 
   const timepoints = (data.timepoints || []).map((tp) => {
-    const match = /^w(\d+)_s(\d+)$/.exec(tp.markName || '');
+    const match = /^w(\d+)$/.exec(tp.markName || '');
     return {
       markName: tp.markName,
       wordIndex: match ? Number(match[1]) : null,
-      syllableIndex: match ? Number(match[2]) : null,
       timeSeconds: tp.timeSeconds,
     };
   });

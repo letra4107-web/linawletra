@@ -11,21 +11,39 @@ const ESTIMATED_CHARS_PER_SECOND = 9;
 export function useSyllableHighlight(syllabifyFn) {
   const [active, setActive] = useState({ wordIndex: -1, syllableIndex: -1 });
   const segmentsRef = useRef([]);
+  const wordSyllablesRef = useRef({});
   const estimatedDurationRef = useRef(1);
   const timepointsRef = useRef([]);
 
   const prepare = useCallback((text, wordIndexOffset = 0) => {
     const words = String(text || '').split(/\s+/).filter(Boolean);
     const segments = [];
+    const wordSyllables = {};
     let totalWeight = 0;
 
     words.forEach((word, localIndex) => {
       const syllables = syllabifyFn(word);
       const list = syllables.length ? syllables : [word];
+      const globalWordIndex = wordIndexOffset + localIndex;
+
+      let wordWeight = 0;
+      const localWeights = list.map((syllable, syllableIndex) => {
+        const weight = Math.max(1, syllable.length);
+        wordWeight += weight;
+        return { syllableIndex, weight };
+      });
+      let wordCumulative = 0;
+      wordSyllables[globalWordIndex] = localWeights.map(({ syllableIndex, weight }) => {
+        const start = wordCumulative / (wordWeight || 1);
+        wordCumulative += weight;
+        const end = wordCumulative / (wordWeight || 1);
+        return { syllableIndex, start, end };
+      });
+
       list.forEach((syllable, syllableIndex) => {
         const weight = Math.max(1, syllable.length);
         totalWeight += weight;
-        segments.push({ wordIndex: wordIndexOffset + localIndex, syllableIndex, weight });
+        segments.push({ wordIndex: globalWordIndex, syllableIndex, weight });
       });
     });
 
@@ -37,28 +55,48 @@ export function useSyllableHighlight(syllabifyFn) {
     });
 
     segmentsRef.current = segments;
+    wordSyllablesRef.current = wordSyllables;
     estimatedDurationRef.current = Math.max(0.4, String(text || '').trim().length / ESTIMATED_CHARS_PER_SECOND);
     timepointsRef.current = [];
   }, [syllabifyFn]);
 
-  // Real Google TTS timepoints (one per syllable's start offset) — used
-  // instead of the character-length estimate whenever they're available.
-  // Falls back to `updateFromProgress`'s estimate when timepoints is [],
-  // e.g. the OpenAI fallback path, which carries no real timing data.
+  // Real Google TTS timepoints — one per WORD's start offset (see
+  // buildWordMarkedSsml in server/routes/speech.js; marking every syllable
+  // measurably distorted the audio's natural pacing, so only word starts are
+  // real). Falls back to `updateFromProgress`'s estimate when timepoints is
+  // [], e.g. the OpenAI fallback path, which carries no real timing data.
   const prepareFromTimepoints = useCallback((timepoints) => {
     timepointsRef.current = Array.isArray(timepoints) ? timepoints : [];
   }, []);
 
-  const updateFromTimepoints = useCallback((currentTime) => {
+  // Anchors on the real per-word timepoint, then estimates which syllable
+  // within that word is active from the fraction of the word's time window
+  // (this word's start to the next word's start, or to `duration` for the
+  // last word) elapsed so far — same character-weight technique as the
+  // no-timepoints fallback below, just scoped to one word instead of the
+  // whole sentence, so estimation error stays small.
+  const updateFromTimepoints = useCallback((currentTime, duration) => {
     const timepoints = timepointsRef.current;
     if (!timepoints.length) return false;
 
-    let match = timepoints[0];
-    for (const tp of timepoints) {
-      if (tp.timeSeconds <= currentTime) match = tp;
+    let index = 0;
+    for (let i = 0; i < timepoints.length; i += 1) {
+      if (timepoints[i].timeSeconds <= currentTime) index = i;
       else break;
     }
-    setActive({ wordIndex: match.wordIndex, syllableIndex: match.syllableIndex });
+    const current = timepoints[index];
+    const next = timepoints[index + 1];
+    const windowStart = current.timeSeconds;
+    const windowEnd = next
+      ? next.timeSeconds
+      : (Number.isFinite(duration) && duration > windowStart ? duration : windowStart + 1);
+    const fraction = windowEnd > windowStart
+      ? Math.min(1, Math.max(0, (currentTime - windowStart) / (windowEnd - windowStart)))
+      : 0;
+
+    const syllables = wordSyllablesRef.current[current.wordIndex] || [];
+    const match = syllables.find((segment) => fraction < segment.end) || syllables[syllables.length - 1];
+    setActive({ wordIndex: current.wordIndex, syllableIndex: match ? match.syllableIndex : -1 });
     return true;
   }, []);
 
@@ -71,7 +109,7 @@ export function useSyllableHighlight(syllabifyFn) {
   // Prefers real Google timepoints (set via prepareFromTimepoints) when present;
   // falls back to the character-length estimate otherwise (e.g. OpenAI fallback audio).
   const updateFromProgress = useCallback((currentTime, duration) => {
-    if (updateFromTimepoints(currentTime)) return;
+    if (updateFromTimepoints(currentTime, duration)) return;
 
     const segments = segmentsRef.current;
     if (!segments.length) return;
