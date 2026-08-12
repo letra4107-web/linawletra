@@ -8,6 +8,8 @@ import { fileURLToPath } from 'url';
 import { authMiddleware } from '../middleware/auth.js';
 import { supabase } from '../config/supabase.js';
 import { syllabify } from '../services/tagalogPhonetics.js';
+import { computeTranscriptScore } from '../services/pronunciationScoring.js';
+import readingProgression from '../services/readingProgression.js';
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -306,5 +308,75 @@ router.post('/tts', authMiddleware, async (req, res) => {
   res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
 });
 
+// Lightweight scoring endpoint: compares expected text to a transcript
+router.post('/score', authMiddleware, async (req, res) => {
+  try {
+    const {
+      expected_text: expectedText,
+      transcript,
+      content_id: contentId,
+      duration_seconds: durationSeconds,
+      is_full_submission: isFullSubmission,
+    } = req.body || {};
+    if (!expectedText || !transcript) return res.status(400).json({ error: 'expected_text and transcript are required' });
+
+    const score = computeTranscriptScore(expectedText, transcript);
+
+    if (!contentId) {
+      return res.json({ score, progression: null, recorded: false, reason: 'no_content_id' });
+    }
+
+    // If the caller provided a content_id, record the attempt using the canonical
+    // server-side RPC so progression logic is centralized.
+    try {
+      let childId = null;
+      // Prefer authenticated user's auth UID -> children.auth_uid
+      if (req.user && req.user.id) {
+        const { data: childRow, error: childErr } = await supabase
+          .from('children')
+          .select('id')
+          .eq('auth_uid', String(req.user.id))
+          .limit(1)
+          .maybeSingle();
+        if (!childErr && childRow && childRow.id) childId = childRow.id;
+      }
+
+      // If no child found via auth, but a legacy student_id was provided, resolve via mapping
+      if (!childId && req.body.student_id) {
+        childId = await readingProgression.resolveChildIdForStudent(req.body.student_id);
+      }
+
+      if (!childId) {
+        return res.json({ score, progression: null, recorded: false, reason: 'no_child_resolved' });
+      }
+
+      const params = {
+        p_student_id: childId,
+        p_content_id: contentId,
+        p_accuracy: score,
+        p_transcript: transcript,
+        p_duration_seconds: Number.isFinite(Number(durationSeconds)) ? Math.trunc(Number(durationSeconds)) : null,
+        p_is_full_submission: isFullSubmission === true,
+        p_source: 'practice',
+      };
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc('record_student_content_attempt', params);
+      if (rpcError) {
+        console.warn('[Speech.score] record_student_content_attempt RPC failed:', rpcError.message || rpcError);
+        return res.json({ score, progression: null, recorded: false, reason: 'rpc_error' });
+      }
+
+      return res.json({ score, progression: rpcData, recorded: true });
+    } catch (recordErr) {
+      console.warn('[Speech.score] attempt recording failed:', recordErr && recordErr.message ? recordErr.message : recordErr);
+      return res.json({ score, progression: null, recorded: false, reason: 'record_error' });
+    }
+  } catch (error) {
+    console.error('[Speech.score] Error:', error);
+    return res.status(500).json({ error: 'Scoring failed' });
+  }
+});
+
 export default router;
+
 
