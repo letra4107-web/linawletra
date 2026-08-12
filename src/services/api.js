@@ -349,6 +349,9 @@ export const practiceWordService = {
 export const curriculumService = {
   getItems: (params = {}) => axiosInstance.get('/curriculum/items', { params }),
   getRequirements: () => axiosInstance.get('/curriculum/requirements'),
+  getModules: (params = {}) => axiosInstance.get('/curriculum/modules', { params }),
+  getModule: (moduleId) => axiosInstance.get(`/curriculum/modules/${moduleId}`),
+  submitModuleAssessment: (moduleId, data = {}) => axiosInstance.post(`/curriculum/modules/${moduleId}/assessment`, data),
   getNextItem: (params = {}) => axiosInstance.get('/curriculum/next', { params }),
   getProgress: (studentId) => axiosInstance.get(`/curriculum/progress/${studentId}`),
   submitAttempt: (data) => axiosInstance.post('/curriculum/attempts', data),

@@ -3,6 +3,7 @@ import { compareReadingText } from './readingAccuracy.js';
 import { authorizeStudent, resolveStudent } from '../utils/studentAccess.js';
 import { recordWordOutcome } from '../controllers/attemptsController.js';
 import { getStudentStats } from './studentStatsService.js';
+import { assertStudentCanAttemptModuleItem, getStudentModulesForLevel, syncModuleProgressForItem } from './curriculumModules.js';
 
 const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'];
 const PASS_ACCURACY = 80;
@@ -135,6 +136,53 @@ export async function getNextCurriculumItemForStudent(req, studentIdOrUserId) {
   const requirement = (await getCurriculumRequirements()).get(summary.level) || {};
   const requiredTypes = requiredTypesFor(requirement);
 
+  const { modules } = await getStudentModulesForLevel(student.id, summary.level);
+  if (modules.length > 0) {
+    const activeModule = modules.find((module) =>
+      ['unlocked', 'in_progress'].includes(module.status)
+    );
+    const nextModuleItem = activeModule?.items.find((item) => !item.passed) || null;
+
+    if (nextModuleItem) {
+      const { data: item, error: itemError } = await supabase
+        .from('curriculum_items')
+        .select('*')
+        .eq('id', nextModuleItem.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (itemError) throw itemError;
+
+      return {
+        status: 200,
+        body: {
+          success: true,
+          studentId: student.id,
+          item,
+          progress: nextModuleItem.progress || null,
+          module: activeModule,
+          summary,
+        },
+      };
+    }
+
+    const assessmentReadyModule = modules.find((module) => module.status === 'assessment_ready');
+    if (assessmentReadyModule) {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          studentId: student.id,
+          item: null,
+          progress: null,
+          module: assessmentReadyModule,
+          summary,
+          message: 'Module assessment is ready before the next module unlocks.',
+        },
+      };
+    }
+  }
+
   const { data: items, error: itemsError } = await supabase
     .from('curriculum_items')
     .select('*')
@@ -184,6 +232,14 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
 
   if (itemError) throw itemError;
   if (!item) return { status: 404, body: { success: false, message: 'Curriculum item not found' } };
+
+  const moduleGate = await assertStudentCanAttemptModuleItem(student.id, item.id);
+  if (!moduleGate.allowed) {
+    return {
+      status: moduleGate.status || 403,
+      body: { success: false, message: moduleGate.message || 'This module item is locked' },
+    };
+  }
 
   const expectedText = item.content;
   const result = compareReadingText(expectedText, spokenText);
@@ -265,6 +321,7 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
     }).catch((error) => console.warn('[Curriculum] word mastery update failed:', error.message));
   }
 
+  const moduleProgress = await syncModuleProgressForItem(student.id, item.id);
   const { summary } = await getStudentCurriculumSummary(student.id);
   let updatedLevel = student.reading_level;
   if (summary.readyForNextLevel && summary.nextLevel && normalizeLevel(student.reading_level) === summary.level) {
@@ -287,6 +344,7 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
       progress,
       passUnlocked: accuracy >= PASS_ACCURACY,
       masteryUnlocked: accuracy >= MASTERY_ACCURACY,
+      moduleProgress,
       summary: { ...summary, updatedLevel },
       studentStats,
     },

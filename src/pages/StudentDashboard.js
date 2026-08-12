@@ -184,6 +184,7 @@ const StudentDashboard = () => {
   const [activePracticeWord, setActivePracticeWord] = useState(null);
   const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
   const [curriculumSummary, setCurriculumSummary] = useState(null);
+  const [curriculumModulesByLevel, setCurriculumModulesByLevel] = useState({});
   const [curriculumLoading, setCurriculumLoading] = useState(false);
   const [homographPanelOpenId, setHomographPanelOpenId] = useState(null);
   const [transcribedText, setTranscribedText] = useState('');
@@ -647,6 +648,23 @@ const StudentDashboard = () => {
     }
   };
 
+  const loadCurriculumModules = async ({ level = selectedLibraryLevel, silent = false } = {}) => {
+    if (!currentStudentId || userRole !== 'student') return [];
+    if (!silent) setCurriculumLoading(true);
+    try {
+      const response = await curriculumService.getModules({ level: String(level).toLowerCase() });
+      const payload = response?.data || response || {};
+      const modules = Array.isArray(payload.modules) ? payload.modules : [];
+      setCurriculumModulesByLevel((prev) => ({ ...prev, [level]: modules }));
+      return modules;
+    } catch (error) {
+      console.warn('Curriculum modules fetch failed; using local module preview:', error.message);
+      return [];
+    } finally {
+      if (!silent) setCurriculumLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return;
     let isMounted = true;
@@ -654,10 +672,16 @@ const StudentDashboard = () => {
       if (!isMounted || item) return;
       setFeedback('No curriculum item is ready yet. Loading a recommended practice word if one is available.');
     });
+    loadCurriculumModules({ level: 'Beginner', silent: true });
     return () => {
       isMounted = false;
     };
   }, [hasLoadedProgress, currentStudentId, userRole]);
+
+  useEffect(() => {
+    if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return;
+    loadCurriculumModules({ level: selectedLibraryLevel, silent: true });
+  }, [hasLoadedProgress, currentStudentId, userRole, selectedLibraryLevel]);
 
   const awardPronunciationXp = (amount) => {
     if (!amount) return;
@@ -933,6 +957,7 @@ const StudentDashboard = () => {
             setPracticeLevel(curriculumAttempt.summary.updatedLevel);
           }
         }
+        await loadCurriculumModules({ level: selectedLibraryLevel, silent: true });
       } catch (error) {
         console.error('Failed to record curriculum attempt:', error);
         setRecognitionResult('error');
@@ -1388,6 +1413,24 @@ const StudentDashboard = () => {
   const activeReadingLevelLabel = levelNames[practiceLevel] || 'Beginner';
   const levelOrder = ['Beginner', 'Intermediate', 'Advanced'];
   const activeLevelIndex = levelOrder.indexOf(activeReadingLevelLabel);
+  const normalizeServerModule = (module) => ({
+    ...module,
+    level: module.level || levelNames[module.readingLevel] || selectedLibraryLevel,
+    number: module.number || module.moduleNumber,
+    subtitle: module.description || module.subtitle || '',
+    type: module.type || (module.contentType === 'word' ? 'Words' : module.contentType === 'phonetic' ? 'Phonetics' : module.contentType),
+    accent: module.accent || 'violet',
+    progress: Number(module.progress || 0),
+    helper: module.helper || 'Ready to start',
+    items: (module.items || []).map((item) => ({
+      ...item,
+      label: item.displayText || item.syllableHyphenation || item.content || String(item),
+      practiceText: item.content || item.displayText || String(item),
+      curriculumItemId: item.id || item.curriculumItemId,
+      itemType: item.itemType || module.contentType || 'word',
+      passed: Boolean(item.passed),
+    })),
+  });
   const getLevelProgressDriver = (level) => {
     const levelIndex = levelOrder.indexOf(level);
     if (activeLevelIndex > levelIndex) return 100;
@@ -1395,6 +1438,11 @@ const StudentDashboard = () => {
     return 0;
   };
   const buildModuleRoadmapForLevel = (level) => {
+    const serverModules = curriculumModulesByLevel[level];
+    if (Array.isArray(serverModules) && serverModules.length > 0) {
+      return serverModules.map(normalizeServerModule);
+    }
+
     const levelProgressDriver = getLevelProgressDriver(level);
     return (moduleDefinitionsByLevel[level] || moduleDefinitionsByLevel.Beginner).map((module, index) => {
       const segmentStart = index * 20;
@@ -1409,6 +1457,13 @@ const StudentDashboard = () => {
       return {
         ...module,
         level,
+        items: module.items.map((item) => ({
+          label: item,
+          practiceText: item,
+          curriculumItemId: null,
+          itemType: module.type === 'Words' ? 'word' : 'phonetic',
+          passed: false,
+        })),
         progress: segmentProgress,
         status,
         helper: status === 'locked' ? `Complete Module ${module.number - 1} first` : status === 'completed' ? 'Completed' : status === 'in-progress' ? `${segmentProgress}% complete` : 'Ready to start',
@@ -1441,16 +1496,38 @@ const StudentDashboard = () => {
     Math.round((selectedModule.progress / 100) * selectedModule.items.length)
   );
   const beginnerModulesComplete = completedModules.length === moduleRoadmap.length;
-  const openAssessmentPreview = (module) => {
+  const openAssessmentPreview = async (module) => {
     if (!module || module.items.length === 0) return;
-    const score = module.progress >= 100 ? 92 : Math.max(45, Math.min(88, module.progress + 12));
-    setAssessmentPreview({
-      moduleNumber: module.number,
-      title: module.title,
-      score,
-      passed: score >= 75,
-      items: module.items,
-    });
+    setCurriculumLoading(true);
+    try {
+      const response = module.id
+        ? await curriculumService.submitModuleAssessment(module.id)
+        : null;
+      const payload = response?.data || response || {};
+      if (Array.isArray(payload.modules)) {
+        setCurriculumModulesByLevel((prev) => ({ ...prev, [selectedLibraryLevel]: payload.modules }));
+      }
+      const assessment = payload.assessment || {};
+      const score = Number(assessment.score ?? (module.progress >= 100 ? 92 : Math.max(45, Math.min(88, module.progress + 12))));
+      setAssessmentPreview({
+        moduleNumber: module.number,
+        title: module.title,
+        score,
+        passed: Boolean(assessment.passed ?? score >= 80),
+        items: (assessment.items || module.items.map((item) => item.label || item.practiceText)).slice(0, 12),
+      });
+    } catch (error) {
+      console.error('Failed to submit module assessment:', error);
+      setAssessmentPreview({
+        moduleNumber: module.number,
+        title: module.title,
+        score: 0,
+        passed: false,
+        items: module.items.map((item) => item.label || item.practiceText).slice(0, 12),
+      });
+    } finally {
+      setCurriculumLoading(false);
+    }
   };
   const todayActivity = useMemo(() => {
     const todayKey = dateTime.toISOString().slice(0, 10);
@@ -1510,19 +1587,24 @@ const StudentDashboard = () => {
   };
   const startModulePractice = (module, item) => {
     if (!module || !item) return;
+    const practiceText = item.practiceText || item.content || item.label || String(item);
     selectPracticeWord({
-      id: `module-${module.number}-${item}`,
-      word: item,
-      accentedSpelling: item,
+      id: item.curriculumItemId || `module-${module.number}-${practiceText}`,
+      word: practiceText,
+      accentedSpelling: item.label || practiceText,
       meaning: module.type === 'Words'
-        ? 'Practice word from your current module.'
+        ? item.kind === 'syllable_practice'
+          ? 'Syllable practice from your current module.'
+          : item.definition || 'Practice word from your current module.'
         : 'Practice sound from your current phonetics module.',
       example: null,
       isHomograph: false,
       homographGroup: null,
       difficulty: practiceLevel,
-      itemType: module.type === 'Words' ? 'word' : 'phonetic',
+      itemType: item.itemType || (module.type === 'Words' ? 'word' : 'phonetic'),
       moduleNumber: module.number,
+      moduleId: module.id,
+      curriculumItemId: item.curriculumItemId,
     });
     handleNav('practice');
   };
@@ -1663,7 +1745,7 @@ const StudentDashboard = () => {
               </h3>
               <p>
                 {assessmentPreview.passed
-                  ? 'Great work. This module is ready to be counted once module assessments are connected to the backend.'
+                  ? 'Great work. This module has been completed and the next module can unlock.'
                   : "Let's practice a little more before unlocking the next module."}
               </p>
               <div className="student-assessment-score">
@@ -2322,7 +2404,7 @@ const StudentDashboard = () => {
 
                 <section className="student-library-continue">
                   <div className={`student-module-cover accent-${currentModule.accent}`} aria-hidden="true">
-                    <strong>{currentModule.type === 'Words' ? 'Ba' : currentModule.subtitle.split(',')[0]}</strong>
+                    <strong>{currentModule.type === 'Words' ? 'Ba' : String(currentModule.subtitle || currentModule.title).split(',')[0]}</strong>
                     <span>{currentModule.type}</span>
                   </div>
                   <div className="student-library-continue-copy">
@@ -2418,16 +2500,18 @@ const StudentDashboard = () => {
                         <span>This module is ready for the workbook content once the curriculum scope is approved.</span>
                       </div>
                     ) : selectedModule.items.map((item, index) => {
-                      const completed = index < selectedModuleCompletedItems;
+                      const completed = item.passed || index < selectedModuleCompletedItems;
+                      const label = item.label || item.practiceText || String(item);
                       return (
                         <button
-                          key={item}
+                          key={item.curriculumItemId || label}
                           type="button"
                           className={`student-module-item ${completed ? 'is-complete' : ''}`}
                           onClick={() => startModulePractice(selectedModule, item)}
                         >
                           {completed ? <FiCheck aria-hidden="true" /> : <FiVolume2 aria-hidden="true" />}
-                          <strong>{item}</strong>
+                          <strong>{label}</strong>
+                          {item.kind === 'syllable_practice' && <span>Syllable Practice</span>}
                         </button>
                       );
                     })}

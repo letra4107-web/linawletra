@@ -6,6 +6,11 @@ import {
   getStudentCurriculumSummary,
   recordCurriculumAttemptForStudent,
 } from '../services/curriculumProgress.js';
+import {
+  getStudentModuleDetail,
+  getStudentModules,
+  submitModuleAssessment,
+} from '../services/curriculumModules.js';
 
 const router = express.Router();
 
@@ -62,6 +67,36 @@ router.get('/requirements', authMiddleware, async (_req, res) => {
   } catch (error) {
     console.error('[Curriculum] Failed to fetch requirements:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch curriculum requirements' });
+  }
+});
+
+router.get('/modules', authMiddleware, async (req, res) => {
+  try {
+    const result = await getStudentModules(req, req.query.level);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to fetch modules:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch curriculum modules' });
+  }
+});
+
+router.get('/modules/:moduleId', authMiddleware, async (req, res) => {
+  try {
+    const result = await getStudentModuleDetail(req, req.params.moduleId);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to fetch module detail:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch curriculum module' });
+  }
+});
+
+router.post('/modules/:moduleId/assessment', authMiddleware, async (req, res) => {
+  try {
+    const result = await submitModuleAssessment(req, req.params.moduleId);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to submit module assessment:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to submit module assessment' });
   }
 });
 
