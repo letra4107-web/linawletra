@@ -175,6 +175,11 @@ const StudentDashboard = () => {
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [learnFilter, setLearnFilter] = useState('All');
+  const [libraryFilter, setLibraryFilter] = useState('All Modules');
+  const [selectedLibraryLevel, setSelectedLibraryLevel] = useState('Beginner');
+  const [selectedModuleNumber, setSelectedModuleNumber] = useState(null);
+  const [equippedModuleNumber, setEquippedModuleNumber] = useState(null);
+  const [assessmentPreview, setAssessmentPreview] = useState(null);
   const [expectedText, setExpectedText] = useState('');
   const [activePracticeWord, setActivePracticeWord] = useState(null);
   const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
@@ -388,6 +393,15 @@ const StudentDashboard = () => {
       (error) => console.warn('Canonical stats realtime subscription failed:', error)
     );
   }, [hasLoadedProgress, currentStudentId, userRole, authUser]);
+  useEffect(() => {
+    if (!currentStudentId || typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(`linawletra:equipped-module:${currentStudentId}`);
+    if (stored) setEquippedModuleNumber(stored);
+  }, [currentStudentId]);
+  useEffect(() => {
+    if (!currentStudentId || !equippedModuleNumber || typeof window === 'undefined') return;
+    window.localStorage.setItem(`linawletra:equipped-module:${currentStudentId}`, equippedModuleNumber);
+  }, [currentStudentId, equippedModuleNumber]);
   const persistAccessibilitySettings = async (updates) => {
     const previous = accessibilitySettings;
     const next = { ...previous, ...updates };
@@ -1342,6 +1356,102 @@ const StudentDashboard = () => {
     100,
     (practiceProgressCurrent / Math.max(practiceProgressTarget, 1)) * 100
   );
+  const moduleDefinitionsByLevel = {
+    Beginner: [
+      { number: 1, title: 'Mga Patinig', subtitle: 'A, E, I, O, U', type: 'Phonetics', accent: 'violet', items: ['A', 'E', 'I', 'O', 'U'] },
+      { number: 2, title: 'Ba-Be-Bi-Bo-Bu', subtitle: 'Unang hanay ng pantig', type: 'Phonetics', accent: 'green', items: ['Ba', 'Be', 'Bi', 'Bo', 'Bu'] },
+      { number: 3, title: 'Ka-Ke-Ki-Ko-Ku', subtitle: 'Ikalawang hanay ng pantig', type: 'Phonetics', accent: 'sun', items: ['Ka', 'Ke', 'Ki', 'Ko', 'Ku'] },
+      { number: 4, title: 'Da-De-Di-Do-Du', subtitle: 'Ikatlong hanay ng pantig', type: 'Phonetics', accent: 'blue', items: ['Da', 'De', 'Di', 'Do', 'Du'] },
+      { number: 5, title: 'Bumuo ng mga Salita', subtitle: 'Ba-Ka, Ku-Ko, Bu-Ko, A-Ko', type: 'Words', accent: 'coral', items: ['Ba-Ka', 'Ku-Ko', 'Bu-Ko', 'A-Ko'] },
+    ],
+    Intermediate: [
+      { number: 1, title: 'Words to Phrases', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'violet', items: [], needsContent: true },
+      { number: 2, title: 'Simple Phrases', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'green', items: [], needsContent: true },
+      { number: 3, title: 'Short Phrases', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'sun', items: [], needsContent: true },
+      { number: 4, title: 'Phrase Practice', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'blue', items: [], needsContent: true },
+      { number: 5, title: 'Phrase Assessment', subtitle: 'Assessment content needed', type: 'Assessment', accent: 'coral', items: [], needsContent: true },
+    ],
+    Advanced: [
+      { number: 1, title: 'Phrase Reading', subtitle: 'Story content pending', type: 'Phrases', accent: 'violet', items: [], needsContent: true },
+      { number: 2, title: 'Connecting Phrases', subtitle: 'Story content pending', type: 'Phrases', accent: 'green', items: [], needsContent: true },
+      { number: 3, title: 'Story Preparation', subtitle: 'Story content pending', type: 'Sentences', accent: 'sun', items: [], needsContent: true },
+      { number: 4, title: 'Short Story Reading', subtitle: 'Client story content pending', type: 'Story', accent: 'blue', items: [], needsContent: true },
+      { number: 5, title: 'Story Assessment', subtitle: 'Assessment content needed', type: 'Assessment', accent: 'coral', items: [], needsContent: true },
+    ],
+  };
+  const moduleProgressDriver = Math.max(
+    lessonCompletionPercent,
+    curriculumProgressTotals.required > 0
+      ? Math.round((curriculumProgressTotals.passed / Math.max(curriculumProgressTotals.required, 1)) * 100)
+      : 0
+  );
+  const activeReadingLevelLabel = levelNames[practiceLevel] || 'Beginner';
+  const levelOrder = ['Beginner', 'Intermediate', 'Advanced'];
+  const activeLevelIndex = levelOrder.indexOf(activeReadingLevelLabel);
+  const getLevelProgressDriver = (level) => {
+    const levelIndex = levelOrder.indexOf(level);
+    if (activeLevelIndex > levelIndex) return 100;
+    if (activeLevelIndex === levelIndex) return moduleProgressDriver;
+    return 0;
+  };
+  const buildModuleRoadmapForLevel = (level) => {
+    const levelProgressDriver = getLevelProgressDriver(level);
+    return (moduleDefinitionsByLevel[level] || moduleDefinitionsByLevel.Beginner).map((module, index) => {
+      const segmentStart = index * 20;
+      const segmentProgress = Math.max(0, Math.min(100, Math.round(((levelProgressDriver - segmentStart) / 20) * 100)));
+      const status = segmentProgress >= 100
+        ? 'completed'
+        : segmentProgress > 0
+          ? 'in-progress'
+          : index === 0 || levelProgressDriver >= segmentStart
+            ? 'available'
+            : 'locked';
+      return {
+        ...module,
+        level,
+        progress: segmentProgress,
+        status,
+        helper: status === 'locked' ? `Complete Module ${module.number - 1} first` : status === 'completed' ? 'Completed' : status === 'in-progress' ? `${segmentProgress}% complete` : 'Ready to start',
+      };
+    });
+  };
+  const moduleRoadmap = buildModuleRoadmapForLevel(selectedLibraryLevel);
+  const activeLevelRoadmap = buildModuleRoadmapForLevel(activeReadingLevelLabel);
+  const activeCurrentModule = activeLevelRoadmap.find((module) => module.status === 'in-progress')
+    || activeLevelRoadmap.find((module) => module.status === 'available')
+    || activeLevelRoadmap[activeLevelRoadmap.length - 1];
+  const currentModule = moduleRoadmap.find((module) => module.status === 'in-progress')
+    || moduleRoadmap.find((module) => module.status === 'available')
+    || moduleRoadmap[moduleRoadmap.length - 1];
+  const completedModules = moduleRoadmap.filter((module) => module.status === 'completed');
+  const allCompletedModules = levelOrder.flatMap((level) => buildModuleRoadmapForLevel(level).filter((module) => module.status === 'completed'));
+  const equippedModule = allCompletedModules.find((module) => `${module.level}-${module.number}` === equippedModuleNumber)
+    || allCompletedModules[allCompletedModules.length - 1]
+    || null;
+  const selectedModule = moduleRoadmap.find((module) => module.number === selectedModuleNumber && module.status !== 'locked')
+    || currentModule;
+  const filteredModuleRoadmap = moduleRoadmap.filter((module) => {
+    if (libraryFilter === 'Phonetics') return module.type === 'Phonetics';
+    if (libraryFilter === 'Words') return module.type === 'Words';
+    if (libraryFilter === 'Assessments') return module.type === 'Assessment' || module.number === moduleRoadmap.length;
+    return true;
+  });
+  const selectedModuleCompletedItems = Math.min(
+    selectedModule.items.length,
+    Math.round((selectedModule.progress / 100) * selectedModule.items.length)
+  );
+  const beginnerModulesComplete = completedModules.length === moduleRoadmap.length;
+  const openAssessmentPreview = (module) => {
+    if (!module || module.items.length === 0) return;
+    const score = module.progress >= 100 ? 92 : Math.max(45, Math.min(88, module.progress + 12));
+    setAssessmentPreview({
+      moduleNumber: module.number,
+      title: module.title,
+      score,
+      passed: score >= 75,
+      items: module.items,
+    });
+  };
   const todayActivity = useMemo(() => {
     const todayKey = dateTime.toISOString().slice(0, 10);
     const entries = history
@@ -1398,6 +1508,24 @@ const StudentDashboard = () => {
     setExpectedText(practiceWord.word);
     resetPracticeAttemptState();
   };
+  const startModulePractice = (module, item) => {
+    if (!module || !item) return;
+    selectPracticeWord({
+      id: `module-${module.number}-${item}`,
+      word: item,
+      accentedSpelling: item,
+      meaning: module.type === 'Words'
+        ? 'Practice word from your current module.'
+        : 'Practice sound from your current phonetics module.',
+      example: null,
+      isHomograph: false,
+      homographGroup: null,
+      difficulty: practiceLevel,
+      itemType: module.type === 'Words' ? 'word' : 'phonetic',
+      moduleNumber: module.number,
+    });
+    handleNav('practice');
+  };
   const hasPracticePrompt = Boolean(activePracticeWord?.word || expectedText);
   const visiblePracticeLabel = hasPracticePrompt
     ? (activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)
@@ -1439,88 +1567,43 @@ const StudentDashboard = () => {
       style={rootStyles}
     >
     <div className={`student-shell ${isSidebarCollapsed ? 'student-shell--nav-collapsed' : ''}`}>
-      <aside className="student-sidebar">
-        <div className="student-sidebar-top">
-          <div className="student-sidebar-brand">
-            <div className="student-sidebar-brand-lockup">
-              <img src="/logo.png" alt="LinawLetra logo" />
-              <span className="student-sidebar-brand-name">LinawLetra</span>
-            </div>
+      <header className="student-topbar">
+        <button type="button" className="student-topbar-brand" onClick={() => handleNav('home')} aria-label="Go to dashboard">
+          <img src="/logo.png" alt="LinawLetra logo" />
+          <span>LinawLetra</span>
+        </button>
+        <nav className="student-topbar-nav" aria-label="Student dashboard">
+          {[
+            { key: 'home', label: 'Dashboard', icon: <FiHome aria-hidden="true" /> },
+            { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
+            { key: 'content', label: 'Library + Badges', icon: <FiBookOpen aria-hidden="true" /> },
+            { key: 'progress', label: 'Activity', icon: <FiTrendingUp aria-hidden="true" /> },
+            { key: 'profile', label: 'Profile', icon: <FiUser aria-hidden="true" /> },
+          ].map((item) => (
             <button
+              key={item.key}
               type="button"
-              className="student-sidebar-toggle"
-              aria-label={isSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
-              onClick={() => setIsSidebarCollapsed((current) => !current)}
+              className={`student-topbar-link ${activeSection === item.key || (item.key === 'content' && activeSection === 'badges') ? 'active' : ''}`}
+              onClick={() => handleNav(item.key)}
             >
-              {isSidebarCollapsed ? <FiChevronRight aria-hidden="true" /> : <FiChevronLeft aria-hidden="true" />}
+              {item.icon}
+              <span>{item.label}</span>
             </button>
-          </div>
-          <nav className="student-sidebar-nav">
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'home' ? 'active' : ''}`}
-              onClick={() => handleNav('home')}
-            >
-              <span className="student-sidebar-link-icon"><FiHome aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Home</span>
-            </button>
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'content' ? 'active' : ''}`}
-              onClick={() => handleNav('content')}
-            >
-              <span className="student-sidebar-link-icon"><FiBookOpen aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Learn</span>
-            </button>
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'practice' ? 'active' : ''}`}
-              onClick={() => handleNav('practice')}
-            >
-              <span className="student-sidebar-link-icon"><FiMic aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Practice</span>
-            </button>
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'progress' ? 'active' : ''}`}
-              onClick={() => handleNav('progress')}
-            >
-              <span className="student-sidebar-link-icon"><FiTrendingUp aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Progress</span>
-            </button>
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'badges' ? 'active' : ''}`}
-              onClick={() => handleNav('badges')}
-            >
-              <span className="student-sidebar-link-icon"><FiAward aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Badges</span>
-            </button>
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'profile' ? 'active' : ''}`}
-              onClick={() => handleNav('profile')}
-            >
-              <span className="student-sidebar-link-icon"><FiUser aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Profile</span>
-            </button>
-            <button
-              type="button"
-              className={`student-sidebar-link ${activeSection === 'settings' ? 'active' : ''}`}
-              onClick={() => handleNav('settings')}
-            >
-              <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span>
-              <span className="student-sidebar-link-label">Settings</span>
-            </button>
-          </nav>
-        </div>
-        <div className="student-sidebar-bottom">
-          <button className="student-sidebar-logout" type="button" onClick={handleLogout}>
+          ))}
+        </nav>
+        <div className="student-topbar-actions">
+          <button type="button" className="student-topbar-streak" onClick={() => handleNav('progress')}>
+            {streakDays} araw na sunod-sunod! <FiZap aria-hidden="true" />
+          </button>
+          <button type="button" className="student-topbar-avatar" onClick={() => handleNav('profile')} aria-label="Open profile">
+            <span>{firstName.charAt(0)}</span>
+            {equippedModule && <small>M{equippedModule.number}</small>}
+          </button>
+          <button type="button" className="student-topbar-logout" onClick={handleLogout} aria-label="Logout">
             <FiLogOut aria-hidden="true" />
-            <span className="student-sidebar-link-label">Logout</span>
           </button>
         </div>
-      </aside>
+      </header>
       <main className="student-main" id="main-content" style={{ position: 'relative' }}>
         {newlyUnlockedAchievements.length > 0 && (
           <AchievementUnlockModal
@@ -1558,6 +1641,65 @@ const StudentDashboard = () => {
                 }}
               />
             ))}
+          </div>
+        )}
+        {assessmentPreview && (
+          <div className="student-assessment-preview" role="dialog" aria-modal="true" aria-labelledby="student-assessment-preview-title">
+            <div className="student-assessment-preview-card">
+              <button
+                type="button"
+                className="student-assessment-close"
+                onClick={() => setAssessmentPreview(null)}
+                aria-label="Close assessment result"
+              >
+                <FiX aria-hidden="true" />
+              </button>
+              <div className={`student-assessment-medal ${assessmentPreview.passed ? 'is-passed' : 'is-practice'}`}>
+                {assessmentPreview.passed ? <FiAward aria-hidden="true" /> : <FiRepeat aria-hidden="true" />}
+              </div>
+              <span className="student-library-kicker">Module {assessmentPreview.moduleNumber} Assessment</span>
+              <h3 id="student-assessment-preview-title">
+                {assessmentPreview.passed ? 'Module Complete!' : 'Almost there!'}
+              </h3>
+              <p>
+                {assessmentPreview.passed
+                  ? 'Great work. This module is ready to be counted once module assessments are connected to the backend.'
+                  : "Let's practice a little more before unlocking the next module."}
+              </p>
+              <div className="student-assessment-score">
+                <strong>{assessmentPreview.score}%</strong>
+                <span>Preview score</span>
+              </div>
+              <div className="student-assessment-items">
+                {assessmentPreview.items.map((item) => <span key={item}>{item}</span>)}
+              </div>
+              <div className="student-assessment-actions">
+                <button
+                  type="button"
+                  className="button-large button-primary"
+                  onClick={() => {
+                    const previewModule = moduleRoadmap.find((module) => module.number === assessmentPreview.moduleNumber) || selectedModule;
+                    setAssessmentPreview(null);
+                    startModulePractice(previewModule, previewModule.items[0]);
+                  }}
+                >
+                  {assessmentPreview.passed ? 'Review Module' : 'Practice Again'} <FiChevronRight aria-hidden="true" />
+                </button>
+                {assessmentPreview.passed && (
+                  <button
+                    type="button"
+                    className="button-large button-secondary"
+                    onClick={() => {
+                      const nextModule = moduleRoadmap.find((module) => module.number === assessmentPreview.moduleNumber + 1 && module.status !== 'locked');
+                      setAssessmentPreview(null);
+                      if (nextModule) setSelectedModuleNumber(nextModule.number);
+                    }}
+                  >
+                    Continue Roadmap
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
         {activeSection !== 'home' && (
@@ -1703,6 +1845,35 @@ const StudentDashboard = () => {
                   ) : (
                     <p className="student-home-muted">Ask your teacher to assign your first lesson so progress appears here.</p>
                   )}
+                </section>
+
+                <section className="student-home-card student-home-module-card">
+                  <div className="student-home-card-heading">
+                    <span className="student-home-card-icon"><FiAward aria-hidden="true" /></span>
+                    <div>
+                      <h3>Current Module</h3>
+                      <p>{activeReadingLevelLabel} Module {activeCurrentModule.number}</p>
+                    </div>
+                  </div>
+                  <strong>{activeCurrentModule.title}</strong>
+                  <p className="student-home-muted">{activeCurrentModule.subtitle}</p>
+                  <div className="student-library-progress-row">
+                    <div className="progress-bar student-home-progress-bar">
+                      <div className="progress-fill" style={{ width: `${Math.max(4, activeCurrentModule.progress)}%` }} />
+                    </div>
+                    <strong>{activeCurrentModule.progress}%</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="button-secondary button-small"
+                    onClick={() => {
+                      setSelectedLibraryLevel(activeReadingLevelLabel);
+                      setSelectedModuleNumber(activeCurrentModule.number);
+                      handleNav('content');
+                    }}
+                  >
+                    Open Library <FiChevronRight aria-hidden="true" />
+                  </button>
                 </section>
 
                 <div className="student-home-action-grid">
@@ -2073,237 +2244,319 @@ const StudentDashboard = () => {
           </section>
         )}
         {activeSection === 'content' && (
-          <section id="content-section" className="student-learn-redesign">
-            <header className="student-learn-header">
-              <div>
-                <h2>Let's Learn <FiBookOpen aria-hidden="true" /></h2>
-                <p>Choose a lesson and continue your reading journey.</p>
+          <section id="content-section" className="student-library-redesign">
+            <header className="student-library-hero">
+              <div className="student-library-hero-icon" aria-hidden="true">
+                <FiBookOpen />
               </div>
-              <div className="student-learn-header-actions">
-                <label className="student-learn-search">
-                  <FiSearch aria-hidden="true" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search lessons..."
-                  />
-                </label>
-                <button type="button" className="student-home-icon-button" onClick={() => handleNav('settings')} aria-label="Open settings">
-                  <FiBell aria-hidden="true" />
-                </button>
-                <span className="student-home-avatar" aria-hidden="true">{firstName.charAt(0)}</span>
-                <div className="student-learn-profile">
-                  <strong>{studentName}</strong>
-                  <span>{studentGrade || tier}</span>
-                </div>
+              <div>
+                <h2>My Library</h2>
+                <p>Great job, {firstName}! You're currently learning Module {currentModule.number}.</p>
+              </div>
+              <div className="student-library-hero-art" aria-hidden="true">
+                <span>A</span>
+                <span>B</span>
+                <span>C</span>
+                <FiBookOpen />
               </div>
             </header>
 
-            <div className="student-learn-layout">
-              <div className="student-learn-main">
-                <section className="student-learn-journey">
-                  <div>
-                    <span className="student-home-hero-kicker">Current learning path</span>
-                    <h3>Your Learning Journey</h3>
-                    <p>{completedLessonCount} of {sharedLessons.length} lessons completed</p>
-                    <div className="progress-bar student-home-progress-bar">
-                      <div className="progress-fill" style={{ width: `${lessonCompletionPercent}%` }} />
-                    </div>
-                    <small>{lessonCompletionPercent}% Complete - Great work, {firstName}! Keep going.</small>
-                    {nextLesson?.fileUrl && (
-                      <a href={nextLesson.fileUrl} target="_blank" rel="noreferrer" className="button-large button-primary student-learn-hero-button">
-                        Continue Learning <FiChevronRight aria-hidden="true" />
-                      </a>
-                    )}
+            <div className="student-library-layout">
+              <div className="student-library-main">
+                <section className="student-library-panel student-library-toolbar">
+                  <div className="student-library-tabs" aria-label="Library filters">
+                    {['All Modules', 'Phonetics', 'Words', 'Assessments'].map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        className={libraryFilter === filter ? 'active' : ''}
+                        onClick={() => {
+                          setLibraryFilter(filter);
+                          const firstMatchingModule = moduleRoadmap.find((module) => {
+                            if (module.status === 'locked') return false;
+                            if (filter === 'Phonetics') return module.type === 'Phonetics';
+                            if (filter === 'Words') return module.type === 'Words';
+                            return true;
+                          });
+                          if (firstMatchingModule) setSelectedModuleNumber(firstMatchingModule.number);
+                        }}
+                      >
+                        <FiBookOpen aria-hidden="true" />
+                        {filter}
+                      </button>
+                    ))}
                   </div>
-                  <img src="/bg.png" alt="" aria-hidden="true" />
+                  <label className="student-library-search">
+                    <FiSearch aria-hidden="true" />
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Search lessons..."
+                    />
+                  </label>
                 </section>
 
-                <section className="student-learn-section">
-                  <div className="student-learn-section-title">
-                    <div>
-                      <h3>Learning Categories - Reading Skills</h3>
-                      <p>Choose what to practice.</p>
+                <section className="student-level-switcher" aria-label="Reading level modules">
+                  {levelOrder.map((level) => {
+                    const index = levelOrder.indexOf(level);
+                    const locked = index > activeLevelIndex + (beginnerModulesComplete ? 1 : 0);
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        className={selectedLibraryLevel === level ? 'active' : ''}
+                        disabled={locked}
+                        onClick={() => {
+                          setSelectedLibraryLevel(level);
+                          setSelectedModuleNumber(null);
+                          setLibraryFilter('All Modules');
+                        }}
+                      >
+                        {locked ? <FiLock aria-hidden="true" /> : <FiBookOpen aria-hidden="true" />}
+                        <span>{level}</span>
+                      </button>
+                    );
+                  })}
+                </section>
+
+                <section className="student-library-continue">
+                  <div className={`student-module-cover accent-${currentModule.accent}`} aria-hidden="true">
+                    <strong>{currentModule.type === 'Words' ? 'Ba' : currentModule.subtitle.split(',')[0]}</strong>
+                    <span>{currentModule.type}</span>
+                  </div>
+                  <div className="student-library-continue-copy">
+                    <span className="student-library-kicker">Continue Learning</span>
+                    <h3>{selectedLibraryLevel} Module {currentModule.number}: {currentModule.title}</h3>
+                    <p>{currentModule.subtitle}</p>
+                    <div className="student-library-progress-row">
+                      <div className="progress-bar student-home-progress-bar">
+                        <div className="progress-fill" style={{ width: `${Math.max(4, currentModule.progress)}%` }} />
+                      </div>
+                      <strong>{currentModule.progress}%</strong>
                     </div>
                   </div>
-                  {learningCategories.length === 0 ? (
-                    <div className="empty-state-card">
-                      <p>Your teacher will share lessons for your class here.</p>
+                  <button
+                    type="button"
+                    className="button-large button-primary"
+                    disabled={currentModule.needsContent}
+                    onClick={() => {
+                      const nextItemIndex = Math.min(
+                        Math.round((currentModule.progress / 100) * currentModule.items.length),
+                        currentModule.items.length - 1
+                      );
+                      startModulePractice(currentModule, currentModule.items[nextItemIndex] || currentModule.items[0]);
+                    }}
+                  >
+                    {currentModule.needsContent ? 'Content Pending' : 'Continue Module'} <FiChevronRight aria-hidden="true" />
+                  </button>
+                </section>
+
+                <section className="student-module-roadmap">
+                  <div className="student-library-section-title">
+                    <div>
+                      <span className="student-library-kicker">{selectedLibraryLevel}</span>
+                      <h3>Module Roadmap</h3>
                     </div>
+                    <span>{completedModules.length}/{moduleRoadmap.length} completed</span>
+                  </div>
+                  {beginnerModulesComplete && (
+                    <div className="student-level-complete-callout">
+                      <FiAward aria-hidden="true" />
+                      <div>
+                        <strong>Beginner Complete!</strong>
+                        <span>You're ready for Intermediate.</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="student-module-grid">
+                    {filteredModuleRoadmap.map((module) => (
+                      <article key={module.number} className={`student-module-card status-${module.status} accent-${module.accent} ${selectedModule.number === module.number ? 'is-selected' : ''}`}>
+                        <div className="student-module-card-art" aria-hidden="true">
+                          {module.status === 'completed' ? <FiCheck /> : module.status === 'locked' ? <FiLock /> : <FiBookOpen />}
+                        </div>
+                        <div className="student-module-card-body">
+                          <span className="student-module-card-kicker">Module {module.number}</span>
+                          <h4>{module.title}</h4>
+                          <p>{module.subtitle}</p>
+                          <span className={`student-learn-status ${module.status}`}>{module.helper}</span>
+                          <div className="progress-bar student-home-progress-bar">
+                            <div className="progress-fill" style={{ width: `${Math.max(4, module.progress)}%` }} />
+                          </div>
+                          <button
+                            type="button"
+                            className="student-module-open-button"
+                            disabled={module.status === 'locked'}
+                            onClick={() => setSelectedModuleNumber(module.number)}
+                          >
+                            {module.status === 'locked' ? 'Locked' : module.status === 'completed' ? 'Review' : 'Open Module'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <section className={`student-module-detail ${libraryFilter === 'Assessments' ? 'is-assessment-focused' : ''}`}>
+                  <div className="student-module-detail-header">
+                    <div>
+                      <span className="student-library-kicker">Module {selectedModule.number} Content</span>
+                      <h3>{selectedModule.title}</h3>
+                      <p>
+                        {selectedModule.type === 'Words'
+                          ? 'Words only. These use sounds introduced in earlier modules.'
+                          : 'Phonetics only. Practice each sound clearly before the assessment.'}
+                      </p>
+                    </div>
+                    <span className={`student-learn-status ${selectedModule.status}`}>{selectedModule.helper}</span>
+                  </div>
+                  <div className={`student-module-item-grid ${selectedModule.type === 'Words' ? 'is-words' : 'is-phonetics'}`}>
+                    {selectedModule.items.length === 0 ? (
+                      <div className="student-module-content-missing">
+                        <FiAlertTriangle aria-hidden="true" />
+                        <strong>Content mapping needed</strong>
+                        <span>This module is ready for the workbook content once the curriculum scope is approved.</span>
+                      </div>
+                    ) : selectedModule.items.map((item, index) => {
+                      const completed = index < selectedModuleCompletedItems;
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          className={`student-module-item ${completed ? 'is-complete' : ''}`}
+                          onClick={() => startModulePractice(selectedModule, item)}
+                        >
+                          {completed ? <FiCheck aria-hidden="true" /> : <FiVolume2 aria-hidden="true" />}
+                          <strong>{item}</strong>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="student-module-assessment-card">
+                    <div>
+                      <span className="student-library-kicker">Assessment</span>
+                      <h4>Let's see what you learned!</h4>
+                      <p>{selectedModule.progress >= 100 ? 'Module requirements completed.' : 'Finish the module practice before the next module unlocks.'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="button-large button-primary"
+                      disabled={selectedModule.items.length === 0}
+                      onClick={() => openAssessmentPreview(selectedModule)}
+                    >
+                      {selectedModule.items.length === 0 ? 'Content Pending' : selectedModule.progress >= 100 ? 'Review Assessment' : 'Start Assessment'} <FiChevronRight aria-hidden="true" />
+                    </button>
+                  </div>
+                </section>
+
+                <section className="student-library-lessons">
+                  <div className="student-library-section-title">
+                    <div>
+                      <span className="student-library-kicker">Teacher Lessons</span>
+                      <h3>Shared Library</h3>
+                    </div>
+                    <div className="student-learn-filters">
+                      {lessonLevels.slice(0, 4).map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          className={learnFilter === filter ? 'active' : ''}
+                          onClick={() => setLearnFilter(filter)}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {uploadsLoading ? (
+                    <p className="learning-path-text">Loading lessons...</p>
+                  ) : filteredLessons.length === 0 ? (
+                    <p className="learning-path-text">No lessons match this view yet.</p>
                   ) : (
-                    <div className="student-learn-category-grid">
-                      {learningCategories.map((category, index) => {
-                        const percent = category.total > 0 ? Math.round((category.completed / category.total) * 100) : 0;
-                        const status = percent >= 100 ? 'Completed' : percent > 0 || category.inProgress > 0 ? 'In Progress' : 'Not Started';
+                    <div className="student-library-card-grid">
+                      {filteredLessons.slice(0, 8).map((item, index) => {
+                        const status = getLessonStatus(item);
+                        const progressValue = getLessonProgress(item);
                         return (
-                          <article key={category.name} className={`student-learn-category-card accent-${index % 5}`}>
-                            <span className="student-learn-category-icon"><FiBookOpen aria-hidden="true" /></span>
-                            <h4>{category.name}</h4>
-                            <p>{category.total} {category.total === 1 ? 'lesson' : 'lessons'} available</p>
-                            <span className={`student-learn-status ${status.toLowerCase().replace(/\s+/g, '-')}`}>{percent}% - {status}</span>
-                            {category.sample?.fileUrl && (
-                              <a href={category.sample.fileUrl} target="_blank" rel="noreferrer" className="button-small button-secondary">
-                                Continue
-                              </a>
-                            )}
+                          <article key={item.id} className={`student-book-card accent-${index % 5}`}>
+                            <div className="student-book-cover" aria-hidden="true">
+                              <FiBookOpen />
+                              <strong>{getLessonTitle(item).slice(0, 2).toUpperCase()}</strong>
+                            </div>
+                            <div className="student-book-body">
+                              <h4>{getLessonTitle(item)}</h4>
+                              <span className={`student-learn-status ${status.toLowerCase().replace(/\s+/g, '-')}`}>{status}</span>
+                              <div className="student-library-progress-row">
+                                <div className="progress-bar student-home-progress-bar">
+                                  <div className="progress-fill" style={{ width: `${Math.max(4, progressValue)}%` }} />
+                                </div>
+                                <strong>{progressValue}%</strong>
+                              </div>
+                            </div>
                           </article>
                         );
                       })}
                     </div>
                   )}
                 </section>
-
-                <section className="student-learn-current-card">
-                  <span className="student-home-large-icon"><FiBookOpen aria-hidden="true" /></span>
-                  <div>
-                    <h3>Continue Where You Left Off</h3>
-                    <p>{nextLesson ? getLessonTitle(nextLesson) : 'No active lesson yet.'}</p>
-                    <div className="progress-bar student-home-progress-bar">
-                      <div className="progress-fill" style={{ width: `${nextLesson ? getLessonProgress(nextLesson) : 0}%` }} />
-                    </div>
-                    <small>
-                      {nextLesson ? `Progress ${getLessonProgress(nextLesson)}% - ${getLessonCategory(nextLesson)}` : 'Start with a shared lesson from your teacher.'}
-                    </small>
-                  </div>
-                  {nextLesson?.fileUrl && (
-                    <a href={nextLesson.fileUrl} target="_blank" rel="noreferrer" className="button-large button-primary">
-                      Continue Lesson <FiChevronRight aria-hidden="true" />
-                    </a>
-                  )}
-                </section>
-
-                <div className="student-learn-filters">
-                  {lessonLevels.map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      className={learnFilter === filter ? 'active' : ''}
-                      onClick={() => setLearnFilter(filter)}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-
-                {uploadsLoading ? (
-                  <p className="learning-path-text">Loading lessons...</p>
-                ) : filteredLessons.length === 0 ? (
-                  <p className="learning-path-text">No lessons match this view yet.</p>
-                ) : (
-                  <div className="student-learn-lesson-grid">
-                    {filteredLessons.map((item) => {
-                      const status = getLessonStatus(item);
-                      const progressValue = getLessonProgress(item);
-                      return (
-                        <article key={item.id} className="student-learn-lesson-card">
-                          <span className={`student-learn-status ${status.toLowerCase().replace(/\s+/g, '-')}`}>
-                            {status}{status !== 'Locked' ? ` - ${progressValue}%` : ''}
-                          </span>
-                          <h4>{getLessonTitle(item)}</h4>
-                          <p>{item.description || item.pageSource || getLessonCategory(item)}</p>
-                          <div className="content-meta">{getLessonCategory(item)} - {getLessonLevel(item)}</div>
-                          <div className="progress-bar student-home-progress-bar">
-                            <div className="progress-fill" style={{ width: `${progressValue}%` }} />
-                          </div>
-                          {item.fileUrl ? (
-                            <a href={item.fileUrl} target="_blank" rel="noreferrer" className="button-small button-secondary">
-                              {status === 'Completed' ? 'Review' : status === 'In Progress' ? 'Continue' : 'Start Lesson'}
-                            </a>
-                          ) : (
-                            <button type="button" className="button-small button-secondary" disabled>
-                              {status === 'Locked' ? 'Locked' : 'Unavailable'}
-                            </button>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
-              <aside className="student-learn-side">
-                <section className="student-learn-panel student-learn-recommended">
-                  <span className="student-home-card-icon"><FiStar aria-hidden="true" /></span>
-                  <h3>Recommended for You</h3>
-                  {recommendedLesson ? (
-                    <>
-                      <strong>{getLessonTitle(recommendedLesson)}</strong>
-                      <p>Reason: Based on your current available lesson path.</p>
-                      {recommendedLesson.fileUrl && (
-                        <a href={recommendedLesson.fileUrl} target="_blank" rel="noreferrer" className="button-small button-primary">
-                          Start Lesson <FiChevronRight aria-hidden="true" />
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <p>No recommended lesson yet.</p>
-                  )}
+              <aside className="student-library-side">
+                <section className="student-reading-progress-card">
+                  <div className="student-library-side-title">
+                    <FiBarChart2 aria-hidden="true" />
+                    <h3>Reading Progress</h3>
+                  </div>
+                  <div className="student-library-ring" style={{ '--progress': moduleProgressDriver }}>
+                    <strong>{moduleProgressDriver}%</strong>
+                  </div>
+                  <h4>Module Progress</h4>
+                  <p>Great job! Keep it up!</p>
+                  <img src="/bg.png" alt="" aria-hidden="true" />
                 </section>
 
-                <section className="student-learn-panel">
-                  <h3>Today's Learning Goal</h3>
-                  <p>{learnGoalDone}/{learnGoalTarget} reading practices - {learnGoalPercent}%</p>
-                  <div className="progress-bar student-home-progress-bar">
-                    <div className="progress-fill" style={{ width: `${learnGoalPercent}%` }} />
+                <section className="student-my-badges-card">
+                  <div className="student-library-side-title">
+                    <FiAward aria-hidden="true" />
+                    <h3>My Badges</h3>
                   </div>
-                  <small>{todayGoalRemaining} more {todayGoalRemaining === 1 ? 'practice' : 'practices'} to reach today's goal</small>
-                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('practice')}>
-                    Continue Learning
+                  <div className="student-mini-badge-grid">
+                    {ACHIEVEMENTS.slice(0, 5).map((achievement) => (
+                      <AchievementBadge
+                        key={achievement.id}
+                        achievement={achievement}
+                        unlocked={unlockedAchievementIds.includes(achievement.id)}
+                      />
+                    ))}
+                  </div>
+                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('badges')}>
+                    View all badges
                   </button>
                 </section>
 
-                <section className="student-learn-panel">
-                  <h3>Recently Learned</h3>
-                  {recentLessons.length > 0 ? (
-                    <div className="student-learn-recent-list">
-                      {recentLessons.map((item) => (
-                        <div key={item.id}>
-                          <strong>{getLessonTitle(item)}</strong>
-                          <small>{getAttemptDateLabel({ date: item.updatedAt || item.createdAt || item.uploadedAt || item.created_at })}</small>
-                        </div>
+                <section className="student-completed-modules-card">
+                  <div className="student-library-side-title">
+                    <FiCheckCircle aria-hidden="true" />
+                    <h3>Completed Modules</h3>
+                  </div>
+                  {completedModules.length ? (
+                    <div className="student-completed-module-list">
+                      {completedModules.map((module) => (
+                        <button
+                          key={module.number}
+                          type="button"
+                          className={`student-completed-module-row accent-${module.accent} ${equippedModule && `${equippedModule.level}-${equippedModule.number}` === `${module.level}-${module.number}` ? 'is-equipped' : ''}`}
+                          onClick={() => setEquippedModuleNumber(`${module.level}-${module.number}`)}
+                        >
+                          <FiCheck aria-hidden="true" />
+                          <span>{module.level} Module {module.number}</span>
+                          <strong>{module.title}</strong>
+                        </button>
                       ))}
                     </div>
                   ) : (
-                    <p>No lessons completed yet.</p>
-                  )}
-                </section>
-
-                <section className="student-learn-panel student-learn-motivation">
-                  <h3>Every Word Counts</h3>
-                  <p>Keep practicing one word at a time, and your reading will keep getting stronger.</p>
-                </section>
-
-                <section className="student-learn-panel">
-                  <h3>Reading Accessibility</h3>
-                  <div className="student-learn-accessibility-row">
-                    <span>Dyslexia-Friendly Mode</span>
-                    <strong>{accessibilitySettings.fontFamily === 'Comic Sans' ? 'On' : 'Custom'}</strong>
-                  </div>
-                  <div className="student-learn-accessibility-row">
-                    <span>Text Size</span>
-                    <strong>{accessibilitySettings.textSize}px</strong>
-                  </div>
-                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('settings')}>
-                    Open Settings
-                  </button>
-                </section>
-
-                <section className="student-learn-panel">
-                  <h3>Assessments</h3>
-                  {uploadsLoading ? (
-                    <p>Loading assessments...</p>
-                  ) : filteredAssessments.length === 0 ? (
-                    <p>No assessments have been shared yet.</p>
-                  ) : (
-                    <div className="student-learn-recent-list">
-                      {filteredAssessments.slice(0, 3).map((item) => (
-                        <div key={item.id}>
-                          <strong>{item.title || item.fileName || 'Shared assessment'}</strong>
-                          <small>{item.dueDate ? `Due ${new Date(item.dueDate).toLocaleDateString()}` : 'No due date'}</small>
-                        </div>
-                      ))}
-                    </div>
+                    <p className="student-home-muted">Finish Module 1 to add it here.</p>
                   )}
                 </section>
               </aside>
@@ -2543,6 +2796,36 @@ const StudentDashboard = () => {
                 <p className="stat-title">Today's reading goal</p>
                 <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
               </article>
+            </div>
+            <div className="student-profile-modules">
+              <div className="detail-block-title">My Completed Modules</div>
+              {equippedModule && (
+                <div className={`student-profile-equipped-module accent-${equippedModule.accent}`}>
+                  <FiAward aria-hidden="true" />
+                  <div>
+                    <span>Equipped Module</span>
+                    <strong>{equippedModule.level} Module {equippedModule.number}: {equippedModule.title}</strong>
+                  </div>
+                </div>
+              )}
+              {allCompletedModules.length ? (
+                <div className="student-profile-module-grid">
+                  {allCompletedModules.map((module) => (
+                    <button
+                      key={`${module.level}-${module.number}`}
+                      type="button"
+                      className={`student-profile-module-chip accent-${module.accent} ${equippedModule && `${equippedModule.level}-${equippedModule.number}` === `${module.level}-${module.number}` ? 'is-equipped' : ''}`}
+                      onClick={() => setEquippedModuleNumber(`${module.level}-${module.number}`)}
+                    >
+                      <FiCheck aria-hidden="true" />
+                      <span>{module.level} Module {module.number}</span>
+                      <strong>{module.title}</strong>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="student-home-muted">Complete your first module to show it here.</p>
+              )}
             </div>
             <div className="achievements-section">
               <h4>Mga Badge ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})</h4>
