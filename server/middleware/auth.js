@@ -39,6 +39,14 @@ async function verifyTokenWithCache(token) {
   return decoded;
 }
 
+const isDisabledProfile = (profile = {}) => {
+  const status = String(profile.accountStatus || profile.account_status || '').toLowerCase();
+  return profile.isActive === false ||
+    profile.is_active === false ||
+    profile.metadata?.isActive === false ||
+    ['disabled', 'inactive', 'blocked', 'banned', 'deleted', 'archived'].includes(status);
+};
+
 const authMiddleware = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -55,6 +63,10 @@ const authMiddleware = async (req, res, next) => {
       if (dbUser?.role) {
         role = String(dbUser.role).toLowerCase();
       }
+    }
+
+    if (dbUser && isDisabledProfile(dbUser)) {
+      return res.status(403).json({ status: 403, code: 'USER_DISABLED', message: 'This account has been disabled.' });
     }
 
     req.user = {
@@ -87,6 +99,10 @@ const verifyAdmin = async (req, res, next) => {
       if (dbUser?.role) {
         role = String(dbUser.role).toLowerCase();
       }
+    }
+
+    if (dbUser && isDisabledProfile(dbUser)) {
+      return res.status(403).json({ status: 403, code: 'USER_DISABLED', message: 'This account has been disabled.' });
     }
 
     if (role !== 'admin') {

@@ -125,7 +125,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Delete user (Admin only) - Deletes both Supabase Auth user and database profile
+// Archive user (Admin or self) - preserves the Auth account and database profile.
 router.delete('/:userId', authMiddleware, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -139,40 +139,53 @@ router.delete('/:userId', authMiddleware, async (req, res) => {
 
     const targetUser = await User.findById(userId);
     if (!targetUser) {
-      if (!isSelfDelete) {
-        return res.status(404).json({ message: 'User profile not found' });
-      }
-
-      // If the profile is already gone but the user is deleting their own account,
-      // still remove the Auth user so the email can be reused.
-      const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId);
-      if (deleteAuthError && !String(deleteAuthError.message).toLowerCase().includes('not found')) {
-        console.error('Supabase auth delete error for missing profile:', deleteAuthError);
-        return sendError(res, 500, 'Failed to delete user from Supabase Auth', deleteAuthError.message);
-      }
-
-      return res.json({ message: 'User deleted from Supabase Auth (profile already removed).' });
+      return res.status(404).json({ message: 'User profile not found' });
     }
 
     if (!isAdmin && targetUser.id !== req.user.id) {
       return res.status(403).json({ message: 'You can only delete your own account' });
     }
 
-    const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId);
-    if (deleteAuthError && !String(deleteAuthError.message).toLowerCase().includes('not found')) {
-      console.error('Supabase auth delete error:', deleteAuthError);
-      return sendError(res, 500, 'Failed to delete user from Supabase Auth', deleteAuthError.message);
+    const previousStatus = String(targetUser.accountStatus || targetUser.account_status || 'active').toLowerCase();
+    const metadata = {
+      ...(targetUser.metadata || {}),
+      isActive: false,
+      accountStatus: 'archived',
+      archivedAt: new Date().toISOString(),
+      archivedBy: req.user.id,
+      previousStatus: previousStatus === 'archived' ? targetUser.metadata?.previousStatus || 'active' : previousStatus,
+    };
+
+    const archivedUser = await User.findByIdAndUpdate(userId, {
+      isActive: false,
+      accountStatus: 'archived',
+      metadata,
+    });
+
+    if (!archivedUser) {
+      return sendError(res, 500, 'Failed to archive user profile');
     }
 
-    const deletedUser = await User.findByIdAndDelete(userId);
-    if (!deletedUser && !isSelfDelete) {
-      return sendError(res, 500, 'Failed to delete user profile from database');
+    const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
+      ban_duration: '876600h',
+      user_metadata: {
+        ...(targetUser.metadata || {}),
+        isActive: false,
+        accountStatus: 'archived',
+      },
+    });
+
+    if (authError && !String(authError.message).toLowerCase().includes('not found')) {
+      console.warn('Supabase auth archive warning:', authError.message);
     }
 
-    res.json({ message: 'User deleted successfully from Supabase Auth and database' });
+    res.json({
+      message: 'User archived successfully. Profile and learning history were preserved.',
+      user: archivedUser,
+    });
   } catch (error) {
-    console.error('Error deleting user:', error);
-    return sendError(res, 500, 'Failed to delete user', error.message);
+    console.error('Error archiving user:', error);
+    return sendError(res, 500, 'Failed to archive user', error.message);
   }
 });
 

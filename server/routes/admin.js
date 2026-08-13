@@ -60,6 +60,255 @@ const normalizeRecord = (record) => {
   };
 };
 
+const normalizeRole = (role = '') => String(role || 'unassigned').trim().toLowerCase();
+
+const isDisabledStatus = (status = '') =>
+  ['disabled', 'inactive', 'blocked', 'banned', 'deleted', 'archived'].includes(String(status || '').toLowerCase());
+
+const getUserStatus = (user = {}, authUser = null) => {
+  const explicitStatus = String(user.account_status || '').toLowerCase();
+  if (explicitStatus === 'deleted' || authUser?.deleted_at) return 'deleted';
+  if (explicitStatus === 'archived') return 'archived';
+  if (user.is_active === false || user.metadata?.isActive === false || isDisabledStatus(explicitStatus) || authUser?.banned_until) {
+    return 'disabled';
+  }
+  return 'active';
+};
+
+const getUserDisplayName = (user = {}) => {
+  const metadata = user.metadata || {};
+  return user.name ||
+    metadata.displayName ||
+    [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
+    user.email ||
+    'Unnamed user';
+};
+
+const listAuthUsersById = async () => {
+  const byId = new Map();
+  let page = 1;
+  const perPage = 1000;
+
+  while (page < 20) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users || [];
+    users.forEach((user) => byId.set(user.id, user));
+    if (users.length < perPage) break;
+    page += 1;
+  }
+
+  return byId;
+};
+
+const enrichUsersWithAuth = async (users = []) => {
+  const authById = await listAuthUsersById();
+  return (users || []).map((user) => {
+    const authUser = authById.get(user.id);
+    const status = getUserStatus(user, authUser);
+    return normalizeRecord({
+      ...user,
+      name: getUserDisplayName(user),
+      role: normalizeRole(user.role),
+      status,
+      accountStatus: user.account_status || status,
+      isActive: status === 'active',
+      email: user.email || authUser?.email || null,
+      emailVerified: Boolean(user.email_verified || authUser?.email_confirmed_at),
+      emailConfirmedAt: authUser?.email_confirmed_at || user.verified_at || null,
+      registeredAt: user.created_at || authUser?.created_at || null,
+      lastActivityAt: user.lastLoginAt || authUser?.last_sign_in_at || user.updated_at || null,
+      lastSignInAt: authUser?.last_sign_in_at || null,
+      authProvider: authUser?.app_metadata?.provider || authUser?.raw_app_meta_data?.provider || null,
+      authAccountExists: Boolean(authUser),
+    });
+  });
+};
+
+const countByRole = (users = [], role) =>
+  users.filter((user) => normalizeRole(user.role) === role).length;
+
+const countCompletedRows = async (table, column = 'status') =>
+  countRows(table, (query) => query.in(column, ['completed', 'passed', 'mastered']));
+
+const average = (values = []) => {
+  const numbers = values.map(Number).filter(Number.isFinite);
+  if (!numbers.length) return 0;
+  return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+};
+
+const safeSelectRows = async (table, buildQuery) => {
+  const result = await buildQuery(supabase.from(table));
+  if (result.error) {
+    if (['PGRST205', 'PGRST204', '42P01', '42703'].includes(result.error.code)) return [];
+    throw result.error;
+  }
+  return result.data || [];
+};
+
+const toPdfText = (value = '') =>
+  String(value ?? '')
+    .replace(/[\\()]/g, (match) => `\\${match}`)
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+
+const wrapPdfLine = (line = '', max = 92) => {
+  const words = String(line || '').split(/\s+/);
+  const lines = [];
+  let current = '';
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > max && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+};
+
+const createSimplePdf = (title, lines = []) => {
+  const wrappedLines = [title, '', ...lines].flatMap((line) => wrapPdfLine(line));
+  const pages = [];
+  for (let i = 0; i < wrappedLines.length; i += 42) {
+    pages.push(wrappedLines.slice(i, i + 42));
+  }
+
+  const objects = [''];
+  objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj');
+  objects.push(`2 0 obj << /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >> endobj`);
+
+  pages.forEach((pageLines, index) => {
+    const pageObj = 3 + index * 2;
+    const contentObj = pageObj + 1;
+    const content = [
+      'BT',
+      '/F1 11 Tf',
+      '50 790 Td',
+      '14 TL',
+      ...pageLines.map((line, lineIndex) => `${lineIndex === 0 ? '' : 'T* '}${lineIndex === 0 ? '' : ''}(${toPdfText(line)}) Tj`),
+      'ET',
+    ].join('\n');
+    objects.push(`${pageObj} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 100 0 R >> >> /Contents ${contentObj} 0 R >> endobj`);
+    objects.push(`${contentObj} 0 obj << /Length ${Buffer.byteLength(content)} >> stream\n${content}\nendstream endobj`);
+  });
+
+  objects.push('100 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj');
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (let i = 1; i < objects.length; i += 1) {
+    offsets[i] = Buffer.byteLength(pdf);
+    pdf += `${objects[i]}\n`;
+  }
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let i = 1; i < objects.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer << /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf);
+};
+
+const buildStudentReportLines = async (studentId) => {
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('*')
+    .eq('id', studentId)
+    .maybeSingle();
+
+  if (studentError) throw studentError;
+  if (!student) return null;
+
+  const refs = [...new Set([student.id, student.user_id, student.child_id].filter(Boolean))];
+  const { data: user } = student.user_id
+    ? await supabase.from('users').select('*').eq('id', student.user_id).maybeSingle()
+    : { data: null };
+
+  const [
+    readingAttempts,
+    pronunciationSessions,
+    contentAttempts,
+    curriculumProgress,
+    moduleProgress,
+    assessments,
+    mastery,
+  ] = await Promise.all([
+    safeSelectRows('reading_attempts', (query) => query.select('*').in('student_id', refs).order('completed_at', { ascending: false }).limit(200)),
+    safeSelectRows('pronunciation_practice_sessions', (query) => query.select('*').in('student_id', refs).order('created_at', { ascending: false }).limit(200)),
+    safeSelectRows('student_content_attempts', (query) => query.select('*').in('student_id', refs).order('created_at', { ascending: false }).limit(200)),
+    safeSelectRows('curriculum_progress', (query) => query.select('*').in('student_id', refs).order('updated_at', { ascending: false }).limit(200)),
+    safeSelectRows('student_module_progress', (query) => query.select('*').in('student_id', refs).order('updated_at', { ascending: false }).limit(200)),
+    safeSelectRows('assessments', (query) => query.select('*').in('student_id', refs).order('updated_at', { ascending: false }).limit(100)),
+    safeSelectRows('word_mastery', (query) => query.select('*').in('student_id', refs).order('last_attempt_at', { ascending: false }).limit(200)),
+  ]);
+
+  const displayName = getUserDisplayName(user || student);
+  const readingScores = readingAttempts.map((row) => Number(row.accuracy_score)).filter(Number.isFinite);
+  const pronunciationScores = pronunciationSessions.map((row) => Number(row.accuracy_percentage)).filter(Number.isFinite);
+  const contentScores = contentAttempts.map((row) => Number(row.accuracy)).filter(Number.isFinite);
+  const allPracticeScores = [...readingScores, ...pronunciationScores, ...contentScores];
+  const successfulAttempts = allPracticeScores.filter((score) => score >= 75).length;
+  const badges = [
+    ...(Array.isArray(student.badges) ? student.badges : []),
+    ...(Array.isArray(student.unlocked_achievement_ids) ? student.unlocked_achievement_ids : []),
+  ].filter((badge, index, list) => badge && list.indexOf(badge) === index);
+
+  const completedModules = moduleProgress.filter((row) => String(row.status || '').toLowerCase() === 'completed' || row.completed_at).length;
+  const completedCurriculum = curriculumProgress.filter((row) =>
+    ['completed', 'passed', 'mastered', 'mastered_100'].includes(String(row.status || '').toLowerCase()) ||
+    row.passed_at ||
+    row.mastered_at
+  ).length;
+
+  const lines = [
+    `Generated: ${new Date().toISOString()}`,
+    '',
+    'STUDENT PROFILE',
+    `Name: ${displayName}`,
+    `Email: ${user?.email || 'No recorded data available.'}`,
+    `Grade: ${student.grade_level || 'No recorded data available.'}`,
+    `Reading level: ${student.reading_level || student.practice_level || 'No recorded data available.'}`,
+    `Account status: ${user?.account_status || (user?.is_active === false ? 'disabled' : 'active')}`,
+    '',
+    'LEARNING PROGRESS',
+    `Current reading level: ${student.current_phonetic_level || student.reading_level || 'No recorded data available.'}`,
+    `Completed curriculum records: ${completedCurriculum}`,
+    `Completed modules: ${completedModules}`,
+    `Curriculum progress records: ${curriculumProgress.length}`,
+    `Module progress records: ${moduleProgress.length}`,
+    `Assessment records: ${assessments.length}`,
+    '',
+    'PRONUNCIATION / PRACTICE',
+    `Total practice attempts: ${allPracticeScores.length}`,
+    `Successful attempts: ${successfulAttempts}`,
+    `Failed attempts: ${Math.max(0, allPracticeScores.length - successfulAttempts)}`,
+    `Average pronunciation accuracy: ${pronunciationScores.length ? `${average(pronunciationScores)}%` : 'No recorded data available.'}`,
+    `Average overall practice accuracy: ${allPracticeScores.length ? `${average(allPracticeScores)}%` : 'No recorded data available.'}`,
+    `Recent pronunciation scores: ${pronunciationScores.slice(0, 8).join(', ') || 'No recorded data available.'}`,
+    `Most practiced words: ${pronunciationSessions.map((row) => row.word).filter(Boolean).slice(0, 8).join(', ') || 'No recorded data available.'}`,
+    `Difficult words: ${mastery.filter((row) => row.mastery_status === 'difficult').map((row) => row.word).slice(0, 8).join(', ') || 'No recorded data available.'}`,
+    '',
+    'ACHIEVEMENTS',
+    `XP: ${student.xp ?? 0}`,
+    `Current streak: ${student.streak ?? 0}`,
+    `Longest streak: ${student.longest_streak ?? 'No recorded data available.'}`,
+    `Badges earned: ${badges.length ? badges.join(', ') : 'No recorded data available.'}`,
+    '',
+    'ACTIVITY HISTORY',
+    `Recent reading attempts: ${readingAttempts.slice(0, 5).map((row) => `${row.word_target || row.expected_text || 'practice'} (${row.accuracy_score ?? 'no score'}%)`).join('; ') || 'No recorded data available.'}`,
+    `Recent practice dates: ${[...readingAttempts, ...pronunciationSessions, ...contentAttempts].map((row) => row.completed_at || row.created_at).filter(Boolean).slice(0, 8).join(', ') || 'No recorded data available.'}`,
+    '',
+    'PROGRESS OVER TIME',
+    allPracticeScores.length >= 2
+      ? `Recorded accuracy range: first ${Math.round(allPracticeScores[allPracticeScores.length - 1])}%, latest ${Math.round(allPracticeScores[0])}%.`
+      : 'No recorded data available.',
+  ];
+
+  return { student, user, lines, displayName };
+};
+
 const attachStudentDetailsToUsers = async (users = []) => {
   const normalizedUsers = (users || []).map(normalizeRecord);
   const studentUserIds = normalizedUsers
@@ -175,93 +424,130 @@ router.get('/health', async (req, res) => {
 
 router.use(verifyAdmin);
 
+router.get('/reports/students/:id', async (req, res) => {
+  try {
+    const report = await buildStudentReportLines(req.params.id);
+    if (!report) {
+      return sendError(res, 404, 'Student not found');
+    }
+
+    return res.json({
+      student: normalizeRecord(report.student),
+      user: report.user ? normalizeRecord(report.user) : null,
+      displayName: report.displayName,
+      lines: report.lines,
+    });
+  } catch (error) {
+    console.error('Student report error:', error);
+    return sendError(res, 500, 'Failed to build student report', error.message);
+  }
+});
+
+router.get('/reports/students/:id/pdf', async (req, res) => {
+  try {
+    const report = await buildStudentReportLines(req.params.id);
+    if (!report) {
+      return sendError(res, 404, 'Student not found');
+    }
+
+    const pdf = createSimplePdf(`LinawLetra Student Report - ${report.displayName}`, report.lines);
+    const filename = `student-report-${req.params.id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdf.length);
+    return res.send(pdf);
+  } catch (error) {
+    console.error('Student PDF report error:', error);
+    return sendError(res, 500, 'Failed to generate student PDF report', error.message);
+  }
+});
+
 router.get('/overview', async (req, res) => {
   try {
+    const { data: userRows, error: usersError } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (usersError) throw usersError;
+
+    const users = await enrichUsersWithAuth(userRows || []);
+    const statuses = users.reduce((acc, user) => {
+      acc[user.status] = (acc[user.status] || 0) + 1;
+      return acc;
+    }, {});
+
     const [
-      totalUsers,
-      totalParents,
-      totalTeachers,
-      totalStudents,
-      totalLessons,
+      totalCurriculumItems,
+      totalCurriculumModules,
       totalAssessments,
-      totalProgress,
-      completedProgress,
-      pendingApprovals,
+      totalCurriculumProgress,
+      completedCurriculumProgress,
+      totalModuleProgress,
+      completedModuleProgress,
+      totalAttempts,
+      totalNotifications,
     ] = await Promise.all([
-      countRows('users'),
-      countRows('users', (query) => query.eq('role', 'parent')),
-      countRows('users', (query) => query.eq('role', 'teacher')),
-      countRows('users', (query) => query.eq('role', 'student')),
-      countRows('lessons'),
+      countRows('curriculum_items'),
+      countRows('curriculum_modules'),
       countRows('assessments'),
-      countRows('lesson_progress'),
-      countCompletedLessonProgress(),
-      0,
+      countRows('curriculum_progress'),
+      countCompletedRows('curriculum_progress'),
+      countRows('student_module_progress'),
+      countCompletedRows('student_module_progress'),
+      countRows('reading_attempts'),
+      countRows('notifications'),
     ]);
 
-    const { data: roleData, error: roleError } = await supabase.from('users').select('role,status,metadata,created_at');
-    if (roleError) {
-      throw roleError;
-    }
-
-    const { data: recentLogData, error: recentLogError } = await supabase
-      .from('activity_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(6);
-
-    if (recentLogError && recentLogError.code !== 'PGRST205') {
-      throw recentLogError;
-    }
-
-    const userRoleBreakdown = (roleData || []).reduce((acc, row) => {
-      const role = String(row.role || 'unassigned').toLowerCase();
+    const userRoleBreakdown = users.reduce((acc, row) => {
+      const role = normalizeRole(row.role);
       acc[role] = (acc[role] || 0) + 1;
       return acc;
     }, {});
-    const isActiveUser = (row = {}) =>
-      row.status === 'active' || row.metadata?.isActive === true || row.metadata?.isActive === undefined;
-    const computedActiveUsers = (roleData || []).filter(isActiveUser).length;
-    const inactiveUsers = (roleData || []).filter((row) => !isActiveUser(row)).length;
     const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    const recentRegistrations = (roleData || []).filter((row) => {
-      const created = new Date(row.created_at || 0).getTime();
+    const recentRegistrations = users.filter((row) => {
+      const created = new Date(row.registeredAt || row.created_at || 0).getTime();
       return Number.isFinite(created) && created >= sevenDaysAgo;
     }).length;
 
+    const { data: recentAttempts } = await supabase
+      .from('reading_attempts')
+      .select('id,student_id,activity_type,completed_at,accuracy_score')
+      .order('completed_at', { ascending: false })
+      .limit(6);
+
     const { data: scoreRows, error: scoreError } = await supabase
-      .from('lesson_progress')
-      .select('score')
-      .not('score', 'is', null);
+      .from('reading_attempts')
+      .select('accuracy_score')
+      .not('accuracy_score', 'is', null);
+    if (scoreError) throw scoreError;
 
-    if (scoreError) {
-      throw scoreError;
-    }
-
-    const scoreValues = (scoreRows || [])
-      .map((row) => Number(row.score))
-      .filter((score) => Number.isFinite(score));
-    const averageScore = scoreValues.length
-      ? Math.round(scoreValues.reduce((sum, score) => sum + score, 0) / scoreValues.length)
-      : 0;
-
-    const recentActivities = (recentLogData || []).map((item) => ({
-      type: item.resource_type || item.action || 'event',
-      who: item.user_id || item.user_email || item.user_name || 'System',
-      when: item.created_at || item.createdAt || null,
-      description: item.action || item.details?.message || 'Action recorded',
+    const totalProgress = totalCurriculumProgress + totalModuleProgress;
+    const completedProgress = completedCurriculumProgress + completedModuleProgress;
+    const averageScore = average((scoreRows || []).map((row) => row.accuracy_score));
+    const recentActivities = (recentAttempts || []).map((item) => ({
+      id: item.id,
+      type: item.activity_type || 'reading_attempt',
+      when: item.completed_at || null,
+      createdAt: item.completed_at || null,
+      description: `Reading attempt recorded${Number.isFinite(Number(item.accuracy_score)) ? ` (${Math.round(Number(item.accuracy_score))}%)` : ''}`,
     }));
 
     const response = {
-      totalUsers,
-      totalParents,
-      totalTeachers,
-      totalStudents,
-      activeUsers: computedActiveUsers,
-      inactiveUsers,
+      totalUsers: users.length,
+      totalParents: countByRole(users, 'parent'),
+      totalTeachers: countByRole(users, 'teacher'),
+      totalStudents: countByRole(users, 'student'),
+      totalAdmins: countByRole(users, 'admin'),
+      activeUsers: statuses.active || 0,
+      disabledUsers: statuses.disabled || 0,
+      archivedUsers: statuses.archived || 0,
+      deletedUsers: statuses.deleted || 0,
+      inactiveUsers: (statuses.disabled || 0) + (statuses.deleted || 0),
       recentRegistrations,
-      pendingApprovals,
-      totalLessons,
+      pendingApprovals: users.filter((user) => user.emailVerified === false).length,
+      totalLessons: totalCurriculumItems,
+      totalCurriculumItems,
+      totalCurriculumModules,
       totalAssessments,
       totalProgress,
       completedProgress,
@@ -270,10 +556,13 @@ router.get('/overview', async (req, res) => {
       lessonCompletion: totalProgress > 0 ? Math.round((completedProgress / totalProgress) * 100) : 0,
       userRoleBreakdown,
       platformSummary: {
-        totalLessons,
+        totalCurriculumItems,
+        totalCurriculumModules,
         totalAssessments,
         totalProgress,
         completedProgress,
+        totalAttempts,
+        totalNotifications,
       },
       recentActivities: recentActivities.slice(0, 6),
     };
@@ -288,58 +577,43 @@ router.get('/overview', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(Math.max(10, parseInt(req.query.limit, 10) || 20), 50);
-    const offset = (page - 1) * limit;
-    const roleFilter = req.query.role;
+    const limit = Math.min(Math.max(10, parseInt(req.query.limit, 10) || 100), 500);
+    const roleFilter = normalizeRole(req.query.role || '');
     const statusFilter = String(req.query.status || '').trim().toLowerCase();
     const search = req.query.search?.trim();
 
-    const statusMapping = {
-      pending: 'pending_approval',
-      pending_approval: 'pending_approval',
-      blocked: 'blocked',
-      approved: 'approved',
-      rejected: 'rejected',
-      archived: 'archived',
-      inactive: 'inactive',
-    };
-    const normalizedStatus = statusMapping[statusFilter] || statusFilter;
-
-    let query = supabase.from('users').select('*', { count: 'exact' }).order('created_at', { ascending: false });
-    if (roleFilter) {
-      query = query.eq('role', roleFilter);
-    }
-    if (statusFilter) {
-      if (statusFilter === 'active') {
-        query = query;
-      } else if (statusFilter === 'inactive') {
-        query = query.eq('id', '00000000-0000-0000-0000-000000000000');
-      } else {
-        query = normalizedStatus === 'approved'
-          ? query
-          : query.eq('id', '00000000-0000-0000-0000-000000000000');
-      }
+    let query = supabase.from('users').select('*').order('created_at', { ascending: false });
+    if (roleFilter && roleFilter !== 'all') {
+      query = query.ilike('role', roleFilter);
     }
     if (search) {
       const term = `%${search}%`;
       query = query.or(`name.ilike.${term},email.ilike.${term}`);
     }
 
-    const { data, error, count } = await query.range(offset, offset + limit - 1);
+    const { data, error } = await query;
     if (error) {
       if (error.code === 'PGRST205') {
-        return res.json({ logs: [], page, limit });
+        return res.json({ users: [], page, limit });
       }
       throw error;
     }
 
+    let users = await enrichUsersWithAuth(data || []);
+    if (statusFilter && statusFilter !== 'all') {
+      users = users.filter((user) => user.status === statusFilter || user.accountStatus === statusFilter);
+    }
+
+    const offset = (page - 1) * limit;
+    const pagedUsers = users.slice(offset, offset + limit);
+
     return res.json({
-      users: await attachStudentDetailsToUsers(data || []),
+      users: await attachStudentDetailsToUsers(pagedUsers),
       pagination: {
         page,
         limit,
-        total: count ?? data.length,
-        pages: Math.max(1, Math.ceil((count ?? data.length) / limit)),
+        total: users.length,
+        pages: Math.max(1, Math.ceil(users.length / limit)),
       },
     });
   } catch (error) {
@@ -348,55 +622,82 @@ router.get('/users', async (req, res) => {
   }
 });
 
-router.get('/teachers', async (req, res) => {
+router.get('/archive/users', async (req, res) => {
   try {
-    const { data: teacherRows, error: teacherError } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('role', 'teacher')
+      .eq('account_status', 'archived')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    const archivedUsers = (await enrichUsersWithAuth(data || [])).map((user) => ({
+      ...user,
+      archivedDate: user.metadata?.archivedAt || user.updatedAt || user.updated_at || null,
+      archivedBy: user.metadata?.archivedBy || null,
+      previousStatus: user.metadata?.previousStatus || 'active',
+    }));
+
+    return res.json({ archivedUsers });
+  } catch (error) {
+    console.error('Get archive users error:', error);
+    return sendError(res, 500, 'Unable to load archived users.', error.message);
+  }
+});
+
+router.get('/teachers', async (req, res) => {
+  try {
+    const { data: userRows, error: teacherError } = await supabase
+      .from('users')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (teacherError) {
       throw teacherError;
     }
 
-    const teacherIds = (teacherRows || []).map((teacher) => teacher.uid || teacher.id).filter(Boolean);
-    let assignments = [];
+    const teacherRows = (userRows || []).filter((row) => normalizeRole(row.role) === 'teacher');
+    const teacherIds = teacherRows.map((teacher) => teacher.uid || teacher.id).filter(Boolean);
+    let studentRows = [];
 
     if (teacherIds.length) {
-      const { data: scheduleRows, error: scheduleError } = await supabase
-        .from('scheduled_activities')
-        .select('teacher_id,student_id,student_name,student_email')
+      const { data: assignedStudents, error: studentError } = await supabase
+        .from('students')
+        .select('id,user_id,teacher_id,grade_level,reading_level')
         .in('teacher_id', teacherIds);
 
-      if (scheduleError) {
-        throw scheduleError;
-      }
-      assignments = scheduleRows || [];
+      if (studentError) throw studentError;
+      studentRows = assignedStudents || [];
     }
+
+    const studentUserIds = [...new Set(studentRows.map((student) => student.user_id).filter(Boolean))];
+    const { data: studentUsers } = studentUserIds.length
+      ? await supabase.from('users').select('id,name,email,metadata').in('id', studentUserIds)
+      : { data: [] };
+    const studentUsersById = new Map((studentUsers || []).map((user) => [user.id, user]));
 
     const teacherMap = teacherIds.reduce((acc, id) => {
       acc[id] = { assignedStudents: new Set() };
       return acc;
     }, {});
 
-    assignments.forEach((assignment) => {
-      const teacherId = assignment.teacher_id || assignment.teacherId;
+    studentRows.forEach((student) => {
+      const teacherId = student.teacher_id;
       if (!teacherId || !teacherMap[teacherId]) return;
-      const studentLabel = assignment.student_name || assignment.studentName || assignment.student_email || assignment.studentEmail || assignment.student_id || assignment.studentId;
-      if (studentLabel) {
-        teacherMap[teacherId].assignedStudents.add(studentLabel);
-      }
+      const studentUser = studentUsersById.get(student.user_id);
+      teacherMap[teacherId].assignedStudents.add(getUserDisplayName(studentUser || student));
     });
 
-    const teachers = (teacherRows || []).map((teacher) => {
+    const enrichedTeachers = await enrichUsersWithAuth(teacherRows);
+    const teachers = enrichedTeachers.map((teacher) => {
       const uid = teacher.uid || teacher.id;
       const { assignedStudents = new Set() } = teacherMap[uid] || {};
       return {
-        ...normalizeRecord(teacher),
+        ...teacher,
         email: teacher.email,
         role: teacher.role || 'teacher',
-        status: teacher.status || 'active',
+        gradeLevel: teacher.metadata?.gradeLevel || teacher.gradeLevel || null,
         assignedStudents: Array.from(assignedStudents).slice(0, 10),
         assignedStudentCount: assignedStudents.size,
       };
@@ -505,6 +806,8 @@ router.post('/teachers/create', async (req, res) => {
         name: displayName,
         role: 'teacher',
         email_verified: true,
+        is_active: true,
+        account_status: 'active',
         metadata,
       }, { onConflict: 'id' })
       .select()
@@ -698,7 +1001,7 @@ router.put('/settings', async (req, res) => {
 
 router.put('/users/:id', async (req, res) => {
   try {
-    const { role, isActive, fullName, name, email } = req.body;
+    const { role, isActive, status, fullName, name, email } = req.body;
     const updateData = {};
 
     const existingUser = await User.findById(req.params.id);
@@ -707,10 +1010,19 @@ router.put('/users/:id', async (req, res) => {
     }
 
     if (role !== undefined) updateData.role = role;
-    if (isActive !== undefined) {
+    const nextIsActive = isActive !== undefined
+      ? Boolean(isActive)
+      : status !== undefined
+        ? !isDisabledStatus(status)
+        : undefined;
+    if (nextIsActive !== undefined) {
+      updateData.isActive = nextIsActive;
+      updateData.accountStatus = nextIsActive ? 'active' : 'disabled';
       updateData.metadata = {
         ...(existingUser?.metadata || {}),
-        isActive: Boolean(isActive),
+        isActive: nextIsActive,
+        disabledAt: nextIsActive ? null : new Date().toISOString(),
+        disabledBy: nextIsActive ? null : req.user.id,
       };
     }
     if (fullName !== undefined) updateData.name = fullName;
@@ -719,10 +1031,19 @@ router.put('/users/:id', async (req, res) => {
 
     const updatedUser = await User.findByIdAndUpdate(req.params.id, updateData);
 
-    if (email !== undefined || role !== undefined) {
+    if (email !== undefined || role !== undefined || nextIsActive !== undefined) {
       const authPayload = {};
       if (email !== undefined) authPayload.email = String(email).toLowerCase();
-      if (role !== undefined) authPayload.user_metadata = { role };
+      if (role !== undefined || nextIsActive !== undefined) {
+        authPayload.user_metadata = {
+          ...(existingUser.metadata || {}),
+          ...(role !== undefined ? { role } : {}),
+          ...(nextIsActive !== undefined ? { isActive: nextIsActive, accountStatus: nextIsActive ? 'active' : 'disabled' } : {}),
+        };
+      }
+      if (nextIsActive !== undefined) {
+        authPayload.ban_duration = nextIsActive ? 'none' : '876600h';
+      }
       if (Object.keys(authPayload).length) {
         const { error: authError } = await supabase.auth.admin.updateUserById(req.params.id, authPayload);
         if (authError) {
@@ -732,10 +1053,68 @@ router.put('/users/:id', async (req, res) => {
     }
 
     await logAdminAction(req, 'Update user', 'user', req.params.id, updateData);
-    return res.json(updatedUser);
+    const [enrichedUser] = await enrichUsersWithAuth(updatedUser ? [updatedUser] : []);
+    return res.json(enrichedUser || updatedUser);
   } catch (error) {
     console.error('Update user error:', error);
     return sendError(res, 500, 'Failed to update user', error.message);
+  }
+});
+
+router.post('/users/:id/restore', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    if (!userId) {
+      return sendError(res, 400, 'User ID is required');
+    }
+
+    const existingUser = await User.findById(userId);
+    if (!existingUser) {
+      return sendError(res, 404, 'User not found');
+    }
+
+    const restoredMetadata = {
+      ...(existingUser.metadata || {}),
+      isActive: true,
+      accountStatus: 'active',
+      previousStatus: existingUser.metadata?.previousStatus || null,
+      restoredAt: new Date().toISOString(),
+      restoredBy: req.user.id,
+      archivedAt: null,
+      archivedBy: null,
+    };
+
+    const restoredUser = await User.findByIdAndUpdate(userId, {
+      isActive: true,
+      accountStatus: 'active',
+      metadata: restoredMetadata,
+    });
+
+    const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
+      ban_duration: 'none',
+      user_metadata: {
+        ...(existingUser.metadata || {}),
+        isActive: true,
+        accountStatus: 'active',
+      },
+    });
+
+    if (authError && !String(authError.message).toLowerCase().includes('not found')) {
+      console.warn('Supabase auth restore update error:', authError);
+    }
+
+    await logAdminAction(req, 'Restore user', 'user', userId, {
+      email: existingUser.email || 'unknown',
+    });
+
+    const [enrichedUser] = await enrichUsersWithAuth(restoredUser ? [restoredUser] : []);
+    return res.json({
+      message: 'User restored successfully.',
+      user: enrichedUser || restoredUser,
+    });
+  } catch (error) {
+    console.error('Restore user error:', error);
+    return sendError(res, 500, 'Failed to restore user', error.message);
   }
 });
 
@@ -751,26 +1130,48 @@ router.delete('/users/:id', async (req, res) => {
       return sendError(res, 404, 'User not found');
     }
 
-    const { error: authError } = await supabase.auth.admin.deleteUser(userId);
-    if (authError && !String(authError.message).toLowerCase().includes('not found')) {
-      console.error('Supabase auth delete error:', authError);
-      return sendError(res, 500, 'Failed to delete user from Supabase Auth', authError.message);
-    }
+    const previousStatus = String(existingUser.accountStatus || existingUser.account_status || 'active').toLowerCase();
+    const archiveMetadata = {
+      ...(existingUser.metadata || {}),
+      isActive: false,
+      accountStatus: 'archived',
+      archivedAt: new Date().toISOString(),
+      archivedBy: req.user.id,
+      previousStatus,
+    };
 
-    const deletedUser = await User.findByIdAndDelete(userId);
-    if (!deletedUser) {
-      return sendError(res, 500, 'Failed to delete user from database');
-    }
-
-    await logAdminAction(req, 'Delete user', 'user', userId, {
-      email: existingUser.email || 'unknown',
-      authDeleted: !authError,
+    const archivedUser = await User.findByIdAndUpdate(userId, {
+      isActive: false,
+      accountStatus: 'archived',
+      metadata: archiveMetadata,
     });
 
-    return res.json({ message: 'User deleted successfully from Supabase Auth and database' });
+    const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
+      ban_duration: '876600h',
+      user_metadata: {
+        ...(existingUser.metadata || {}),
+        isActive: false,
+        accountStatus: 'archived',
+      },
+    });
+
+    if (authError && !String(authError.message).toLowerCase().includes('not found')) {
+      console.warn('Supabase auth archive update error:', authError);
+    }
+
+    await logAdminAction(req, 'Archive user', 'user', userId, {
+      email: existingUser.email || 'unknown',
+      previousStatus,
+    });
+
+    const [enrichedUser] = await enrichUsersWithAuth(archivedUser ? [archivedUser] : []);
+    return res.json({
+      message: 'User archived successfully. Learning history and profile data were preserved.',
+      user: enrichedUser || archivedUser,
+    });
   } catch (error) {
-    console.error('Delete user error:', error);
-    return sendError(res, 500, 'Failed to delete user', error.message);
+    console.error('Archive user error:', error);
+    return sendError(res, 500, 'Failed to archive user', error.message);
   }
 });
 
@@ -868,27 +1269,47 @@ router.get('/analytics', async (req, res) => {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const since = sevenDaysAgo.toISOString();
 
-    const [usersResult, allUsersResult, studentRowsResult, progressCountResult, completedScoreResult, scoresResult, attemptsResult] = await Promise.all([
+    const [
+      usersResult,
+      studentRowsResult,
+      curriculumProgressResult,
+      moduleProgressResult,
+      curriculumItemsResult,
+      readingAttemptsResult,
+      pronunciationResult,
+      contentAttemptsResult,
+      contentCompletionsResult,
+      wordMasteryResult,
+      confusionResult,
+    ] = await Promise.all([
       supabase.from('users').select('created_at').gt('created_at', since),
-      supabase.from('users').select('created_at,status,metadata'),
-      supabase.from('students').select('id,reading_level'),
-      supabase.from('lesson_progress').select('id', { count: 'exact', head: true }),
-      supabase.from('lesson_progress').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
-      supabase.from('lesson_progress').select('score').not('score', 'is', null),
-      supabase.from('reading_attempts').select('id,accuracy_score,activity_type,completed_at'),
+      supabase.from('students').select('id,user_id,reading_level,practice_level,words_completed,completed,streak,total_attempts,accuracy_sum,activities_completed,badges,last_practice_date'),
+      supabase.from('curriculum_progress').select('id,student_id,status,best_accuracy,attempts_count,last_attempt_at,curriculum_item_id'),
+      supabase.from('student_module_progress').select('id,student_id,module_id,status,progress,assessment_score,assessment_passed,completed_at,last_activity_at'),
+      supabase.from('curriculum_items').select('id,item_type,reading_level'),
+      supabase.from('reading_attempts').select('id,student_id,accuracy_score,activity_type,completed_at,word_target,confusion_tags,phoneme_accuracy,syllable_accuracy,word_accuracy'),
+      supabase.from('pronunciation_practice_sessions').select('id,student_id,word,accuracy_percentage,is_correct,created_at,attempts,confidence_score'),
+      supabase.from('student_content_attempts').select('id,student_id,content_id,accuracy,duration_seconds,is_full_submission,created_at'),
+      supabase.from('student_content_completions').select('id,student_id,content_id,completed_at'),
+      supabase.from('word_mastery').select('id,student_id,word,mastery_status,attempt_count,correct_count,avg_pronunciation_score,last_attempt_at'),
+      supabase.from('confusion_patterns').select('id,student_id,pattern_type,occurrence_count,last_seen_at,example_words'),
     ]);
 
     if (usersResult.error) throw usersResult.error;
-    if (allUsersResult.error) throw allUsersResult.error;
     if (studentRowsResult.error) throw studentRowsResult.error;
-    if (progressCountResult.error) throw progressCountResult.error;
-    if (completedScoreResult.error) {
-      completedScoreResult.count = await countCompletedLessonProgress();
-    }
-    if (scoresResult.error) throw scoresResult.error;
-    const attemptsUnavailable = ['PGRST205', '42P01'].includes(attemptsResult.error?.code);
-    const attempts = attemptsUnavailable ? [] : (attemptsResult.data || []);
-    if (attemptsResult.error && !attemptsUnavailable) throw attemptsResult.error;
+    if (curriculumProgressResult.error) throw curriculumProgressResult.error;
+    if (moduleProgressResult.error) throw moduleProgressResult.error;
+    if (curriculumItemsResult.error) throw curriculumItemsResult.error;
+    if (readingAttemptsResult.error) throw readingAttemptsResult.error;
+    if (pronunciationResult.error) throw pronunciationResult.error;
+    if (contentAttemptsResult.error) throw contentAttemptsResult.error;
+    if (contentCompletionsResult.error) throw contentCompletionsResult.error;
+    if (wordMasteryResult.error) throw wordMasteryResult.error;
+    if (confusionResult.error) throw confusionResult.error;
+
+    const { data: userRows, error: allUsersError } = await supabase.from('users').select('*');
+    if (allUsersError) throw allUsersError;
+    const users = await enrichUsersWithAuth(userRows || []);
 
     const enrollmentMap = {};
     for (let i = 0; i < 7; i += 1) {
@@ -906,67 +1327,133 @@ router.get('/analytics', async (req, res) => {
       }
     });
 
-    const scoreValues = (scoresResult.data || [])
-      .map((item) => Number(item.score))
-      .filter((score) => !Number.isNaN(score));
+    const students = studentRowsResult.data || [];
+    const curriculumProgress = curriculumProgressResult.data || [];
+    const moduleProgress = moduleProgressResult.data || [];
+    const curriculumItemsById = new Map((curriculumItemsResult.data || []).map((item) => [item.id, item]));
+    const readingAttempts = readingAttemptsResult.data || [];
+    const pronunciationSessions = pronunciationResult.data || [];
+    const contentAttempts = contentAttemptsResult.data || [];
+    const contentCompletions = contentCompletionsResult.data || [];
+    const wordMastery = wordMasteryResult.data || [];
+    const confusionPatterns = confusionResult.data || [];
 
-    const averageProgressScore = scoreValues.length > 0
-      ? Math.round(scoreValues.reduce((sum, score) => sum + score, 0) / scoreValues.length)
-      : 0;
-    const studentStats = await getManyStudentStats((studentRowsResult.data || []).map((student) => student.id));
-    const levelDistribution = (studentStats.length ? studentStats : (studentRowsResult.data || [])).reduce((acc, row) => {
-      const level = String(row.level || row.reading_level || 'beginner').toLowerCase();
+    const levelDistribution = students.reduce((acc, row) => {
+      const level = String(row.reading_level || row.practice_level || 'beginner').toLowerCase();
       acc[level] = (acc[level] || 0) + 1;
       return acc;
     }, {});
-    const totalAttempts = studentStats.reduce((sum, stats) => sum + Number(stats.totalAttempts || 0), 0);
-    const totalWordsCompleted = studentStats.reduce((sum, stats) => sum + Number(stats.wordsCompleted || 0), 0);
-    const totalLessonsCompleted = studentStats.reduce((sum, stats) => sum + Number(stats.lessonsCompleted || 0), 0);
-    const totalActivitiesCompleted = studentStats.reduce((sum, stats) => sum + Number(stats.activitiesCompleted || 0), 0);
-    const totalBadgeUnlocks = studentStats.reduce((sum, stats) => sum + Number(stats.badges?.length || 0), 0);
-    const badgeCounts = studentStats.reduce((acc, stats) => {
-      (stats.badges || []).forEach((badge) => {
+
+    const totalAttempts = readingAttempts.length + pronunciationSessions.length + contentAttempts.length;
+    const successfulAttempts = [
+      ...readingAttempts.filter((attempt) => Number(attempt.accuracy_score) >= 75),
+      ...pronunciationSessions.filter((attempt) => attempt.is_correct || Number(attempt.accuracy_percentage) >= 75),
+      ...contentAttempts.filter((attempt) => Number(attempt.accuracy) >= 75),
+    ].length;
+    const failedAttempts = Math.max(0, totalAttempts - successfulAttempts);
+    const averageProgressScore = average([
+      ...curriculumProgress.map((item) => item.best_accuracy),
+      ...moduleProgress.map((item) => item.assessment_score),
+      ...readingAttempts.map((item) => item.accuracy_score),
+      ...pronunciationSessions.map((item) => item.accuracy_percentage),
+      ...contentAttempts.map((item) => item.accuracy),
+    ]);
+    const averageAccuracy = average([
+      ...readingAttempts.map((item) => item.accuracy_score),
+      ...pronunciationSessions.map((item) => item.accuracy_percentage),
+      ...contentAttempts.map((item) => item.accuracy),
+    ]);
+    const totalWordsCompleted = students.reduce((sum, student) => sum + Number(student.words_completed || 0), 0);
+    const totalActivitiesCompleted = students.reduce((sum, student) => sum + Number(student.activities_completed || 0), 0) + contentCompletions.length;
+    const completedCurriculum = curriculumProgress.filter((item) => ['completed', 'passed', 'mastered'].includes(String(item.status).toLowerCase())).length;
+    const completedModules = moduleProgress.filter((item) => ['completed', 'passed', 'mastered'].includes(String(item.status).toLowerCase()) || item.assessment_passed).length;
+    const totalProgressRecords = curriculumProgress.length + moduleProgress.length;
+    const totalBadgeUnlocks = students.reduce((sum, student) => sum + (Array.isArray(student.badges) ? student.badges.length : 0), 0);
+    const badgeCounts = students.reduce((acc, student) => {
+      (Array.isArray(student.badges) ? student.badges : []).forEach((badge) => {
         const id = typeof badge === 'string' ? badge : badge?.id;
         if (id) acc[id] = (acc[id] || 0) + 1;
       });
       return acc;
     }, {});
-    const averageAccuracy = studentStats.length
-      ? Math.round(studentStats.reduce((sum, stats) => sum + Number(stats.accuracy || 0), 0) / studentStats.length)
+    const activeUsers = users.filter((user) => user.status === 'active').length;
+    const disabledUsers = users.filter((user) => user.status === 'disabled').length;
+    const activeStudents = students.filter((student) => {
+      const last = new Date(student.last_practice_date || 0).getTime();
+      return Number.isFinite(last) && last >= Date.now() - (30 * 24 * 60 * 60 * 1000);
+    }).length;
+    const wordOfDayCompletions = readingAttempts.filter((attempt) => attempt.activity_type === 'word_of_day').length;
+    const readingEngagement = students.length
+      ? Math.round((students.filter((student) => Number(student.total_attempts || 0) > 0 || readingAttempts.some((attempt) => attempt.student_id === student.id)).length / students.length) * 100)
       : 0;
-    const activeUsers = (allUsersResult.data || []).filter((row) =>
-      row.status === 'active' || row.metadata?.isActive === true || row.metadata?.isActive === undefined
-    ).length;
-    const readingAttempts = attempts.length;
-    const wordOfDayCompletions = attempts.filter((attempt) => attempt.activity_type === 'word_of_day').length;
-    const readingEngagement = studentStats.length
-      ? Math.round((studentStats.filter((stats) => Number(stats.totalAttempts || 0) > 0).length / studentStats.length) * 100)
-      : 0;
+    const difficultWords = wordMastery
+      .filter((row) => String(row.mastery_status || '').toLowerCase() !== 'mastered')
+      .sort((a, b) => Number(b.attempt_count || 0) - Number(a.attempt_count || 0))
+      .slice(0, 10)
+      .map((row) => ({
+        word: row.word,
+        attempts: row.attempt_count || 0,
+        correct: row.correct_count || 0,
+        score: row.avg_pronunciation_score || 0,
+      }));
+    const phonemeConfusionPatterns = confusionPatterns
+      .sort((a, b) => Number(b.occurrence_count || 0) - Number(a.occurrence_count || 0))
+      .slice(0, 10)
+      .map((row) => ({
+        pattern: row.pattern_type,
+        count: row.occurrence_count || 0,
+        examples: row.example_words || [],
+      }));
+    const sessionDurations = [
+      ...pronunciationSessions.map((session) => Number(session.duration_seconds || 0)),
+      ...contentAttempts.map((attempt) => Number(attempt.duration_seconds || 0)),
+    ].filter((seconds) => Number.isFinite(seconds) && seconds > 0);
+    const averageSessionMinutes = sessionDurations.length
+      ? Math.round((sessionDurations.reduce((sum, seconds) => sum + seconds, 0) / sessionDurations.length) / 60)
+      : null;
+    const completedByItemType = curriculumProgress
+      .filter((item) => ['completed', 'passed', 'mastered'].includes(String(item.status).toLowerCase()))
+      .reduce((acc, progress) => {
+        const itemType = String(curriculumItemsById.get(progress.curriculum_item_id)?.item_type || 'unknown').toLowerCase();
+        acc[itemType] = (acc[itemType] || 0) + 1;
+        return acc;
+      }, {});
     const readingAnalytics = [
       { label: 'Accuracy', value: averageAccuracy },
       { label: 'Engagement', value: readingEngagement },
       {
         label: 'Completion',
-        value: studentStats.length
-          ? Math.round((studentStats.filter((stats) => Number(stats.activitiesCompleted || 0) > 0).length / studentStats.length) * 100)
+        value: totalProgressRecords
+          ? Math.round(((completedCurriculum + completedModules) / totalProgressRecords) * 100)
           : 0,
       },
     ];
 
     return res.json({
+      totalStudents: countByRole(users, 'student'),
+      totalTeachers: countByRole(users, 'teacher'),
+      totalParents: countByRole(users, 'parent'),
+      activeUsers,
+      disabledUsers,
       enrollmentLabels: Object.keys(enrollmentMap),
       enrollmentTrends: Object.values(enrollmentMap),
-      completionRate: (progressCountResult.count || 0) > 0
-        ? Math.round(((completedScoreResult.count || 0) / (progressCountResult.count || 0)) * 100)
-        : 0,
+      completionRate: totalProgressRecords ? Math.round(((completedCurriculum + completedModules) / totalProgressRecords) * 100) : 0,
       averageProgressScore,
-      activeUsers,
       averageAccuracy,
       readingEngagement,
-      readingAttempts,
-      practiceSessions: totalAttempts,
+      readingAttempts: readingAttempts.length,
+      practiceSessions: pronunciationSessions.length,
+      totalAttempts,
+      successfulAttempts,
+      failedAttempts,
       wordsCompleted: totalWordsCompleted,
-      lessonsCompleted: totalLessonsCompleted,
+      completedWords: totalWordsCompleted,
+      completedPhonetics: completedByItemType.phonetic || completedByItemType.phonetics || 0,
+      completedPhrases: completedByItemType.phrase || completedByItemType.phrases || 0,
+      completedSentences: completedByItemType.sentence || completedByItemType.sentences || 0,
+      completedParagraphs: completedByItemType.paragraph || completedByItemType.paragraphs || 0,
+      modulesCompleted: completedModules,
+      moduleCompletion: moduleProgress.length ? Math.round((completedModules / moduleProgress.length) * 100) : 0,
       activitiesCompleted: totalActivitiesCompleted,
       wordOfDayCompletions,
       totalBadgeUnlocks,
@@ -977,9 +1464,15 @@ router.get('/analytics', async (req, res) => {
         counts: badgeCounts,
       },
       levelDistribution,
+      beginnerStudents: levelDistribution.beginner || 0,
+      intermediateStudents: levelDistribution.intermediate || 0,
+      advancedStudents: levelDistribution.advanced || 0,
+      activeStudents,
+      difficultWords,
+      phonemeConfusionPatterns,
       readingAnalytics,
-      averageSessionMinutes: 0,
-      totalProgressRecords: progressCountResult.count || 0,
+      averageSessionMinutes,
+      totalProgressRecords,
       weeklyEnrollments: usersResult.data?.length || 0,
     });
   } catch (error) {
@@ -992,50 +1485,219 @@ router.get('/reports', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(Math.max(10, parseInt(req.query.limit, 10) || 25), 100);
+    const reportType = String(req.query.type || 'all').toLowerCase();
     const offset = (page - 1) * limit;
 
-    const { data, error } = await supabase
-      .from('lesson_progress')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const [
+      usersResult,
+      studentsResult,
+      curriculumItemsResult,
+      curriculumProgressResult,
+      moduleProgressResult,
+      assessmentsResult,
+      readingAttemptsResult,
+      contentCompletionsResult,
+    ] = await Promise.all([
+      supabase.from('users').select('*').order('created_at', { ascending: false }),
+      supabase.from('students').select('*').order('created_at', { ascending: false }),
+      supabase.from('curriculum_items').select('id,item_type,reading_level,content,display_text,is_active,updated_at').order('sequence_no', { ascending: true }).limit(200),
+      supabase.from('curriculum_progress').select('*').order('updated_at', { ascending: false }).limit(500),
+      supabase.from('student_module_progress').select('*').order('updated_at', { ascending: false }).limit(500),
+      supabase.from('assessments').select('*').order('updated_at', { ascending: false }).limit(500),
+      supabase.from('reading_attempts').select('*').order('completed_at', { ascending: false }).limit(500),
+      supabase.from('student_content_completions').select('*').order('completed_at', { ascending: false }).limit(500),
+    ]);
 
-    if (error) {
-      throw error;
-    }
+    [
+      usersResult,
+      studentsResult,
+      curriculumItemsResult,
+      curriculumProgressResult,
+      moduleProgressResult,
+      assessmentsResult,
+      readingAttemptsResult,
+      contentCompletionsResult,
+    ].forEach((result) => {
+      if (result.error) throw result.error;
+    });
 
-    const studentIds = [...new Set((data || []).map((item) => item.student_id || item.studentId).filter(Boolean))];
-    const lessonIds = [...new Set((data || []).map((item) => item.lesson_id || item.lessonId).filter(Boolean))];
-    const { data: studentRows } = studentIds.length
-      ? await supabase.from('students').select('id,user_id,grade_level,reading_level').in('id', studentIds)
-      : { data: [] };
-    const userIds = [...new Set((studentRows || []).map((student) => student.user_id).filter(Boolean))];
-    const { data: userRows } = userIds.length
-      ? await supabase.from('users').select('id,name,email,metadata').in('id', userIds)
-      : { data: [] };
-    const { data: lessonRows } = lessonIds.length
-      ? await supabase.from('lessons').select('id,title,category,level').in('id', lessonIds)
-      : { data: [] };
+    const users = await enrichUsersWithAuth(usersResult.data || []);
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const students = studentsResult.data || [];
+    const studentsById = new Map(students.map((student) => [student.id, student]));
+    const curriculumItems = curriculumItemsResult.data || [];
+    const curriculumById = new Map(curriculumItems.map((item) => [item.id, item]));
 
-    const studentsById = new Map((studentRows || []).map((student) => [student.id, student]));
-    const usersById = new Map((userRows || []).map((user) => [user.id, user]));
-    const lessonsById = new Map((lessonRows || []).map((lesson) => [lesson.id, lesson]));
+    const studentName = (studentId) => {
+      const student = studentsById.get(studentId);
+      const user = student ? usersById.get(student.user_id) : null;
+      return getUserDisplayName(user || student || {});
+    };
 
-    const reportData = (data || []).map((item) => ({
-      id: item.id,
-      student: (() => {
-        const student = studentsById.get(item.student_id || item.studentId);
-        const user = student ? usersById.get(student.user_id) : null;
-        return user?.name || user?.metadata?.displayName || user?.email || item.student_id || 'No data available';
-      })(),
-      lesson: lessonsById.get(item.lesson_id || item.lessonId)?.title || item.lesson_title || item.lesson_id || 'No data available',
-      status: item.status || 'No data available',
-      score: typeof item.score === 'number' ? item.score : 'No data available',
-      percentageComplete: typeof item.percentage_complete === 'number' ? item.percentage_complete : 'No data available',
-      lastUpdated: item.updated_at || item.updatedAt || 'No date available',
-    }));
+    const reportRows = [];
 
-    return res.json({ reports: reportData, reportData, page, limit });
+    users.forEach((user) => {
+      reportRows.push({
+        id: `user-${user.id}`,
+        type: 'Account/user report',
+        studentId: user.role === 'student' ? user.studentId : null,
+        student: user.role === 'student' ? user.name : '',
+        subject: user.name,
+        detail: user.email || '',
+        status: user.status,
+        score: user.emailVerified ? 100 : 0,
+        percentageComplete: user.emailVerified ? 100 : 0,
+        lastUpdated: user.lastActivityAt || user.updatedAt || user.registeredAt,
+      });
+    });
+
+    students.forEach((student) => {
+      const user = usersById.get(student.user_id);
+      reportRows.push({
+        id: `student-${student.id}`,
+        type: 'Student report',
+        studentId: student.id,
+        student: getUserDisplayName(user || student),
+        subject: student.reading_level || student.practice_level || 'Reading level unavailable',
+        detail: `Grade ${student.grade_level || 'unavailable'} | Streak ${student.streak || 0}`,
+        status: user?.status || 'active',
+        score: Number(student.accuracy || 0),
+        percentageComplete: Number(student.activities_completed || student.completed || 0),
+        lastUpdated: student.last_practice_date || student.updated_at || student.created_at,
+      });
+    });
+
+    users.filter((user) => user.role === 'teacher').forEach((teacher) => {
+      const assignedCount = students.filter((student) => student.teacher_id === teacher.id).length;
+      reportRows.push({
+        id: `teacher-${teacher.id}`,
+        type: 'Teacher report',
+        student: '',
+        subject: teacher.name,
+        detail: `${assignedCount} assigned students`,
+        status: teacher.status,
+        score: assignedCount,
+        percentageComplete: assignedCount,
+        lastUpdated: teacher.lastActivityAt || teacher.updatedAt || teacher.registeredAt,
+      });
+    });
+
+    curriculumItems.forEach((item) => {
+      reportRows.push({
+        id: `curriculum-${item.id}`,
+        type: 'Curriculum report',
+        student: '',
+        subject: item.display_text || item.content,
+        detail: `${item.reading_level} | ${item.item_type}`,
+        status: item.is_active ? 'active' : 'inactive',
+        score: '',
+        percentageComplete: '',
+        lastUpdated: item.updated_at,
+      });
+    });
+
+    (curriculumProgressResult.data || []).forEach((progress) => {
+      const item = curriculumById.get(progress.curriculum_item_id);
+      reportRows.push({
+        id: `progress-${progress.id}`,
+        type: 'Progress report',
+        studentId: progress.student_id,
+        student: studentName(progress.student_id),
+        subject: item?.display_text || item?.content || progress.curriculum_item_id,
+        detail: `${progress.attempts_count || 0} attempts`,
+        status: progress.status,
+        score: Number(progress.best_accuracy || 0),
+        percentageComplete: ['completed', 'passed', 'mastered'].includes(String(progress.status).toLowerCase()) ? 100 : 0,
+        lastUpdated: progress.updated_at || progress.last_attempt_at,
+      });
+    });
+
+    (moduleProgressResult.data || []).forEach((progress) => {
+      reportRows.push({
+        id: `module-${progress.id}`,
+        type: 'Progress report',
+        studentId: progress.student_id,
+        student: studentName(progress.student_id),
+        subject: progress.module_id,
+        detail: `Module progress ${Math.round(Number(progress.progress || 0))}%`,
+        status: progress.status,
+        score: progress.assessment_score ?? '',
+        percentageComplete: Math.round(Number(progress.progress || 0)),
+        lastUpdated: progress.updated_at || progress.last_activity_at,
+      });
+    });
+
+    (assessmentsResult.data || []).forEach((assessment) => {
+      reportRows.push({
+        id: `assessment-${assessment.id}`,
+        type: 'Assessment report',
+        studentId: assessment.student_id,
+        student: studentName(assessment.student_id),
+        subject: 'Assessment',
+        detail: assessment.difficulty_adaptation || assessment.recommended_start_level || '',
+        status: assessment.completed_at ? 'completed' : 'started',
+        score: assessment.overall_score ?? '',
+        percentageComplete: assessment.completed_at ? 100 : 0,
+        lastUpdated: assessment.updated_at || assessment.completed_at || assessment.created_at,
+      });
+    });
+
+    (readingAttemptsResult.data || []).forEach((attempt) => {
+      reportRows.push({
+        id: `attempt-${attempt.id}`,
+        type: 'Assessment report',
+        studentId: attempt.student_id,
+        student: studentName(attempt.student_id),
+        subject: attempt.word_target || attempt.expected_text || attempt.sentence,
+        detail: attempt.activity_type || attempt.mode || 'reading attempt',
+        status: Number(attempt.accuracy_score) >= 75 ? 'successful' : 'failed',
+        score: Math.round(Number(attempt.accuracy_score || 0)),
+        percentageComplete: Math.round(Number(attempt.accuracy_score || 0)),
+        lastUpdated: attempt.completed_at,
+      });
+    });
+
+    (contentCompletionsResult.data || []).forEach((completion) => {
+      reportRows.push({
+        id: `completion-${completion.id}`,
+        type: 'Progress report',
+        studentId: completion.student_id,
+        student: studentName(completion.student_id),
+        subject: completion.content_id,
+        detail: 'Content completion',
+        status: 'completed',
+        score: 100,
+        percentageComplete: 100,
+        lastUpdated: completion.completed_at,
+      });
+    });
+
+    const filteredRows = reportType === 'all'
+      ? reportRows
+      : reportRows.filter((row) => row.type.toLowerCase().includes(reportType));
+    const sortedRows = filteredRows.sort((a, b) => new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0));
+    const reportData = sortedRows.slice(offset, offset + limit);
+
+    return res.json({
+      reports: reportData,
+      reportData,
+      summary: {
+        total: filteredRows.length,
+        users: users.length,
+        students: students.length,
+        curriculumItems: curriculumItems.length,
+        progressRecords: (curriculumProgressResult.data || []).length + (moduleProgressResult.data || []).length,
+        assessments: (assessmentsResult.data || []).length + (readingAttemptsResult.data || []).length,
+      },
+      page,
+      limit,
+      pagination: {
+        page,
+        limit,
+        total: filteredRows.length,
+        pages: Math.max(1, Math.ceil(filteredRows.length / limit)),
+      },
+    });
   } catch (error) {
     console.error('Reports error:', error);
     return sendError(res, 500, 'Failed to fetch reports', error.message);

@@ -3,6 +3,8 @@ import { adminService } from '../../services/api';
 
 export default function Reports() {
   const [reports, setReports] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [typeFilter, setTypeFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -11,7 +13,7 @@ export default function Reports() {
       setLoading(true);
       setError('');
       try {
-        const response = await adminService.getReports();
+        const response = await adminService.getReports({ type: typeFilter, limit: 100 });
         const payload = response.data || response;
         const list = Array.isArray(payload?.reports)
           ? payload.reports
@@ -21,8 +23,10 @@ export default function Reports() {
               ? payload
               : [];
         setReports(list);
+        setSummary(payload?.summary || {});
       } catch (err) {
         setReports([]);
+        setSummary({});
         setError(err?.response?.data?.message || err?.message || 'Reports service is unavailable.');
       } finally {
         setLoading(false);
@@ -30,7 +34,26 @@ export default function Reports() {
     };
 
     loadReports();
-  }, []);
+  }, [typeFilter]);
+
+  const handleDownloadStudentPdf = async (report) => {
+    if (!report?.studentId) return;
+
+    try {
+      const response = await adminService.downloadStudentReportPdf(report.studentId);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `student-report-${report.studentId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Unable to download the student PDF report.');
+    }
+  };
 
   return (
     <section className="dashboard-section">
@@ -44,36 +67,49 @@ export default function Reports() {
 
       {error && <div className="dashboard-banner dashboard-banner-error">{error}</div>}
 
+      <div className="panel-grid panel-grid-single">
+        <div className="card-panel">
+          <div className="field-grid">
+            <label>
+              Report type
+              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+                <option value="all">All reports</option>
+                <option value="student">Student report</option>
+                <option value="teacher">Teacher report</option>
+                <option value="curriculum">Curriculum report</option>
+                <option value="progress">Progress report</option>
+                <option value="assessment">Assessment report</option>
+                <option value="account">Account/user report</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div className="status-grid dashboard-status-grid">
         <div>
           <span>Export ready</span>
-          <strong>{reports.length}</strong>
+          <strong>{summary.total ?? reports.length}</strong>
         </div>
         <div>
           <span>Source</span>
-          <strong>Lesson Progress</strong>
+          <strong>Supabase</strong>
         </div>
         <div>
-          <span>Completed</span>
-          <strong>{reports.filter((report) => String(report.status || '').toLowerCase() === 'completed').length}</strong>
+          <span>Progress records</span>
+          <strong>{summary.progressRecords ?? 0}</strong>
         </div>
         <div>
-          <span>Average score</span>
-          <strong>
-            {(() => {
-              const scores = reports.map((report) => Number(report.score)).filter((score) => Number.isFinite(score));
-              if (!scores.length) return '0';
-              return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
-            })()}
-          </strong>
+          <span>Assessments</span>
+          <strong>{summary.assessments ?? 0}</strong>
         </div>
       </div>
 
       <div className="card-panel">
         <div className="section-heading">
           <div>
-          <h3>Lesson progress reports</h3>
-          <p>Real records from student lesson progress.</p>
+          <h3>Supabase reports</h3>
+          <p>Real records from users, students, curriculum, progress, and assessments.</p>
           </div>
         </div>
         <ul className="alert-list">
@@ -83,12 +119,19 @@ export default function Reports() {
             reports.map((report) => (
               <li key={report.id}>
                 <div>
-                  <strong>{report.student || 'Student'} - {report.lesson || 'Lesson'}</strong>
+                  <strong>{report.student ? `${report.student} - ` : ''}{report.subject || report.lesson || 'Report record'}</strong>
                   <small>
-                    {report.status || 'No status'} | Score: {report.score ?? 'No data'} | Updated: {report.lastUpdated || 'No date'}
+                    {report.type || 'Report'} | {report.status || 'No status'} | Score: {report.score ?? 'No data'} | Updated: {report.lastUpdated || 'No date'}
                   </small>
                 </div>
-                <span className="pill small">{report.percentageComplete ?? '0'}%</span>
+                <div className="row-actions">
+                  {report.studentId && (
+                    <button type="button" className="btn-secondary" onClick={() => handleDownloadStudentPdf(report)}>
+                      PDF
+                    </button>
+                  )}
+                  <span className="pill small">{report.percentageComplete ?? '0'}%</span>
+                </div>
               </li>
             ))
           ) : (

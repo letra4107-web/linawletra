@@ -43,7 +43,11 @@ body {
 .pageWrapper {
   min-height: 100vh;
   padding: var(--space-5);
-  background-color: #e8f0ff;
+  background-color: #f8fafc;
+  background-image: url('../assets/badges/new_backgraound.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
   display: flex;
   align-items: center;
   justify-content: center;

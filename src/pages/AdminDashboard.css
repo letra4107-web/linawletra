@@ -218,6 +218,19 @@
   color: var(--primary);
 }
 
+.tab-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tab-row .btn-secondary.is-active {
+  background: rgba(79, 70, 229, 0.18);
+  border-color: rgba(79, 70, 229, 0.35);
+  color: var(--primary);
+}
+
 .sidebar-overlay {
   position: fixed;
   inset: 0;
@@ -511,6 +524,13 @@
   color: var(--muted);
   display: block;
   margin-top: 6px;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .status-grid {

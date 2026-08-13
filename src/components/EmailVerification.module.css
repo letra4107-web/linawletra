@@ -130,7 +130,11 @@
 .pageWrapper {
   min-height: 100vh;
   padding: var(--space-5);
-  background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 35%), linear-gradient(180deg, var(--color-slate-50) 0%, var(--color-slate-50) 100%);
+  background-color: #f8fafc;
+  background-image: url('../assets/badges/new_backgraound.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
   display: flex;
   align-items: center;
   justify-content: center;
