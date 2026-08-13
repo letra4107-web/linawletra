@@ -1980,7 +1980,6 @@ const StudentDashboard = () => {
             { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
             { key: 'word', label: 'Word', icon: <FiStar aria-hidden="true" /> },
             { key: 'progress', label: 'Progress', icon: <FiTrendingUp aria-hidden="true" /> },
-            { key: 'badges', label: 'Badges', icon: <FiAward aria-hidden="true" /> },
             { key: 'activities', label: 'Activities', icon: <FiTarget aria-hidden="true" /> },
             { key: 'calendar', label: 'Calendar', icon: <FiCalendar aria-hidden="true" /> },
             { key: 'notifications', label: `Alerts${unreadNotifications.length ? ` (${unreadNotifications.length})` : ''}`, icon: <FiBell aria-hidden="true" /> },
@@ -3070,6 +3069,21 @@ const StudentDashboard = () => {
                 </div>
               </div>
             )}
+            <div className="chart-card student-progress-achievements">
+              <div className="detail-block-title">Achievements</div>
+              <div className="student-mini-badge-grid">
+                {ACHIEVEMENTS.slice(0, 8).map((achievement) => (
+                  <AchievementBadge
+                    key={achievement.id}
+                    achievement={achievement}
+                    unlocked={unlockedAchievementIds.includes(achievement.id)}
+                  />
+                ))}
+              </div>
+              <button type="button" className="button-small button-secondary" onClick={() => handleNav('badges')}>
+                See all achievements <FiChevronRight aria-hidden="true" />
+              </button>
+            </div>
           </section>
         )}
         {activeSection === 'badges' && (
