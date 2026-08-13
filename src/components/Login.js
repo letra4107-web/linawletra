@@ -214,15 +214,7 @@ export default function Login() {
       }
     };
   return (
-    <div
-      className={styles.pageWrapper}
-      style={{
-        backgroundImage: 'url(/bg.png)',
-        backgroundPosition: 'center',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-      }}
-    >
+    <div className={styles.pageWrapper}>
       <div className={styles.authShell}>
         {/* Minimal Visual Panel */}
         <aside className={styles.visualPanel}>

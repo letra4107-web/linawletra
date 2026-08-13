@@ -355,15 +355,7 @@ export default function EmailVerification() {
 
   if (success) {
     return (
-      <div
-        className={styles.pageWrapper}
-        style={{
-          backgroundImage: 'url(/bg.png)',
-          backgroundPosition: 'center',
-          backgroundSize: 'cover',
-          backgroundRepeat: 'no-repeat',
-        }}
-      >
+      <div className={styles.pageWrapper}>
         <div className={styles.authShell}>
           <main className={styles.formColumn}>
             <div className={styles.pageBrand}>
@@ -391,15 +383,7 @@ export default function EmailVerification() {
   }
 
   return (
-    <div
-      className={styles.pageWrapper}
-      style={{
-        backgroundImage: 'url(/bg.png)',
-        backgroundPosition: 'center',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-      }}
-    >
+    <div className={styles.pageWrapper}>
       <div className={styles.authShell}>
         <main className={styles.formColumn}>
           <div className={styles.pageBrand}>

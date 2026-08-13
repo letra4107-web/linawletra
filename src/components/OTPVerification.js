@@ -142,15 +142,7 @@ export default function OTPVerification() {
   };
 
   return (
-    <div
-      className={styles.pageWrapper}
-      style={{
-        backgroundImage: 'url(/bg.png)',
-        backgroundPosition: 'center',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-      }}
-    >
+    <div className={styles.pageWrapper}>
       <div className={styles.authShell}>
         <main className={styles.formColumn}>
           <div className={styles.pageBrand}>
