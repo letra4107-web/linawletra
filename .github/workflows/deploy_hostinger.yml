@@ -38,6 +38,17 @@ jobs:
             exit 1
           fi
 
+      - name: Detect build bundle filename
+        id: bundle
+        run: |
+          BUNDLE=$(basename $(find build/static/js -maxdepth 1 -name 'main.*.js' | head -n1))
+          if [ -z "$BUNDLE" ]; then
+            echo "::error::Could not detect main JS bundle in build/static/js"
+            exit 1
+          fi
+          echo "Detected bundle: $BUNDLE"
+          echo "bundle=$BUNDLE" >> "$GITHUB_OUTPUT"
+
       - name: Backup remote target (SSH)
         if: ${{ env.HOSTINGER_SFTP_PRIVATE_KEY != '' || env.HOSTINGER_SFTP_PASSWORD != '' }}
         uses: appleboy/ssh-action@v0.1.7
@@ -87,17 +98,25 @@ jobs:
           script: |
             set -e
             TARGET=${{ secrets.HOSTINGER_SFTP_TARGET }}
+            BUNDLE="${{ steps.bundle.outputs.bundle }}"
             if [ -z "$TARGET" ] || [ "$TARGET" = "/" ] || [ "$TARGET" = "." ] || [ "$TARGET" = ".." ]; then
               echo "Refusing to operate on unsafe HOSTINGER_SFTP_TARGET: '$TARGET'"
               exit 1
             fi
-            if [ -f "$TARGET/index.html" ]; then
-              echo "Deployment verified, removing backup"
-              rm -rf "${TARGET%/}.deploy_backup"
-            else
+            if [ ! -f "$TARGET/index.html" ]; then
               echo "Deployment verification failed: index.html missing in $TARGET"
               exit 1
             fi
+            if [ ! -f "$TARGET/static/js/$BUNDLE" ]; then
+              echo "Deployment verification failed: expected bundle $BUNDLE missing in $TARGET/static/js"
+              exit 1
+            fi
+            if ! grep -q "$BUNDLE" "$TARGET/index.html"; then
+              echo "Deployment verification failed: index.html does not reference $BUNDLE"
+              exit 1
+            fi
+            echo "Deployment verified (index.html + $BUNDLE present and referenced), removing backup"
+            rm -rf "${TARGET%/}.deploy_backup"
 
       - name: Rollback on failure (SSH)
         if: ${{ failure() && (env.HOSTINGER_SFTP_PRIVATE_KEY != '' || env.HOSTINGER_SFTP_PASSWORD != '') }}
