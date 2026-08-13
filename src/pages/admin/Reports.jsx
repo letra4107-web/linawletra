@@ -108,36 +108,55 @@ export default function Reports() {
       <div className="card-panel">
         <div className="section-heading">
           <div>
-          <h3>Supabase reports</h3>
-          <p>Real records from users, students, curriculum, progress, and assessments.</p>
+            <h3>Supabase reports</h3>
+            <p>Real records from users, students, curriculum, progress, and assessments.</p>
           </div>
+          <span className="pill small">{reports.length} reports</span>
         </div>
-        <ul className="alert-list">
+        <div className="table-scroll">
           {loading ? (
-            <li className="empty-state-card">Loading reports...</li>
-          ) : reports.length ? (
-            reports.map((report) => (
-              <li key={report.id}>
-                <div>
-                  <strong>{report.student ? `${report.student} - ` : ''}{report.subject || report.lesson || 'Report record'}</strong>
-                  <small>
-                    {report.type || 'Report'} | {report.status || 'No status'} | Score: {report.score ?? 'No data'} | Updated: {report.lastUpdated || 'No date'}
-                  </small>
-                </div>
-                <div className="row-actions">
-                  {report.studentId && (
-                    <button type="button" className="btn-secondary" onClick={() => handleDownloadStudentPdf(report)}>
-                      PDF
-                    </button>
-                  )}
-                  <span className="pill small">{report.percentageComplete ?? '0'}%</span>
-                </div>
-              </li>
-            ))
+            <div className="list-skeleton">Loading reports...</div>
           ) : (
-            <li className="empty-state-card">No lesson progress reports found.</li>
+            <table className="simple-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Subject / Lesson</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Score</th>
+                  <th>Progress</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.length === 0 ? (
+                  <tr>
+                    <td colSpan="8">No lesson progress reports found.</td>
+                  </tr>
+                ) : reports.map((report) => (
+                  <tr key={report.id}>
+                    <td>{report.student || 'No data'}</td>
+                    <td>{report.subject || report.lesson || 'Report record'}</td>
+                    <td>{report.type || 'Report'}</td>
+                    <td>{report.status || 'No status'}</td>
+                    <td>{report.score ?? 'No data'}</td>
+                    <td>{report.percentageComplete ?? '0'}%</td>
+                    <td>{report.lastUpdated || 'No date'}</td>
+                    <td>
+                      {report.studentId && (
+                        <button type="button" className="btn-secondary" onClick={() => handleDownloadStudentPdf(report)}>
+                          PDF
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
-        </ul>
+        </div>
       </div>
     </section>
   );
