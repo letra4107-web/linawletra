@@ -2,6 +2,7 @@ import express from 'express';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { createSchedule,
   getSchedulesByStudent,
+  getParentCalendar,
   getSchedulesByParent,
   getSchedulesByTeacher,
   updateSchedule,
@@ -17,6 +18,9 @@ router.get('/student/:studentId', authMiddleware, getSchedulesByStudent);
 
 // Get schedules for parent
 router.get('/parent/list', authMiddleware, roleMiddleware('parent'), getSchedulesByParent);
+
+// Get parent calendar summary from real schedules and learning activity
+router.get('/parent/calendar', authMiddleware, roleMiddleware('parent'), getParentCalendar);
 
 // Get schedules for teacher
 router.get('/teacher/list', authMiddleware, roleMiddleware('teacher'), getSchedulesByTeacher);

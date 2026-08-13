@@ -47,9 +47,9 @@ const formatDateBadge = (value) => {
 
 const statusClasses = {
   completed: 'bg-emerald-100 text-emerald-800',
-  upcoming: 'bg-amber-100 text-amber-800',
-  cancelled: 'bg-rose-100 text-rose-800',
-  pending: 'bg-slate-100 text-slate-700',
+  scheduled: 'bg-amber-100 text-amber-800',
+  in_progress: 'bg-indigo-100 text-indigo-800',
+  missed: 'bg-rose-100 text-rose-800',
 };
 
 const unwrapArray = (value) => {
@@ -92,7 +92,7 @@ const normalizeSchedule = (schedule = {}) => {
     studentName: schedule.studentName || schedule.student_name || schedule.student?.name || schedule.studentId || 'Student',
     date: dateOnly,
     time: schedule.time || timeFromDate,
-    status: schedule.status || 'upcoming',
+    status: schedule.status || 'scheduled',
   };
 };
 
@@ -111,8 +111,7 @@ export default function TeacherSchedulesPage() {
     room: '',
     date: '',
     time: '',
-    duration: 60,
-    status: 'upcoming',
+    status: 'scheduled',
     notes: '',
   });
   const { user } = useContext(AuthContext);
@@ -176,7 +175,7 @@ export default function TeacherSchedulesPage() {
 
   const scheduleStats = useMemo(
     () => ({
-      upcoming: schedules.filter((item) => item.status !== 'completed').length,
+      scheduled: schedules.filter((item) => item.status === 'scheduled').length,
       completed: schedules.filter((item) => item.status === 'completed').length,
       students: new Set(schedules.map((item) => item.studentName || item.studentId)).size,
     }),
@@ -204,8 +203,8 @@ export default function TeacherSchedulesPage() {
         setError('Teacher must be signed in.');
         return;
       }
-      if (!newSchedule.studentId || !newSchedule.date || !newSchedule.time || !newSchedule.room) {
-        setError('Please select a student, subject, room, date, and time.');
+      if (!newSchedule.studentId || !newSchedule.date || !newSchedule.time) {
+        setError('Please select a student, date, and time.');
         return;
       }
 
@@ -214,8 +213,8 @@ export default function TeacherSchedulesPage() {
         studentName: newSchedule.studentName,
         title: newSchedule.title || 'Lesson session',
         scheduledDate: `${newSchedule.date}T${newSchedule.time || '00:00'}`,
+        scheduledTime: newSchedule.time,
         time: newSchedule.time,
-        duration: Number(newSchedule.duration),
         status: newSchedule.status,
         notes: newSchedule.notes,
         createdAt: new Date(),
@@ -238,10 +237,10 @@ export default function TeacherSchedulesPage() {
         studentId: '',
         studentName: '',
         title: '',
+        room: '',
         date: '',
         time: '',
-        duration: 60,
-        status: 'upcoming',
+        status: 'scheduled',
         notes: '',
       });
     } catch (err) {
@@ -276,7 +275,7 @@ export default function TeacherSchedulesPage() {
       <div className="stats-row" style={{ marginBottom: 24 }}>
         <div className="stat-card">
           <div className="stat-title">📅 Upcoming Sessions</div>
-          <div className="stat-value">{schedules.filter((s) => s.status === 'upcoming').length}</div>
+          <div className="stat-value">{schedules.filter((s) => s.status === 'scheduled').length}</div>
           <div className="stat-label">Sessions waiting on delivery</div>
         </div>
         <div className="stat-card">
@@ -291,7 +290,7 @@ export default function TeacherSchedulesPage() {
         </div>
         <div className="stat-card">
           <div className="stat-title">❌ Cancelled</div>
-          <div className="stat-value">{schedules.filter((s) => s.status === 'cancelled').length}</div>
+          <div className="stat-value">{schedules.filter((s) => s.status === 'missed').length}</div>
           <div className="stat-label">Sessions not completed</div>
         </div>
       </div>
@@ -303,7 +302,7 @@ export default function TeacherSchedulesPage() {
             <p className="mt-1 text-sm text-slate-500">Review session details and manage today's schedule.</p>
           </div>
           <div className="filter-tabs">
-            {['all', 'upcoming', 'completed', 'cancelled'].map((status) => (
+            {['all', 'scheduled', 'in_progress', 'completed', 'missed'].map((status) => (
               <button
                 key={status}
                 type="button"
@@ -353,7 +352,7 @@ export default function TeacherSchedulesPage() {
                     <div>
                       <div className="student-name">{schedule.studentName || schedule.studentId || 'Student'}</div>
                       <div className="student-meta">
-                        🕐 {schedule.time || 'TBD'} · ⏱ {schedule.duration || 0} mins · {schedule.room ? `Room ${schedule.room}` : 'Room TBD'}
+                        🕐 {schedule.time || 'TBD'}
                       </div>
                       <div className="student-meta">📘 {schedule.title || 'Session'}</div>
                       {schedule.notes && (
@@ -366,13 +365,13 @@ export default function TeacherSchedulesPage() {
 
                   <div className="student-card-right">
                     <span className={`status-pill ${
-                      schedule.status === 'upcoming'
+                      schedule.status === 'scheduled'
                         ? 'status-upcoming'
                         : schedule.status === 'completed'
                         ? 'status-completed'
                         : 'status-cancelled'
                     }`}>
-                      {schedule.status === 'upcoming' ? '⏳' : schedule.status === 'completed' ? '✅' : '❌'} {getStatusLabel(schedule.status)}
+                      {schedule.status === 'scheduled' ? '⏳' : schedule.status === 'completed' ? '✅' : '❌'} {getStatusLabel(schedule.status)}
                     </span>
                     <button
                       type="button"
@@ -395,7 +394,7 @@ export default function TeacherSchedulesPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-base font-semibold text-slate-900">Create new schedule</p>
-              <p className="mt-1 text-sm text-slate-500">Add a session for a student and save it to Firestore.</p>
+              <p className="mt-1 text-sm text-slate-500">Add a session for a student and save it to Supabase.</p>
             </div>
             <button type="button" className="detail-action" onClick={() => setShowAddModal(false)}>
               Cancel
@@ -431,18 +430,7 @@ export default function TeacherSchedulesPage() {
               />
             </label>
 
-            <label>
-              <div className="student-meta">Room</div>
-              <input
-                name="room"
-                value={newSchedule.room}
-                onChange={handleNewScheduleChange}
-                placeholder="e.g. Room 204"
-                className="list-search"
-              />
-            </label>
-
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <label>
                 <div className="student-meta">Date</div>
                 <input name="date" type="date" value={newSchedule.date} onChange={handleNewScheduleChange} className="list-search" />
@@ -451,18 +439,15 @@ export default function TeacherSchedulesPage() {
                 <div className="student-meta">Time</div>
                 <input name="time" type="time" value={newSchedule.time} onChange={handleNewScheduleChange} className="list-search" />
               </label>
-              <label>
-                <div className="student-meta">Duration (mins)</div>
-                <input name="duration" type="number" min="15" value={newSchedule.duration} onChange={handleNewScheduleChange} className="list-search" />
-              </label>
             </div>
 
             <label>
               <div className="student-meta">Status</div>
               <select name="status" value={newSchedule.status} onChange={handleNewScheduleChange} className="list-search">
-                <option value="upcoming">Upcoming</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="in_progress">In progress</option>
                 <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="missed">Missed</option>
               </select>
             </label>
 

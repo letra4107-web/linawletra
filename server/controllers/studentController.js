@@ -38,6 +38,93 @@ const attachUserProfiles = async (students = []) => {
   }));
 };
 
+const toGradeNumber = (gradeLevel) => {
+  const next = Number(gradeLevel);
+  return Number.isFinite(next) ? next : null;
+};
+
+const ensureScheduleChildLink = async ({ studentRecord, userProfile, parentId, childName, gradeLevel }) => {
+  const { data: existingChild, error: childLookupError } = await supabase
+    .from('children')
+    .select('*')
+    .eq('auth_uid', userProfile.id)
+    .maybeSingle();
+
+  if (childLookupError) throw childLookupError;
+
+  let child = existingChild;
+  let createdChild = false;
+
+  if (!child) {
+    const { data: insertedChild, error: childInsertError } = await supabase
+      .from('children')
+      .insert({
+        auth_uid: userProfile.id,
+        parent_id: parentId,
+        name: childName,
+        grade_level: toGradeNumber(gradeLevel),
+        username: userProfile.email,
+        student_id: studentRecord.id,
+      })
+      .select('*')
+      .single();
+
+    if (childInsertError) throw childInsertError;
+    child = insertedChild;
+    createdChild = true;
+  } else {
+    const updateData = {};
+    if (!child.parent_id) updateData.parent_id = parentId;
+    if (!child.student_id) updateData.student_id = studentRecord.id;
+    if (!child.name && childName) updateData.name = childName;
+    if (!child.grade_level && gradeLevel) updateData.grade_level = toGradeNumber(gradeLevel);
+    if (!child.username && userProfile.email) updateData.username = userProfile.email;
+
+    if (Object.keys(updateData).length > 0) {
+      const { data: updatedChild, error: childUpdateError } = await supabase
+        .from('children')
+        .update(updateData)
+        .eq('id', child.id)
+        .select('*')
+        .single();
+      if (childUpdateError) throw childUpdateError;
+      child = updatedChild;
+    }
+  }
+
+  const { data: existingMap, error: mapLookupError } = await supabase
+    .from('students_children_map')
+    .select('*')
+    .eq('student_id', studentRecord.id)
+    .maybeSingle();
+
+  if (mapLookupError) throw mapLookupError;
+
+  if (!existingMap) {
+    const { error: mapInsertError } = await supabase
+      .from('students_children_map')
+      .insert({
+        student_id: studentRecord.id,
+        child_id: child.id,
+      });
+
+    if (mapInsertError) {
+      if (createdChild) await supabase.from('children').delete().eq('id', child.id);
+      throw mapInsertError;
+    }
+  }
+
+  const { error: studentUpdateError } = await supabase
+    .from('students')
+    .update({ child_id: child.id })
+    .eq('id', studentRecord.id)
+    .is('child_id', null);
+
+  if (studentUpdateError) throw studentUpdateError;
+
+  return child;
+};
+
 const isValidGradeLevel = (gradeLevel) =>
   gradeLevel === undefined ||
   gradeLevel === null ||
@@ -275,6 +362,23 @@ export const createStudent =async (req, res) => {
       throw studentError;
     }
 
+    let childProfile = null;
+    try {
+      childProfile = await ensureScheduleChildLink({
+        studentRecord,
+        userProfile,
+        parentId,
+        childName,
+        gradeLevel,
+      });
+    } catch (linkError) {
+      console.error('[Create Student] Failed to create child schedule mapping:', linkError);
+      await supabase.from('students').delete().eq('id', studentRecord.id);
+      await supabase.from('users').delete().eq('id', userProfile.id);
+      await supabase.auth.admin.deleteUser(authUser.id);
+      throw linkError;
+    }
+
     console.log('[Create Student] Sending enrollment email to parent');
 
     // Send enrollment email to parent with student credentials
@@ -311,6 +415,7 @@ export const createStudent =async (req, res) => {
         student: {
           id: userProfile.id,
           studentId: studentRecord.id,
+          childId: childProfile?.id || null,
           name: childName,
           email: studentUsername,
           gradeLevel,

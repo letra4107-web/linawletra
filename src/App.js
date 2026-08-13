@@ -38,6 +38,7 @@ import TeacherActivitiesPage from './pages/TeacherActivitiesPage';
 import TeacherSettingsPage from './pages/TeacherSettingsPage';
 import TeacherReadingMaterials from './pages/TeacherReadingMaterials';
 import TeacherStudentDetailPage from './pages/TeacherStudentDetailPage';
+import TeacherSchedulesPage from './pages/TeacherSchedulesPage';
 import StudentReadingAssistant from './pages/StudentReadingAssistant';
 import './index.css';
 
@@ -176,6 +177,7 @@ function AppRoutes() {
         {/* Parent routes (single ParentDashboard with sections) */}
         <Route path="/parent-dashboard" element={<Navigate to="/parent/summary" replace />} />
         <Route path="/parent" element={<Navigate to="/parent/summary" replace />} />
+        <Route path="/parent/schedules" element={<PrivateRoute allowedRoles={['parent']}><Schedules /></PrivateRoute>} />
         <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
         <Route path="/students" element={<PrivateRoute allowedRoles={['parent', 'admin']}><StudentManagement /></PrivateRoute>} />
         <Route path="/assessment/:assessmentId" element={<PrivateRoute allowedRoles={['teacher', 'parent']}><AssessmentComponent /></PrivateRoute>} />
@@ -192,12 +194,10 @@ function AppRoutes() {
           <Route path="/teacher/lessons" element={<TeacherLessonsPage />} />
           <Route path="/teacher/progress" element={<TeacherProgressPage />} />
           <Route path="/teacher/activities" element={<TeacherActivitiesPage />} />
+          <Route path="/teacher/schedules" element={<TeacherSchedulesPage />} />
           <Route path="/teacher/reading" element={<TeacherReadingMaterials />} />
           <Route path="/teacher/settings" element={<TeacherSettingsPage />} />
         </Route>
-        <Route path="/parent/:section" element={<PrivateRoute allowedRoles={['parent']}><ParentDashboard /></PrivateRoute>} />
-        <Route path="/parent/schedules" element={<PrivateRoute allowedRoles={['parent']}><Schedules /></PrivateRoute>} />
-
         <Route path="/student/lessons" element={<Navigate to="/student-dashboard" replace />} />
         <Route path="/student/learn" element={<PrivateRoute allowedRoles={['student']}><StudentReadingAssistant /></PrivateRoute>} />
         <Route path="/student/assessments" element={<Navigate to="/student-dashboard" replace />} />

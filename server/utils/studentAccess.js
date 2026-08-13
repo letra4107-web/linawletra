@@ -9,7 +9,7 @@ export async function resolveStudent(studentIdOrUserId) {
   const { data, error } = await supabase
     .from('students')
     .select('*')
-    .or(`id.eq.${id},user_id.eq.${id}`)
+    .or(`id.eq.${id},user_id.eq.${id},child_id.eq.${id}`)
     .maybeSingle();
 
   if (error) {
@@ -25,11 +25,14 @@ export function canAccessStudent(req, student, options = {}) {
   const role = req.user.role;
   const userId = req.user.id;
   const allowAdmin = options.allowAdmin !== false;
+  const studentUserId = student.user_id || student.userId;
+  const studentParentId = student.parent_id || student.parentId;
+  const studentTeacherId = student.teacher_id || student.teacherId;
 
   if (allowAdmin && role === 'admin') return true;
-  if (student.user_id === userId) return true;
-  if (role === 'parent' && student.parent_id === userId) return true;
-  if (role === 'teacher' && student.teacher_id === userId) return true;
+  if (studentUserId === userId) return true;
+  if (role === 'parent' && studentParentId === userId) return true;
+  if (role === 'teacher' && studentTeacherId === userId) return true;
   return false;
 }
 

@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import {
   FiBarChart2,
   FiBookOpen,
+  FiCalendar,
   FiFileText,
   FiGrid,
   FiLogOut,
@@ -67,6 +68,7 @@ export default function DashboardSidebar({
         return [
           { path: '/parent/summary', label: 'Dashboard', icon: <FiGrid /> },
           { path: '/parent/children', label: 'My Children', icon: <FiUsers /> },
+          { path: '/parent/schedules', label: 'Calendar', icon: <FiCalendar /> },
           { path: '/parent/reports', label: 'Reports', icon: <FiFileText /> },
           { path: '/parent/profile', label: 'Profile', icon: <FiUser /> },
           { path: '/parent/settings', label: 'Settings', icon: <FiSettings /> },
