@@ -44,7 +44,9 @@ import './index.css';
 
 const isSystemGeneratedStudentEmail = (email = '') => {
   const normalizedEmail = String(email).toLowerCase();
-  return normalizedEmail.endsWith('@linaw.local') || normalizedEmail.endsWith('@student.linawletra.ph');
+  return normalizedEmail.endsWith('@linawletra.edu.ph') ||
+    normalizedEmail.endsWith('@linaw.local') ||
+    normalizedEmail.endsWith('@student.linawletra.ph');
 };
 
 const needsEmailVerification = (user) =>

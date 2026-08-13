@@ -754,7 +754,132 @@
 
 .parent-error{padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(239,68,68,0.22); background: rgba(239,68,68,0.08); color: rgb(127,29,29); font-weight: 800;}
 
-/* Student selector: one-click switching between children, visible on every tab */
+/* Student selector: visible parent-facing child context between header and content */
+.student-selector-card{
+  position: relative;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid rgba(79,70,229,0.14);
+  border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(15,23,42,0.05);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  overflow: visible;
+}
+
+.student-selector-card__head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+}
+
+.student-selector-card__eyebrow{
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.student-selector-card__title{
+  margin-top: 4px;
+  font-weight: 900;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.student-selector-card__count{
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(79,70,229,0.08);
+  border: 1px solid rgba(79,70,229,0.14);
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.student-selector-dropdown{
+  position: relative;
+  width: min(100%, 540px);
+  overflow: visible;
+}
+
+.student-selector-dropdown__button,
+.student-selector-dropdown__option{
+  width: 100%;
+  min-height: 64px;
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(31,41,55,0.12);
+  background: #fff;
+  color: var(--text);
+  text-align:left;
+}
+
+.student-selector-dropdown__button{
+  padding: 10px 14px 10px 10px;
+  box-shadow: inset 0 0 0 1px rgba(79,70,229,0.03);
+}
+
+.student-selector-dropdown__button:hover,
+.student-selector-dropdown__button.is-open,
+.student-selector-dropdown__option:hover{
+  border-color: rgba(79,70,229,0.34);
+  background: rgba(79,70,229,0.05);
+}
+
+.student-selector-dropdown__button:focus-visible,
+.student-selector-dropdown__option:focus-visible{
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.student-selector-dropdown__chevron{
+  margin-left:auto;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(79,70,229,0.10);
+  color: var(--primary);
+  font-weight: 900;
+}
+
+.student-selector-dropdown__menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 80;
+  display:grid;
+  gap: 8px;
+  max-height: min(320px, 55vh);
+  overflow-y:auto;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(79,70,229,0.18);
+  background: #fff;
+  box-shadow: 0 22px 50px rgba(15,23,42,0.14);
+}
+
+.student-selector-dropdown__option{
+  padding: 10px;
+}
+
+.student-selector-dropdown__option.is-active{
+  background: rgba(79,70,229,0.10);
+  border-color: rgba(79,70,229,0.32);
+}
+
+/* Student selector: compact tab mode retained for non-parent dashboard usages */
 .student-selector{
   display: flex;
   gap: 10px;
@@ -799,9 +924,10 @@
   flex-direction: column;
   text-align: left;
   line-height: 1.2;
+  min-width: 0;
 }
 
-.student-selector__name{ font-weight: 800; font-size: 14px; }
+.student-selector__name{ font-weight: 800; font-size: 14px; overflow-wrap:anywhere; }
 .student-selector__level{ font-size: 12px; color: rgba(31,41,55,0.6); text-transform: capitalize; }
 
 /* Student overview panel */
@@ -949,7 +1075,13 @@
 .student-overview-panel__empty{ color: rgba(31,41,55,0.55); font-weight: 600; font-size: 13px; }
 
 @media (max-width: 760px){
-  .student-selector__name{max-width: 150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .student-selector-card{padding: 14px;}
+  .student-selector-card__head{align-items:stretch; flex-direction:column;}
+  .student-selector-card__count{width:max-content;}
+  .student-selector-dropdown{width:100%;}
+  .student-selector-dropdown__button,
+  .student-selector-dropdown__option{min-height: 60px;}
+  .student-selector__name{max-width: 100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .student-overview-panel__stats{ grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 

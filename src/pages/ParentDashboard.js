@@ -703,6 +703,7 @@ export default function ParentDashboard() {
 
         {Array.isArray(children) && children.length > 0 && (
           <StudentSelector
+            variant="dropdown"
             students={children}
             selectedId={selectedChild?.id ?? selectedChild?.studentId}
             onSelect={setSelectedChildId}

@@ -39,7 +39,7 @@ const generatePassword = () => {
 
 /**
  * Generate a unique student login email
- * Format: studentnameyear@linaw.local (internal system email)
+ * Format: studentnameyear@linawletra.edu.ph (school login email)
  * @param {string} studentName - Name of the student
  * @returns {string} generated student email
  */
@@ -56,7 +56,7 @@ const generateStudentUsername = (studentName) => {
   // Add timestamp suffix to ensure uniqueness
   const timestamp = Date.now().toString().slice(-6); // Last 6 digits
 
-  return `${cleanName}${timestamp}@linaw.local`;
+  return `${cleanName}${timestamp}@linawletra.edu.ph`;
 };
 
 /**

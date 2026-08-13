@@ -157,7 +157,11 @@ export const loginUser = async (email, password) => {
 
     const normalizedRole = userData?.role || 'parent';
     const isAdminAccount = normalizedRole === 'admin';
-    const isStudentAccount = normalizedRole === 'student' || email.toLowerCase().endsWith('@student.linawletra.ph');
+    const normalizedEmail = email.toLowerCase();
+    const isStudentAccount = normalizedRole === 'student' ||
+      normalizedEmail.endsWith('@linawletra.edu.ph') ||
+      normalizedEmail.endsWith('@student.linawletra.ph') ||
+      normalizedEmail.endsWith('@linaw.local');
     const isEmailVerified = Boolean(isAdminAccount || isStudentAccount || userData?.email_verified || user.email_confirmed_at);
 
     return {
