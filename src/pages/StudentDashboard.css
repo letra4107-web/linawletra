@@ -3675,7 +3675,8 @@ body,
   margin: 0;
   padding: 18px;
   transform: none;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: 28px;
   background:
     linear-gradient(180deg, rgba(255, 247, 231, 0.96), rgba(245, 243, 252, 0.96)),
@@ -3824,8 +3825,80 @@ body,
 }
 
 .student-sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding-top: 14px;
   border-top: 1px solid rgba(95, 82, 176, 0.12);
+}
+
+.student-sidebar-streak {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.student-sidebar-profile-link .student-sidebar-link-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.2;
+}
+
+.student-sidebar-profile-link .student-sidebar-link-label small {
+  color: var(--mobile-ink-soft);
+  font-weight: 700;
+}
+
+.student-sidebar-avatar {
+  position: relative;
+  background: var(--mobile-lavender-dark) !important;
+  color: #ffffff !important;
+  font-weight: 950;
+}
+
+.student-sidebar-avatar small {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  border: 2px solid #FFF7E7;
+  border-radius: 999px;
+  background: #6d35f6;
+  color: #ffffff;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.student-mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 180;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(95, 82, 176, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--mobile-lavender-dark);
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(59, 50, 44, 0.14);
+  cursor: pointer;
+}
+
+.student-sidebar-overlay {
+  display: none;
+}
+
+.student-sidebar-close {
+  display: none;
 }
 
 .student-sidebar-logout {
@@ -4852,6 +4925,43 @@ body,
 
   .student-sidebar {
     left: 14px;
+    padding: 16px 13px;
+  }
+
+  .student-sidebar-brand {
+    justify-content: center;
+  }
+
+  .student-sidebar-brand-name {
+    width: 0;
+    opacity: 0;
+  }
+
+  .student-sidebar-nav {
+    align-items: center;
+  }
+
+  .student-sidebar-link {
+    width: 56px;
+    justify-content: center;
+    padding: 9px;
+    gap: 0;
+  }
+
+  .student-sidebar-link-label {
+    width: 0;
+    opacity: 0;
+  }
+
+  .student-sidebar-link.active::before {
+    left: -5px;
+  }
+
+  .student-sidebar-streak,
+  .student-sidebar-logout {
+    width: 56px;
+    justify-content: center;
+    padding: 10px;
   }
 }
 
@@ -4861,13 +4971,47 @@ body,
     display: block;
     width: calc(100% - 20px);
     margin: 0 auto;
-    padding: 12px 0 100px;
+    padding: 68px 0 100px;
   }
 
   .student-main {
     width: 100%;
     max-width: none;
     margin: 0;
+  }
+
+  .student-mobile-menu-toggle {
+    display: inline-flex;
+  }
+
+  .student-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 190;
+    background: rgba(20, 16, 50, 0.45);
+  }
+
+  .student-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 200;
+    width: min(300px, 82vw);
+    height: 100vh;
+    min-height: 0;
+    margin: 0;
+    border-radius: 0 26px 26px 0;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+  }
+
+  .student-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .student-sidebar-close {
+    display: grid;
   }
 }
 
@@ -5418,21 +5562,16 @@ body,
 
 .student-topbar-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: clamp(10px, 2vw, 32px);
+  gap: clamp(8px, 1.6vw, 28px) clamp(10px, 2vw, 32px);
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.student-topbar-nav::-webkit-scrollbar {
-  height: 4px;
 }
 
 .student-topbar-link {
   position: relative;
-  min-height: 86px;
+  min-height: 48px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -6461,7 +6600,6 @@ body,
   .student-topbar-nav,
   .student-topbar-actions {
     justify-content: flex-start;
-    overflow-x: auto;
   }
 
   .student-topbar-link {

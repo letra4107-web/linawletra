@@ -29,6 +29,7 @@ import {
   FiSearch,
   FiLock,
   FiTarget,
+  FiMenu,
 } from 'react-icons/fi';
 import { subscribeToCanonicalStudentStats, subscribeToTeacherUploadsByGradeLevel } from '../services/supabaseService';
 import { ACHIEVEMENTS, getAchievementById } from '../services/achievementService';
@@ -306,6 +307,7 @@ const StudentDashboard = () => {
   const [topConfusions, setTopConfusions] = useState([]);
   const [recommendedPracticeWords, setRecommendedPracticeWords] = useState([]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const fontFamilies = {
     'Comic Sans': '"Comic Sans MS", "Trebuchet MS", Verdana, Arial, sans-serif',
     'DM Sans': '"DM Sans", sans-serif',
@@ -581,6 +583,7 @@ const StudentDashboard = () => {
       navigate(route);
     }
     setActiveSection(section);
+    setIsMobileNavOpen(false);
     const target = document.getElementById(`${section}-section`);
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1968,48 +1971,89 @@ const StudentDashboard = () => {
       style={rootStyles}
     >
     <div className={`student-shell ${isSidebarCollapsed ? 'student-shell--nav-collapsed' : ''}`}>
-      <header className="student-topbar">
-        <button type="button" className="student-topbar-brand" onClick={() => handleNav('home')} aria-label="Go to dashboard">
-          <img src="/logo.png" alt="LinawLetra logo" />
-          <span>LinawLetra</span>
-        </button>
-        <nav className="student-topbar-nav" aria-label="Student dashboard">
-          {[
-            { key: 'home', label: 'Dashboard', icon: <FiHome aria-hidden="true" /> },
-            { key: 'content', label: 'Learn', icon: <FiBookOpen aria-hidden="true" /> },
-            { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
-            { key: 'word', label: 'Word', icon: <FiStar aria-hidden="true" /> },
-            { key: 'progress', label: 'Progress', icon: <FiTrendingUp aria-hidden="true" /> },
-            { key: 'activities', label: 'Activities', icon: <FiTarget aria-hidden="true" /> },
-            { key: 'calendar', label: 'Calendar', icon: <FiCalendar aria-hidden="true" /> },
-            { key: 'notifications', label: `Alerts${unreadNotifications.length ? ` (${unreadNotifications.length})` : ''}`, icon: <FiBell aria-hidden="true" /> },
-            { key: 'profile', label: 'Profile', icon: <FiUser aria-hidden="true" /> },
-            { key: 'settings', label: 'Settings', icon: <FiSettings aria-hidden="true" /> },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`student-topbar-link ${activeSection === item.key || (item.key === 'content' && activeSection === 'badges') ? 'active' : ''}`}
-              onClick={() => handleNav(item.key)}
-            >
-              {item.icon}
-              <span>{item.label}</span>
+      <button
+        type="button"
+        className="student-mobile-menu-toggle"
+        onClick={() => setIsMobileNavOpen(true)}
+        aria-label="Open navigation menu"
+        aria-expanded={isMobileNavOpen}
+      >
+        <FiMenu aria-hidden="true" />
+        <span>Menu</span>
+      </button>
+
+      {isMobileNavOpen && (
+        <div
+          className="student-sidebar-overlay"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={`student-sidebar ${isMobileNavOpen ? 'is-open' : ''}`}>
+        <div className="student-sidebar-top">
+          <div className="student-sidebar-brand">
+            <button type="button" className="student-sidebar-brand-lockup" onClick={() => handleNav('home')} aria-label="Go to dashboard">
+              <img src="/logo.png" alt="LinawLetra logo" />
+              <span className="student-sidebar-brand-name">LinawLetra</span>
             </button>
-          ))}
-        </nav>
-        <div className="student-topbar-actions">
-          <button type="button" className="student-topbar-streak" onClick={() => handleNav('progress')}>
+            <button
+              type="button"
+              className="student-sidebar-toggle student-sidebar-close"
+              onClick={() => setIsMobileNavOpen(false)}
+              aria-label="Close navigation menu"
+            >
+              <FiX aria-hidden="true" />
+            </button>
+          </div>
+          <nav className="student-sidebar-nav" aria-label="Student dashboard">
+            {[
+              { key: 'home', label: 'Dashboard', icon: <FiHome aria-hidden="true" /> },
+              { key: 'content', label: 'Learn', icon: <FiBookOpen aria-hidden="true" /> },
+              { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
+              { key: 'word', label: 'Word', icon: <FiStar aria-hidden="true" /> },
+              { key: 'progress', label: 'Progress', icon: <FiTrendingUp aria-hidden="true" /> },
+              { key: 'activities', label: 'Activities', icon: <FiTarget aria-hidden="true" /> },
+              { key: 'calendar', label: 'Calendar', icon: <FiCalendar aria-hidden="true" /> },
+              { key: 'notifications', label: `Alerts${unreadNotifications.length ? ` (${unreadNotifications.length})` : ''}`, icon: <FiBell aria-hidden="true" /> },
+              { key: 'profile', label: 'Profile', icon: <FiUser aria-hidden="true" /> },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`student-sidebar-link ${activeSection === item.key || (item.key === 'content' && activeSection === 'badges') ? 'active' : ''}`}
+                onClick={() => handleNav(item.key)}
+              >
+                <span className="student-sidebar-link-icon">{item.icon}</span>
+                <span className="student-sidebar-link-label">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+        <div className="student-sidebar-bottom">
+          <button type="button" className="student-topbar-streak student-sidebar-streak" onClick={() => handleNav('progress')}>
             {streakDays} araw na sunod-sunod! <FiZap aria-hidden="true" />
           </button>
-          <button type="button" className="student-topbar-avatar" onClick={() => handleNav('profile')} aria-label="Open profile">
-            <span>{firstName.charAt(0)}</span>
-            {equippedModule && <small>M{equippedModule.number}</small>}
+          <button type="button" className="student-sidebar-link student-sidebar-profile-link" onClick={() => handleNav('profile')}>
+            <span className="student-sidebar-link-icon student-sidebar-avatar" aria-hidden="true">
+              {firstName.charAt(0)}
+              {equippedModule && <small>M{equippedModule.number}</small>}
+            </span>
+            <span className="student-sidebar-link-label">
+              <strong>{firstName}</strong>
+              <small>Student</small>
+            </span>
           </button>
-          <button type="button" className="student-topbar-logout" onClick={handleLogout} aria-label="Logout">
+          <button type="button" className="student-sidebar-link" onClick={() => handleNav('settings')}>
+            <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span>
+            <span className="student-sidebar-link-label">Settings</span>
+          </button>
+          <button type="button" className="student-sidebar-logout" onClick={handleLogout}>
             <FiLogOut aria-hidden="true" />
+            <span className="student-sidebar-link-label">Log Out</span>
           </button>
         </div>
-      </header>
+      </aside>
       <main className="student-main" id="main-content" style={{ position: 'relative' }}>
         {newlyUnlockedAchievements.length > 0 && (
           <AchievementUnlockModal
