@@ -23,7 +23,7 @@ jobs:
         run: npm ci
 
       - name: Build production
-        run: npm run build
+        run: CI=false npm run build
 
       - name: Ensure build contains .htaccess
         run: |
