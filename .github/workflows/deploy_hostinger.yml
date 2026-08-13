@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -37,7 +38,7 @@ jobs:
             exit 1
           fi
 
-      - name: Remove remote files (SSH)
+      - name: Backup remote target (SSH)
         if: ${{ env.HOSTINGER_SFTP_PRIVATE_KEY != '' || env.HOSTINGER_SFTP_PASSWORD != '' }}
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -50,11 +51,17 @@ jobs:
             set -e
             TARGET=${{ secrets.HOSTINGER_SFTP_TARGET }}
             if [ -z "$TARGET" ] || [ "$TARGET" = "/" ] || [ "$TARGET" = "." ] || [ "$TARGET" = ".." ]; then
-              echo "Refusing to clean unsafe HOSTINGER_SFTP_TARGET: '$TARGET'"
+              echo "Refusing to operate on unsafe HOSTINGER_SFTP_TARGET: '$TARGET'"
               exit 1
             fi
-            echo "Cleaning remote target: $TARGET"
-            find "$TARGET" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+            BACKUP="${TARGET%/}.deploy_backup"
+            echo "Removing any stale backup at $BACKUP"
+            rm -rf "$BACKUP"
+            if [ -d "$TARGET" ]; then
+              echo "Backing up current $TARGET to $BACKUP"
+              mv "$TARGET" "$BACKUP"
+            fi
+            mkdir -p "$TARGET"
 
       - name: Upload build via SCP
         uses: appleboy/scp-action@v0.1.6
@@ -67,3 +74,52 @@ jobs:
           source: "build/"
           target: ${{ secrets.HOSTINGER_SFTP_TARGET }}
           strip_components: 1
+
+      - name: Verify deployment and remove backup (SSH)
+        if: ${{ success() && (env.HOSTINGER_SFTP_PRIVATE_KEY != '' || env.HOSTINGER_SFTP_PASSWORD != '') }}
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_SFTP_HOST }}
+          username: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+          password: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SFTP_PORT || '22' }}
+          script: |
+            set -e
+            TARGET=${{ secrets.HOSTINGER_SFTP_TARGET }}
+            if [ -z "$TARGET" ] || [ "$TARGET" = "/" ] || [ "$TARGET" = "." ] || [ "$TARGET" = ".." ]; then
+              echo "Refusing to operate on unsafe HOSTINGER_SFTP_TARGET: '$TARGET'"
+              exit 1
+            fi
+            if [ -f "$TARGET/index.html" ]; then
+              echo "Deployment verified, removing backup"
+              rm -rf "${TARGET%/}.deploy_backup"
+            else
+              echo "Deployment verification failed: index.html missing in $TARGET"
+              exit 1
+            fi
+
+      - name: Rollback on failure (SSH)
+        if: ${{ failure() && (env.HOSTINGER_SFTP_PRIVATE_KEY != '' || env.HOSTINGER_SFTP_PASSWORD != '') }}
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_SFTP_HOST }}
+          username: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+          password: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SFTP_PORT || '22' }}
+          script: |
+            set -e
+            TARGET=${{ secrets.HOSTINGER_SFTP_TARGET }}
+            if [ -z "$TARGET" ] || [ "$TARGET" = "/" ] || [ "$TARGET" = "." ] || [ "$TARGET" = ".." ]; then
+              echo "Refusing to operate on unsafe HOSTINGER_SFTP_TARGET: '$TARGET'"
+              exit 1
+            fi
+            BACKUP="${TARGET%/}.deploy_backup"
+            if [ -d "$BACKUP" ]; then
+              echo "Rolling back: restoring $BACKUP to $TARGET"
+              rm -rf "$TARGET"
+              mv "$BACKUP" "$TARGET"
+            else
+              echo "No backup found to restore"
+            fi
