@@ -29,7 +29,7 @@ export default function Login() {
   const [slideToRegister, setSlideToRegister] = useState(false);
   const [lastSubmitTime, setLastSubmitTime] = useState(0);
   const navigate = useNavigate();
-  const { login } = useContext(AuthContext);
+  const { login, logout } = useContext(AuthContext);
 
   const rateLimitExceeded = submitAttempts >= 5;
 
@@ -186,15 +186,25 @@ export default function Login() {
         const token = response.data.token || response.data.session?.access_token;
         const refreshToken = response.data.session?.refresh_token;
 
+        // Apply the backend-verified user first so AuthContext already has
+        // this user marked as "loaded" before setSession() below triggers
+        // Supabase's SIGNED_IN event — otherwise that event's own profile
+        // re-fetch can race this one and momentarily null out the session.
+        login(response.data.user, token && !refreshToken ? token : null);
+
         if (token && refreshToken) {
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: token,
             refresh_token: refreshToken,
           });
-          if (sessionError) throw sessionError;
+          if (sessionError) {
+            // The applied login state is now inconsistent with the real
+            // Supabase session (which failed to establish) — roll it back
+            // rather than leaving a "logged in" UI with no valid session.
+            await logout();
+            throw sessionError;
+          }
         }
-
-        login(response.data.user, token && !refreshToken ? token : null);
 
         const normalizedRole = String(response.data.user.role || '').toLowerCase();
         if (normalizedRole === 'parent') navigate('/parent/summary', { replace: true });
