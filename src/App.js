@@ -39,7 +39,6 @@ import TeacherSettingsPage from './pages/TeacherSettingsPage';
 import TeacherReadingMaterials from './pages/TeacherReadingMaterials';
 import TeacherStudentDetailPage from './pages/TeacherStudentDetailPage';
 import TeacherSchedulesPage from './pages/TeacherSchedulesPage';
-import StudentReadingAssistant from './pages/StudentReadingAssistant';
 import './index.css';
 
 const isSystemGeneratedStudentEmail = (email = '') => {
@@ -108,7 +107,7 @@ function RoleBasedRedirect() {
     case 'teacher':
       return <Navigate to="/teacher-dashboard" />;
     case 'student':
-      return <Navigate to="/student-dashboard" />;
+      return <Navigate to="/student" />;
     case 'parent':
       return <Navigate to="/parent/summary" />;
     default:
@@ -172,6 +171,16 @@ function AppRoutes() {
         <Route path="/admin" element={<Navigate to="/admin-dashboard/overview" replace />} />
 
         <Route path="/student-dashboard" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/modules" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/practice" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/word-of-the-day" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/activities" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/calendar" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/notifications" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/badges" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/profile" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/settings" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student-dashboard/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/dashboard/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/:childId" element={<PrivateRoute allowedRoles={['parent']}><StudentDashboard /></PrivateRoute>} />
@@ -200,10 +209,10 @@ function AppRoutes() {
           <Route path="/teacher/reading" element={<TeacherReadingMaterials />} />
           <Route path="/teacher/settings" element={<TeacherSettingsPage />} />
         </Route>
-        <Route path="/student/lessons" element={<Navigate to="/student-dashboard" replace />} />
-        <Route path="/student/learn" element={<PrivateRoute allowedRoles={['student']}><StudentReadingAssistant /></PrivateRoute>} />
-        <Route path="/student/assessments" element={<Navigate to="/student-dashboard" replace />} />
-        <Route path="/student/progress" element={<Navigate to="/student-dashboard" replace />} />
+        <Route path="/student/lessons" element={<Navigate to="/student/modules" replace />} />
+        <Route path="/student/learn" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/assessments" element={<Navigate to="/student/modules" replace />} />
+        <Route path="/student/progress" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

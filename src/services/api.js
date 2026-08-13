@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const PRODUCTION_API_URL = 'https://linawletra-production.up.railway.app/api';
+const PRODUCTION_API_URL = 'https://app-backend-production-f32c.up.railway.app/api';
 
 const normalizeApiBaseUrl = (baseUrl) => {
   const trimmedUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
@@ -256,6 +256,13 @@ export const scheduleService = {
   getSchedulesByTeacher: () => axiosInstance.get('/schedules/teacher/list'),
   updateSchedule: (id, data) => axiosInstance.put(`/schedules/${id}`, data),
   deleteSchedule: (id) => axiosInstance.delete(`/schedules/${id}`),
+};
+
+// Student/parent notification service backed by the shared Supabase
+// notifications table. The backend resolves ownership from the auth token.
+export const notificationService = {
+  getNotifications: () => axiosInstance.get('/notifications'),
+  markRead: (id) => axiosInstance.patch(`/notifications/${id}/read`),
 };
 
 // Admin Service

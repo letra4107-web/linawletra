@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { speechService, studentService, readingService, curriculumService, progressService } from '../services/api';
+import { speechService, studentService, readingService, curriculumService, progressService, scheduleService, notificationService } from '../services/api';
 import { evaluateWord as evaluateWordPhonetics, syllabify } from '../utils/tagalogPhonetics';
 import { useSyllableHighlight } from '../hooks/useSyllableHighlight';
 import {
@@ -11,7 +12,6 @@ import {
   FiHome,
   FiBookOpen,
   FiCalendar,
-  FiChevronLeft,
   FiChevronRight,
   FiMic,
   FiPlayCircle,
@@ -142,12 +142,43 @@ const recommendationToPracticeWord = (row = {}) => ({
   itemType: row.item_type || 'word',
   recommendationScore: row.recommendation_score,
 });
+
+const SECTION_ROUTES = {
+  home: '/student',
+  content: '/student/modules',
+  practice: '/student/practice',
+  word: '/student/word-of-the-day',
+  progress: '/student/progress',
+  badges: '/student/badges',
+  activities: '/student/activities',
+  calendar: '/student/calendar',
+  notifications: '/student/notifications',
+  profile: '/student/profile',
+  settings: '/student/settings',
+};
+
+const sectionFromPath = (path = '') => {
+  if (path === '/student-dashboard' || path === '/student') return 'home';
+  if (path.startsWith('/student/learn') || path.startsWith('/student/modules')) return 'content';
+  if (path.startsWith('/student/practice')) return 'practice';
+  if (path.startsWith('/student/word-of-the-day')) return 'word';
+  if (path.startsWith('/student/progress')) return 'progress';
+  if (path.startsWith('/student/badges')) return 'badges';
+  if (path.startsWith('/student/activities') || path.startsWith('/student/assignments')) return 'activities';
+  if (path.startsWith('/student/calendar') || path.startsWith('/student/schedule')) return 'calendar';
+  if (path.startsWith('/student/notifications')) return 'notifications';
+  if (path.startsWith('/student/profile')) return 'profile';
+  if (path.startsWith('/student/settings')) return 'settings';
+  return 'home';
+};
 // ============================================================================
 // GAMIFICATION HELPER FUNCTIONS
 // ============================================================================
 // Educational feedback messages for incorrect pronunciations
 const StudentDashboard = () => {
   const { user: authUser, logout } = useContext(AuthContext);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [dateTime, setDateTime] = useState(new Date());
   const [accessibilitySettings, setAccessibilitySettings] = useState({
     darkMode: false,
@@ -201,6 +232,12 @@ const StudentDashboard = () => {
   const [practiceLevel, setPracticeLevel] = useState('beginner');
   const [practiceLevelSaving, setPracticeLevelSaving] = useState(false);
   const [currentStudentId, setCurrentStudentId] = useState(null);
+  const [studentSchedules, setStudentSchedules] = useState([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [schedulesError, setSchedulesError] = useState('');
+  const [studentNotifications, setStudentNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState('');
   const [completedWords, setCompletedWords] = useState([]);
   const [perfectWords, setPerfectWords] = useState([]);
   const [xp, setXp] = useState(0);
@@ -278,6 +315,9 @@ const StudentDashboard = () => {
     const timer = setInterval(() => setDateTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    setActiveSection(sectionFromPath(location.pathname));
+  }, [location.pathname]);
   useEffect(() => {
     if (!authUser) {
       setFeedback('Please log in to use your learning dashboard.');
@@ -489,7 +529,57 @@ const StudentDashboard = () => {
       })
       .catch((error) => console.warn('Failed to load practice recommendations:', error.message));
   }, [hasLoadedProgress, currentStudentId, wordsCompleted, activePracticeWord, activeCurriculumItem]);
+
+  useEffect(() => {
+    if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return;
+    let cancelled = false;
+    setSchedulesLoading(true);
+    setSchedulesError('');
+    scheduleService.getSchedulesByStudent(currentStudentId)
+      .then((response) => {
+        if (cancelled) return;
+        const data = response?.data?.schedules || response?.data || [];
+        setStudentSchedules(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Student schedules fetch failed:', error.message);
+        setStudentSchedules([]);
+        setSchedulesError("We couldn't load your schedule. Try again.");
+      })
+      .finally(() => {
+        if (!cancelled) setSchedulesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLoadedProgress, currentStudentId, userRole]);
+
+  const loadStudentNotifications = async () => {
+    setNotificationsLoading(true);
+    setNotificationsError('');
+    try {
+      const response = await notificationService.getNotifications();
+      const data = response?.data?.notifications || response?.data || [];
+      setStudentNotifications(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn('Student notifications fetch failed:', error.message);
+      setStudentNotifications([]);
+      setNotificationsError("We couldn't load your notifications. Try again.");
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasLoadedProgress || userRole !== 'student') return;
+    loadStudentNotifications();
+  }, [hasLoadedProgress, userRole]);
   const handleNav = (section) => {
+    const route = SECTION_ROUTES[section];
+    if (route && location.pathname !== route) {
+      navigate(route);
+    }
     setActiveSection(section);
     const target = document.getElementById(`${section}-section`);
     if (target) {
@@ -813,7 +903,8 @@ const StudentDashboard = () => {
       setCurriculumModulesByLevel((prev) => ({ ...prev, [level]: modules }));
       return modules;
     } catch (error) {
-      console.warn('Curriculum modules fetch failed; using local module preview:', error.message);
+      console.warn('Curriculum modules fetch failed:', error.message);
+      setCurriculumModulesByLevel((prev) => ({ ...prev, [level]: [] }));
       return [];
     } finally {
       if (!silent) setCurriculumLoading(false);
@@ -1465,6 +1556,39 @@ const StudentDashboard = () => {
       .slice(0, 4),
     [sharedLessons]
   );
+  const unreadNotifications = useMemo(
+    () => studentNotifications.filter((item) => !Boolean(item.read ?? item.is_read)),
+    [studentNotifications]
+  );
+  const upcomingSchedules = useMemo(
+    () => [...studentSchedules]
+      .filter((item) => {
+        const raw = item.scheduledDate || item.scheduled_date || item.date;
+        const time = new Date(raw || 0).getTime();
+        return Number.isFinite(time) && time >= new Date().setHours(0, 0, 0, 0);
+      })
+      .sort((a, b) =>
+        new Date(a.scheduledDate || a.scheduled_date || a.date || 0).getTime() -
+        new Date(b.scheduledDate || b.scheduled_date || b.date || 0).getTime()
+      ),
+    [studentSchedules]
+  );
+  const assignmentActivities = useMemo(
+    () => [...sharedLessons, ...assessments]
+      .map((item) => ({
+        id: item.id,
+        title: getLessonTitle(item),
+        description: item.description || '',
+        teacher: item.teacherName || item.teacher || 'Teacher',
+        assignedDate: item.createdAt || item.created_at || item.uploadedAt || item.uploaded_at || null,
+        dueDate: item.dueDate || item.due_date || item.deadline || null,
+        type: (item.type || item.contentType) === 'assessment' ? 'Assessment' : getLessonCategory(item),
+        status: getLessonStatus(item),
+        source: item,
+      }))
+      .sort((a, b) => new Date(b.assignedDate || 0).getTime() - new Date(a.assignedDate || 0).getTime()),
+    [sharedLessons, assessments]
+  );
   const openNextLesson = () => {
     if (nextLesson?.fileUrl) {
       window.open(nextLesson.fileUrl, '_blank');
@@ -1556,29 +1680,6 @@ const StudentDashboard = () => {
     100,
     (practiceProgressCurrent / Math.max(practiceProgressTarget, 1)) * 100
   );
-  const moduleDefinitionsByLevel = {
-    Beginner: [
-      { number: 1, title: 'Mga Patinig', subtitle: 'A, E, I, O, U', type: 'Phonetics', accent: 'violet', items: ['A', 'E', 'I', 'O', 'U'] },
-      { number: 2, title: 'Ba-Be-Bi-Bo-Bu', subtitle: 'Unang hanay ng pantig', type: 'Phonetics', accent: 'green', items: ['Ba', 'Be', 'Bi', 'Bo', 'Bu'] },
-      { number: 3, title: 'Ka-Ke-Ki-Ko-Ku', subtitle: 'Ikalawang hanay ng pantig', type: 'Phonetics', accent: 'sun', items: ['Ka', 'Ke', 'Ki', 'Ko', 'Ku'] },
-      { number: 4, title: 'Da-De-Di-Do-Du', subtitle: 'Ikatlong hanay ng pantig', type: 'Phonetics', accent: 'blue', items: ['Da', 'De', 'Di', 'Do', 'Du'] },
-      { number: 5, title: 'Bumuo ng mga Salita', subtitle: 'Ba-Ka, Ku-Ko, Bu-Ko, A-Ko', type: 'Words', accent: 'coral', items: ['Ba-Ka', 'Ku-Ko', 'Bu-Ko', 'A-Ko'] },
-    ],
-    Intermediate: [
-      { number: 1, title: 'Words to Phrases', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'violet', items: [], needsContent: true },
-      { number: 2, title: 'Simple Phrases', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'green', items: [], needsContent: true },
-      { number: 3, title: 'Short Phrases', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'sun', items: [], needsContent: true },
-      { number: 4, title: 'Phrase Practice', subtitle: 'Workbook content mapping needed', type: 'Phrases', accent: 'blue', items: [], needsContent: true },
-      { number: 5, title: 'Phrase Assessment', subtitle: 'Assessment content needed', type: 'Assessment', accent: 'coral', items: [], needsContent: true },
-    ],
-    Advanced: [
-      { number: 1, title: 'Phrase Reading', subtitle: 'Story content pending', type: 'Phrases', accent: 'violet', items: [], needsContent: true },
-      { number: 2, title: 'Connecting Phrases', subtitle: 'Story content pending', type: 'Phrases', accent: 'green', items: [], needsContent: true },
-      { number: 3, title: 'Story Preparation', subtitle: 'Story content pending', type: 'Sentences', accent: 'sun', items: [], needsContent: true },
-      { number: 4, title: 'Short Story Reading', subtitle: 'Client story content pending', type: 'Story', accent: 'blue', items: [], needsContent: true },
-      { number: 5, title: 'Story Assessment', subtitle: 'Assessment content needed', type: 'Assessment', accent: 'coral', items: [], needsContent: true },
-    ],
-  };
   const moduleProgressDriver = Math.max(
     lessonCompletionPercent,
     curriculumProgressTotals.required > 0
@@ -1619,55 +1720,37 @@ const StudentDashboard = () => {
       passed: Boolean(item.passed),
     })),
   });
-  const getLevelProgressDriver = (level) => {
-    const levelIndex = levelOrder.indexOf(level);
-    if (activeLevelIndex > levelIndex) return 100;
-    if (activeLevelIndex === levelIndex) return moduleProgressDriver;
-    return 0;
-  };
   const buildModuleRoadmapForLevel = (level) => {
     const serverModules = curriculumModulesByLevel[level];
     if (Array.isArray(serverModules) && serverModules.length > 0) {
       return serverModules.map(normalizeServerModule);
     }
-
-    const levelProgressDriver = getLevelProgressDriver(level);
-    return (moduleDefinitionsByLevel[level] || moduleDefinitionsByLevel.Beginner).map((module, index) => {
-      const segmentStart = index * 20;
-      const segmentProgress = Math.max(0, Math.min(100, Math.round(((levelProgressDriver - segmentStart) / 20) * 100)));
-      const status = segmentProgress >= 100
-        ? 'completed'
-        : segmentProgress > 0
-          ? 'in-progress'
-          : index === 0 || levelProgressDriver >= segmentStart
-            ? 'available'
-            : 'locked';
-      return {
-        ...module,
-        level,
-        items: module.items.map((item) => ({
-          label: item,
-          practiceText: item,
-          curriculumItemId: null,
-          itemType: module.type === 'Words' ? 'word' : 'phonetic',
-          passed: false,
-        })),
-        progress: segmentProgress,
-        status,
-        helper: status === 'locked' ? `Complete Module ${module.number - 1} first` : status === 'completed' ? 'Completed' : status === 'in-progress' ? `${segmentProgress}% complete` : 'Ready to start',
-      };
-    });
+    return [];
   };
   const moduleRoadmap = buildModuleRoadmapForLevel(selectedLibraryLevel);
   const activeLevelRoadmap = buildModuleRoadmapForLevel(activeReadingLevelLabel);
+  const emptyModule = {
+    number: '-',
+    title: 'No module data available',
+    subtitle: 'No real curriculum modules were returned by the backend for this level.',
+    type: 'Unavailable',
+    accent: 'violet',
+    items: [],
+    progress: 0,
+    status: 'locked',
+    helper: 'No module data',
+    needsContent: true,
+  };
   const activeCurrentModule = activeLevelRoadmap.find((module) => module.status === 'in-progress')
     || activeLevelRoadmap.find((module) => module.status === 'assessment-ready')
     || activeLevelRoadmap.find((module) => module.status === 'available')
-    || activeLevelRoadmap[activeLevelRoadmap.length - 1];
+    || activeLevelRoadmap[activeLevelRoadmap.length - 1]
+    || emptyModule;
   const currentModule = moduleRoadmap.find((module) => module.status === 'in-progress')
     || moduleRoadmap.find((module) => module.status === 'assessment-ready')
     || moduleRoadmap.find((module) => module.status === 'available')
-    || moduleRoadmap[moduleRoadmap.length - 1];
+    || moduleRoadmap[moduleRoadmap.length - 1]
+    || emptyModule;
   const completedModules = moduleRoadmap.filter((module) => module.status === 'completed');
   const allCompletedModules = levelOrder.flatMap((level) => buildModuleRoadmapForLevel(level).filter((module) => module.status === 'completed'));
   const equippedModule = allCompletedModules.find((module) => `${module.level}-${module.number}` === equippedModuleNumber)
@@ -1688,35 +1771,58 @@ const StudentDashboard = () => {
     Math.round((selectedModule.progress / 100) * selectedModule.items.length)
   );
   const selectedLevelComplete = moduleRoadmap.length > 0 && completedModules.length === moduleRoadmap.length;
-  const beginnerModulesComplete = buildModuleRoadmapForLevel('Beginner').every((module) => module.status === 'completed');
+  const beginnerRoadmap = buildModuleRoadmapForLevel('Beginner');
+  const beginnerModulesComplete = beginnerRoadmap.length > 0 && beginnerRoadmap.every((module) => module.status === 'completed');
   const openAssessmentPreview = async (module) => {
     if (!module || module.items.length === 0) return;
+    if (!module.id) {
+      setAssessmentPreview({
+        moduleNumber: module.number,
+        title: module.title,
+        score: null,
+        passed: false,
+        items: [],
+        message: 'Assessment is not available because no real backend module id was returned.',
+      });
+      return;
+    }
+    if (!['assessment-ready', 'completed'].includes(module.status)) {
+      setAssessmentPreview({
+        moduleNumber: module.number,
+        title: module.title,
+        score: null,
+        passed: false,
+        items: module.items.map((item) => item.label || item.practiceText).slice(0, 12),
+        message: 'Finish the required module content before starting the assessment.',
+      });
+      return;
+    }
     setCurriculumLoading(true);
     try {
-      const response = module.id
-        ? await curriculumService.submitModuleAssessment(module.id)
-        : null;
+      const response = await curriculumService.submitModuleAssessment(module.id);
       const payload = response?.data || response || {};
       if (Array.isArray(payload.modules)) {
         setCurriculumModulesByLevel((prev) => ({ ...prev, [selectedLibraryLevel]: payload.modules }));
       }
       const assessment = payload.assessment || {};
-      const score = Number(assessment.score ?? (module.progress >= 100 ? 92 : Math.max(45, Math.min(88, module.progress + 12))));
+      const score = assessment.score == null ? null : Number(assessment.score);
       setAssessmentPreview({
         moduleNumber: module.number,
         title: module.title,
         score,
-        passed: Boolean(assessment.passed ?? score >= 80),
+        passed: Boolean(assessment.passed),
         items: (assessment.items || module.items.map((item) => item.label || item.practiceText)).slice(0, 12),
+        message: assessment.message || '',
       });
     } catch (error) {
       console.error('Failed to submit module assessment:', error);
       setAssessmentPreview({
         moduleNumber: module.number,
         title: module.title,
-        score: 0,
+        score: null,
         passed: false,
         items: module.items.map((item) => item.label || item.practiceText).slice(0, 12),
+        message: error.message || 'Unable to submit the assessment right now.',
       });
     } finally {
       setCurriculumLoading(false);
@@ -1826,9 +1932,25 @@ const StudentDashboard = () => {
       title: 'My Reading\nProgress',
       subtitle: 'See how much you have improved on your reading journey.',
     },
+    word: {
+      title: 'Word of\nthe Day',
+      subtitle: 'Practice today\'s word and keep your streak alive.',
+    },
     badges: {
       title: 'My Learning\nBadges',
       subtitle: 'Celebrate every reading milestone you achieve.',
+    },
+    activities: {
+      title: 'Assignments\n& Activities',
+      subtitle: 'See teacher-created learning work assigned to you.',
+    },
+    calendar: {
+      title: 'My\nCalendar',
+      subtitle: 'Review upcoming lessons, practice sessions, and reminders.',
+    },
+    notifications: {
+      title: 'Notifications',
+      subtitle: 'Read updates about lessons, achievements, schedules, and progress.',
     },
     profile: {
       title: 'My\nProfile',
@@ -1854,10 +1976,16 @@ const StudentDashboard = () => {
         <nav className="student-topbar-nav" aria-label="Student dashboard">
           {[
             { key: 'home', label: 'Dashboard', icon: <FiHome aria-hidden="true" /> },
+            { key: 'content', label: 'Learn', icon: <FiBookOpen aria-hidden="true" /> },
             { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
-            { key: 'content', label: 'Library + Badges', icon: <FiBookOpen aria-hidden="true" /> },
-            { key: 'progress', label: 'Activity', icon: <FiTrendingUp aria-hidden="true" /> },
+            { key: 'word', label: 'Word', icon: <FiStar aria-hidden="true" /> },
+            { key: 'progress', label: 'Progress', icon: <FiTrendingUp aria-hidden="true" /> },
+            { key: 'badges', label: 'Badges', icon: <FiAward aria-hidden="true" /> },
+            { key: 'activities', label: 'Activities', icon: <FiTarget aria-hidden="true" /> },
+            { key: 'calendar', label: 'Calendar', icon: <FiCalendar aria-hidden="true" /> },
+            { key: 'notifications', label: `Alerts${unreadNotifications.length ? ` (${unreadNotifications.length})` : ''}`, icon: <FiBell aria-hidden="true" /> },
             { key: 'profile', label: 'Profile', icon: <FiUser aria-hidden="true" /> },
+            { key: 'settings', label: 'Settings', icon: <FiSettings aria-hidden="true" /> },
           ].map((item) => (
             <button
               key={item.key}
@@ -1941,13 +2069,13 @@ const StudentDashboard = () => {
                 {assessmentPreview.passed ? 'Module Complete!' : 'Almost there!'}
               </h3>
               <p>
-                {assessmentPreview.passed
+                {assessmentPreview.message || (assessmentPreview.passed
                   ? 'Great work. This module has been completed and the next module can unlock.'
-                  : "Let's practice a little more before unlocking the next module."}
+                  : "Let's practice a little more before unlocking the next module.")}
               </p>
               <div className="student-assessment-score">
-                <strong>{assessmentPreview.score}%</strong>
-                <span>Preview score</span>
+                <strong>{assessmentPreview.score == null ? 'Not scored' : `${assessmentPreview.score}%`}</strong>
+                <span>Backend result</span>
               </div>
               <div className="student-assessment-items">
                 {assessmentPreview.items.map((item) => <span key={item}>{item}</span>)}
@@ -2000,7 +2128,7 @@ const StudentDashboard = () => {
           ))}</h1>
           <p>{activeHero.subtitle}</p>
           <div className="student-mobile-hero-art" aria-hidden="true">
-            {activeSection === 'practice' ? <FiMic /> : activeSection === 'progress' ? <FiTrendingUp /> : activeSection === 'badges' ? <FiAward /> : activeSection === 'settings' ? <FiSettings /> : <FiBookOpen />}
+            {activeSection === 'practice' ? <FiMic /> : activeSection === 'progress' ? <FiTrendingUp /> : activeSection === 'badges' ? <FiAward /> : activeSection === 'settings' ? <FiSettings /> : activeSection === 'calendar' ? <FiCalendar /> : activeSection === 'notifications' ? <FiBell /> : <FiBookOpen />}
           </div>
         </section>
         )}
@@ -2734,10 +2862,10 @@ const StudentDashboard = () => {
                     <button
                       type="button"
                       className="button-large button-primary"
-                      disabled={selectedModule.items.length === 0}
+                      disabled={selectedModule.items.length === 0 || !['assessment-ready', 'completed'].includes(selectedModule.status)}
                       onClick={() => openAssessmentPreview(selectedModule)}
                     >
-                      {selectedModule.items.length === 0 ? 'Content Pending' : selectedModule.progress >= 100 ? 'Review Assessment' : 'Start Assessment'} <FiChevronRight aria-hidden="true" />
+                      {selectedModule.items.length === 0 ? 'Content Pending' : selectedModule.progress >= 100 ? 'Review Assessment' : 'Finish Content First'} <FiChevronRight aria-hidden="true" />
                     </button>
                   </div>
                 </section>
@@ -2959,6 +3087,129 @@ const StudentDashboard = () => {
                 ))}
               </div>
             </div>
+          </section>
+        )}
+        {activeSection === 'word' && (
+          <section id="word-section" className="detail-block">
+            <div className="detail-block-title">Word of the Day</div>
+            {wordOfTheDay ? (
+              <div className="student-data-panel">
+                <div>
+                  <span className="student-library-kicker">Today's practice word</span>
+                  <h3>{wordOfTheDay.accentedSpelling || wordOfTheDay.word}</h3>
+                  <p>{wordOfTheDay.meaning || 'No definition is available for this word yet.'}</p>
+                  {wordOfTheDay.example && <p>{wordOfTheDay.example}</p>}
+                </div>
+                <div className="student-data-actions">
+                  <button type="button" className="button-large button-secondary" onClick={() => speakTagalog(wordOfTheDay.accentedSpelling || wordOfTheDay.word, { trackSyllables: true })}>
+                    <FiVolume2 aria-hidden="true" /> Listen
+                  </button>
+                  <button type="button" className="button-large button-primary" onClick={() => handleNav('practice')}>
+                    <FiMic aria-hidden="true" /> Practice
+                  </button>
+                </div>
+                <p className="student-home-muted">
+                  {hasPracticedWordOfTheDay ? 'Completed today from recorded practice.' : 'Not completed yet today.'}
+                </p>
+              </div>
+            ) : (
+              <p className="student-home-muted">No Word of the Day is available from the backend yet.</p>
+            )}
+          </section>
+        )}
+        {activeSection === 'activities' && (
+          <section id="activities-section" className="detail-block">
+            <div className="detail-block-title">Assignments / Activities</div>
+            {uploadsLoading ? (
+              <p className="student-home-muted">Loading assigned activities...</p>
+            ) : assignmentActivities.length ? (
+              <div className="student-record-list">
+                {assignmentActivities.map((item) => (
+                  <article key={item.id} className="student-record-card">
+                    <div>
+                      <span className="student-library-kicker">{item.type}</span>
+                      <h3>{item.title}</h3>
+                      <p>{item.description || 'No description provided.'}</p>
+                      <small>
+                        {item.teacher} {item.assignedDate ? `- Assigned ${getAttemptDateLabel({ created_at: item.assignedDate })}` : ''}
+                        {item.dueDate ? ` - Due ${getAttemptDateLabel({ created_at: item.dueDate })}` : ''}
+                      </small>
+                    </div>
+                    <span className={`student-learn-status ${item.status.toLowerCase().replace(/\s+/g, '-')}`}>{item.status}</span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="student-home-muted">No teacher-created assignments or activities are assigned yet.</p>
+            )}
+          </section>
+        )}
+        {activeSection === 'calendar' && (
+          <section id="calendar-section" className="detail-block">
+            <div className="detail-block-title">Calendar / Schedule</div>
+            {schedulesLoading ? (
+              <p className="student-home-muted">Loading your schedule...</p>
+            ) : schedulesError ? (
+              <p className="student-home-muted">{schedulesError}</p>
+            ) : upcomingSchedules.length ? (
+              <div className="student-record-list">
+                {upcomingSchedules.map((item) => (
+                  <article key={item.id || item._id} className="student-record-card">
+                    <div>
+                      <span className="student-library-kicker">{item.activityType || item.activity_type || 'scheduled activity'}</span>
+                      <h3>{item.title || 'Scheduled activity'}</h3>
+                      <p>{item.description || item.notes || 'No description provided.'}</p>
+                      <small>
+                        {getAttemptDateLabel({ created_at: item.scheduledDate || item.scheduled_date || item.date })}
+                        {item.scheduledTime || item.start_time ? ` - ${item.scheduledTime || item.start_time}` : ''}
+                      </small>
+                    </div>
+                    <span className={`student-learn-status ${(item.status || 'scheduled').toLowerCase().replace(/\s+/g, '-')}`}>
+                      {item.status || 'scheduled'}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="student-home-muted">No upcoming scheduled activities yet.</p>
+            )}
+          </section>
+        )}
+        {activeSection === 'notifications' && (
+          <section id="notifications-section" className="detail-block">
+            <div className="detail-block-title">Notifications</div>
+            {notificationsLoading ? (
+              <p className="student-home-muted">Loading notifications...</p>
+            ) : notificationsError ? (
+              <p className="student-home-muted">{notificationsError}</p>
+            ) : studentNotifications.length ? (
+              <div className="student-record-list">
+                {studentNotifications.map((item) => (
+                  <article key={item.id} className={`student-record-card ${!item.read && !item.is_read ? 'is-unread' : ''}`}>
+                    <div>
+                      <span className="student-library-kicker">{item.type || 'notification'}</span>
+                      <h3>{item.title}</h3>
+                      <p>{item.body || item.message || 'No message provided.'}</p>
+                      <small>{getAttemptDateLabel({ created_at: item.created_at })}</small>
+                    </div>
+                    {!item.read && !item.is_read && (
+                      <button
+                        type="button"
+                        className="button-small button-secondary"
+                        onClick={async () => {
+                          await notificationService.markRead(item.id);
+                          await loadStudentNotifications();
+                        }}
+                      >
+                        Mark read
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="student-home-muted">No notifications yet.</p>
+            )}
           </section>
         )}
         {activeSection === 'settings' && (

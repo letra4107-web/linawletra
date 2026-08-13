@@ -259,6 +259,61 @@ a {
   color: var(--text);
 }
 
+.student-data-panel,
+.student-record-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.student-data-panel {
+  flex-direction: column;
+}
+
+.student-data-panel h3,
+.student-record-card h3 {
+  margin: 6px 0 8px;
+  color: var(--text);
+}
+
+.student-data-panel p,
+.student-record-card p,
+.student-record-card small {
+  color: var(--text-secondary);
+}
+
+.student-data-actions,
+.student-record-list {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.student-data-actions {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.student-record-list {
+  grid-template-columns: 1fr;
+}
+
+.student-record-card.is-unread {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, #fff, var(--accent-soft));
+}
+
+@media (max-width: 720px) {
+  .student-record-card {
+    flex-direction: column;
+  }
+}
+
 .preview-box {
   display: grid;
   gap: 10px;

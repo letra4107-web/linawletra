@@ -4,7 +4,7 @@
  */
 
 const getApiBaseUrl = () => {
-  const productionApiUrl = 'https://linawletra-production.up.railway.app/api';
+  const productionApiUrl = 'https://app-backend-production-f32c.up.railway.app/api';
   const rawApiUrl = process.env.REACT_APP_API_URL ||
     process.env.EXPO_PUBLIC_API_URL ||
     process.env.API_BASE_URL ||
