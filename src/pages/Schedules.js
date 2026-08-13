@@ -17,8 +17,9 @@ import {
   FiX,
 } from 'react-icons/fi';
 import { AuthContext } from '../context/AuthContext';
-import DashboardSidebar from '../components/DashboardSidebar';
+import ParentSidebar from '../components/ParentSidebar';
 import { scheduleService, studentService } from '../services/api';
+import './ParentDashboard.css';
 
 const activityOptions = [
   { value: 'reminder', label: 'Reminder' },
@@ -342,9 +343,9 @@ export default function Schedules() {
   }
 
   return (
-    <div className="dashboard-layout">
-      <DashboardSidebar />
-      <main className="dashboard-content parent-calendar-page">
+    <div className="parent-dashboard-page">
+      <ParentSidebar />
+      <main className="parent-main parent-calendar-page">
         <div className="parent-calendar-header">
           <div>
             <h1>Calendar</h1>

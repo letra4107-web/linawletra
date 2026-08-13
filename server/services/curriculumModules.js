@@ -1,6 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { compareReadingText } from './readingAccuracy.js';
-import { resolveStudent } from '../utils/studentAccess.js';
+import { canAccessStudentResolved, resolveStudent } from '../utils/studentAccess.js';
 
 const PASSED_STATUSES = new Set(['passed_80', 'mastered_100']);
 const PASS_ACCURACY = 80;
@@ -49,6 +49,20 @@ const getCurrentStudent = async (req) => {
   if (req.user.role !== 'student') {
     return { status: 403, body: { success: false, message: 'Only students can change module progress' } };
   }
+  return { student };
+};
+
+const getReadableStudent = async (req, studentIdOrUserId) => {
+  const requestedId = studentIdOrUserId || req.user.id;
+  const student = await resolveStudent(requestedId);
+  if (!student) {
+    return { status: 404, body: { success: false, message: 'Student profile not found' } };
+  }
+
+  if (!(await canAccessStudentResolved(req, student))) {
+    return { status: 403, body: { success: false, message: 'You do not have permission to view these modules' } };
+  }
+
   return { student };
 };
 
@@ -344,7 +358,9 @@ export async function getStudentModulesForLevel(studentIdOrUserId, levelValue = 
 }
 
 export async function getStudentModules(req, levelValue = 'beginner') {
-  const studentResult = await getCurrentStudent(req);
+  const studentResult = req.query?.studentId
+    ? await getReadableStudent(req, req.query.studentId)
+    : await getCurrentStudent(req);
   if (!studentResult.student) return studentResult;
   const { modules } = await getStudentModulesForLevel(studentResult.student.id, levelValue);
   return { status: 200, body: { success: true, studentId: studentResult.student.id, modules } };

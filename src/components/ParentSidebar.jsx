@@ -6,20 +6,46 @@ import {
   FiUsers,
   FiBarChart2,
   FiCalendar,
+  FiBookOpen,
+  FiAward,
   FiFileText,
+  FiDownload,
   FiSettings,
   FiMenu,
   FiX,
   FiLogOut,
 } from 'react-icons/fi';
 
-const sidebarItems = [
-  { path: '/parent/summary', label: 'Dashboard Overview', icon: <FiGrid /> },
-  { path: '/parent/children', label: 'My Children', icon: <FiUsers /> },
-  { path: '/parent/progress', label: 'Progress Report', icon: <FiBarChart2 /> },
-  { path: '/parent/schedules', label: 'Calendar', icon: <FiCalendar /> },
-  { path: '/parent/reports', label: 'Reports', icon: <FiFileText /> },
-  { path: '/parent/settings', label: 'Settings', icon: <FiSettings /> },
+const sidebarGroups = [
+  {
+    label: 'Main',
+    items: [
+      { path: '/parent/summary', label: 'Dashboard', icon: <FiGrid /> },
+      { path: '/parent/children', label: 'My Children', icon: <FiUsers /> },
+      { path: '/parent/progress', label: 'Progress Report', icon: <FiBarChart2 /> },
+      { path: '/parent/schedules', label: 'Calendar', icon: <FiCalendar /> },
+    ],
+  },
+  {
+    label: 'Learning',
+    items: [
+      { path: '/parent/modules', label: 'Modules', icon: <FiBookOpen /> },
+      { path: '/parent/badges', label: 'Badges & Achievements', icon: <FiAward /> },
+    ],
+  },
+  {
+    label: 'Reports',
+    items: [
+      { path: '/parent/reports', label: 'Child Reports', icon: <FiFileText /> },
+      { path: '/parent/downloads', label: 'Download Reports', icon: <FiDownload /> },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/parent/settings', label: 'Settings', icon: <FiSettings /> },
+    ],
+  },
 ];
 
 export default function ParentSidebar() {
@@ -78,23 +104,29 @@ export default function ParentSidebar() {
         </div>
 
         <nav className="parent-sidebar__nav" aria-label="Parent navigation">
-          <ul className="parent-sidebar__list">
-            {sidebarItems.map((item) => (
-              <li key={item.path}>
-                <NavLink
-                  to={item.path}
-                  onClick={closeMobile}
-                  className={({ isActive }) => {
-                    const isActiveEffective = isActive || location.pathname.startsWith(`${item.path}/`);
-                    return `parent-sidebar__link ${isActiveEffective ? 'is-active' : ''}`;
-                  }}
-                >
-                  <span className="parent-sidebar__icon">{item.icon}</span>
-                  <span className="parent-sidebar__label">{item.label}</span>
-                </NavLink>
-              </li>
-            ))}
-          </ul>
+          {sidebarGroups.map((group) => (
+            <div key={group.label} className="parent-sidebar__group">
+              <div className="parent-sidebar__group-label">{group.label}</div>
+              <ul className="parent-sidebar__list">
+                {group.items.map((item) => (
+                  <li key={`${group.label}-${item.label}`}>
+                    <NavLink
+                      to={item.path}
+                      onClick={closeMobile}
+                      className={({ isActive }) => {
+                        const pathActive = isActive || location.pathname.startsWith(`${item.path}/`);
+                        const isActiveEffective = pathActive;
+                        return `parent-sidebar__link ${isActiveEffective ? 'is-active' : ''}`;
+                      }}
+                    >
+                      <span className="parent-sidebar__icon">{item.icon}</span>
+                      <span className="parent-sidebar__label">{item.label}</span>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
 
         <div className="parent-sidebar__footer">

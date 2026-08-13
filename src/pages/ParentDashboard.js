@@ -2,11 +2,11 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import ParentSidebar from '../components/ParentSidebar';
-import ChildOverviewCard from '../components/ChildOverviewCard';
 import StudentSelector from '../components/StudentSelector';
 import StudentOverviewPanel from '../components/StudentOverviewPanel';
 import { parentDashboardApi } from '../services/parentDashboardApi';
 import { studentService } from '../services/api';
+import { ACHIEVEMENTS } from '../services/achievementService';
 import { normalizeStudentSummary } from '../utils/normalizeStudentSummary';
 import './ParentDashboard.css';
 
@@ -184,6 +184,32 @@ const AIInsightsPanel = ({ insights }) => {
   );
 };
 
+const LEVELS = [
+  { key: 'beginner', label: 'Beginner' },
+  { key: 'intermediate', label: 'Intermediate' },
+  { key: 'advanced', label: 'Advanced' },
+];
+
+const statusLabel = (value = '') => String(value || 'available').replace(/_/g, ' ');
+
+const ModuleStatusChip = ({ status }) => {
+  const normalized = String(status || 'available').toLowerCase();
+  const variant = normalized === 'completed'
+    ? 'completed'
+    : normalized === 'locked'
+      ? 'alert'
+      : 'progress';
+  return <StatusChip variant={variant}>{statusLabel(normalized)}</StatusChip>;
+};
+
+const getBadgeId = (badge) => (typeof badge === 'string' ? badge : badge?.id);
+
+const metricValue = (value, fallback = 'No records available.') => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (Array.isArray(value) && value.length === 0) return fallback;
+  return value;
+};
+
 export default function ParentDashboard() {
   const { user } = useContext(AuthContext);
   const { section } = useParams();
@@ -205,6 +231,9 @@ export default function ParentDashboard() {
   const [report, setReport] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
+  const [modulesByLevel, setModulesByLevel] = useState({});
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [modulesError, setModulesError] = useState('');
   const [settingsForm, setSettingsForm] = useState({
     name: user?.displayName || user?.name || '',
     school: '',
@@ -375,7 +404,7 @@ export default function ParentDashboard() {
   useEffect(() => {
     let cancelled = false;
     const childId = selectedChild?.id ?? selectedChild?.studentId;
-    if (currentSection !== 'reports' || !childId) return undefined;
+    if (!['reports', 'downloads'].includes(currentSection) || !childId) return undefined;
 
     const loadReport = async () => {
       setReportLoading(true);
@@ -398,7 +427,36 @@ export default function ParentDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    if (currentSection !== 'settings') return undefined;
+    const childId = selectedChild?.id ?? selectedChild?.studentId;
+    if (currentSection !== 'modules' || !childId) return undefined;
+
+    const loadModules = async () => {
+      setModulesLoading(true);
+      setModulesError('');
+      try {
+        const entries = await Promise.all(
+          LEVELS.map(async (level) => [
+            level.key,
+            await parentDashboardApi.getModulesByChildId(childId, level.key),
+          ])
+        );
+        if (!cancelled) setModulesByLevel(Object.fromEntries(entries));
+      } catch (err) {
+        if (!cancelled) setModulesError(err?.response?.data?.message || err?.message || 'Unable to load module progress.');
+      } finally {
+        if (!cancelled) setModulesLoading(false);
+      }
+    };
+
+    loadModules();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSection, selectedChild]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!['settings', 'profile'].includes(currentSection)) return undefined;
 
     const loadSettings = async () => {
       setSettingsLoading(true);
@@ -480,6 +538,28 @@ export default function ParentDashboard() {
   );
 
   const reportData = report?.report || report || null;
+  const earnedBadgeIds = useMemo(() => {
+    const ids = [
+      ...(progress?.unlockedAchievementIds || []),
+      ...(progress?.unlocked_achievement_ids || []),
+      ...(progress?.badges || []).map(getBadgeId),
+      ...(reportData?.badges || []).map(getBadgeId),
+    ].filter(Boolean);
+    return new Set(ids);
+  }, [progress, reportData]);
+
+  const badgeCatalog = useMemo(
+    () => ACHIEVEMENTS.map((badge) => ({
+      ...badge,
+      earned: earnedBadgeIds.has(badge.id),
+    })),
+    [earnedBadgeIds]
+  );
+
+  const moduleRecords = reportData?.modules?.records || progress?.modules?.records || [];
+  const progressPoints = progress?.readingProgressOverTime ?? progress?.reading_progress_over_time ?? [];
+  const lessonPerformance = progress?.lessonPerformance ?? progress?.lesson_performance ?? [];
+  const recentItems = progress?.recentActivities ?? activities?.recentActivities ?? activities?.items ?? activities ?? [];
 
   const handleDownloadReport = async () => {
     const childId = selectedChild?.id ?? selectedChild?.studentId;
@@ -593,11 +673,15 @@ export default function ParentDashboard() {
 
   const showSummary = currentSection === 'summary';
   const showProgress = currentSection === 'progress';
+  const showLearning = currentSection === 'learning';
   const showAnalytics = showProgress;
   const showRecent = showSummary;
   const showChildren = currentSection === 'children';
-  const showSettings = currentSection === 'settings';
+  const showModules = currentSection === 'modules';
+  const showBadges = currentSection === 'badges';
+  const showSettings = currentSection === 'settings' || currentSection === 'profile';
   const showReports = currentSection === 'reports';
+  const showDownloads = currentSection === 'downloads';
 
   return (
     <div className="parent-dashboard-page">
@@ -689,7 +773,11 @@ export default function ParentDashboard() {
           <section className="parent-charts">
             <div className="parent-chart">
               <div className="parent-chart__title">Reading Progress Over Time</div>
-              <LineChartPlaceholder points={progress?.readingProgressOverTime ?? progress?.reading_progress_over_time ?? []} />
+              {progressPoints.length > 0 ? (
+                <LineChartPlaceholder points={progressPoints} />
+              ) : (
+                <EmptyState title="No progress history yet." subtitle="Progress data will appear as your child completes learning activities." />
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 900, color: 'rgba(31,41,55,0.75)' }}>{selectedChild?.name || 'Child'}</span>
                 <span style={{ fontWeight: 800, color: 'rgba(31,41,55,0.60)' }}>Data-driven analytics</span>
@@ -698,7 +786,11 @@ export default function ParentDashboard() {
 
             <div className="parent-chart">
               <div className="parent-chart__title">Lesson Performance</div>
-              <BarChartPlaceholder values={progress?.lessonPerformance ?? progress?.lesson_performance ?? []} />
+              {lessonPerformance.length > 0 ? (
+                <BarChartPlaceholder values={lessonPerformance} />
+              ) : (
+                <EmptyState title="No lesson performance yet." subtitle="Charts will appear once scored practice or lesson records exist." />
+              )}
               <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                   <StatusChip variant="progress">Weekly trend</StatusChip>
@@ -844,6 +936,190 @@ export default function ParentDashboard() {
               </div>
             ) : (
               <EmptyState title="No children enrolled yet." subtitle="Contact the classroom/admin to enroll your child." />
+            )}
+          </section>
+        )}
+
+        {showLearning && (
+          <section className="parent-section">
+            <div className="parent-section__head">
+              <div>
+                <div className="parent-section__title">Learning Progress</div>
+                <div className="parent-section__sub">A read-only view of real progress for {selectedChild?.name || 'your selected child'}.</div>
+              </div>
+            </div>
+            {!selectedChild ? (
+              <EmptyState title="No children enrolled yet." subtitle="Learning progress appears after a child is linked to your account." />
+            ) : (
+              <div className="parent-learning-layout">
+                <div className="parent-report-grid">
+                  <div className="parent-child-detail__metric">
+                    <span>Reading Level</span>
+                    <strong>{metricValue(selectedStudentSummary.readingLevel)}</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>Overall Progress</span>
+                    <strong>{selectedStudentSummary.progressToNextLevelPercent}%</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>Active Days</span>
+                    <strong>{metricValue(progress?.activeDays ?? progress?.active_days, 0)}</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>XP</span>
+                    <strong>{selectedStudentSummary.xp}</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>Practice Attempts</span>
+                    <strong>{selectedStudentSummary.totalAttempts}</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>Accuracy</span>
+                    <strong>{selectedStudentSummary.totalAttempts > 0 ? `${selectedStudentSummary.allTimeAccuracy}%` : 'No records available.'}</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>Current Module</span>
+                    <strong>{metricValue(progress?.currentModule ?? progress?.current_module)}</strong>
+                  </div>
+                  <div className="parent-child-detail__metric">
+                    <span>Learning Time</span>
+                    <strong>{progress?.learningTimeAvailable ? `${progress.trackedPracticeMinutes} minutes` : 'Learning time tracking is not available yet.'}</strong>
+                  </div>
+                </div>
+
+                <div className="parent-report-block">
+                  <div className="parent-section__title">Areas of Difficulty</div>
+                  {(wordMastery?.difficult || wordMastery?.detail?.difficult || progress?.wordMasteryDetail?.difficult || []).length ? (
+                    <div className="parent-confusion-list">
+                      {(wordMastery?.difficult || wordMastery?.detail?.difficult || progress?.wordMasteryDetail?.difficult || []).slice(0, 8).map((item, index) => (
+                        <span key={item.word || index} className="parent-chip parent-chip--warn">{item.word || item}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState title="No difficulty areas recorded yet." subtitle="This section will update after more word mastery data is available." />
+                  )}
+                </div>
+
+                <div className="parent-report-block">
+                  <div className="parent-section__title">Recent Learning Activity</div>
+                  <RecentActivityList items={recentItems} />
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {showModules && (
+          <section className="parent-section">
+            <div className="parent-section__head">
+              <div>
+                <div className="parent-section__title">Modules</div>
+                <div className="parent-section__sub">Read-only curriculum status from the server module system.</div>
+              </div>
+            </div>
+            {!selectedChild ? (
+              <EmptyState title="No children enrolled yet." subtitle="Module progress appears after a child is linked to your account." />
+            ) : modulesLoading ? (
+              <div className="parent-list-row">Loading modules...</div>
+            ) : modulesError ? (
+              <div className="parent-error">{modulesError}</div>
+            ) : (
+              <div className="parent-module-levels">
+                {LEVELS.map((level) => {
+                  const modules = modulesByLevel[level.key] || [];
+                  return (
+                    <div key={level.key} className="parent-module-level">
+                      <div className="parent-module-level__head">
+                        <div>
+                          <div className="parent-section__title">{level.label}</div>
+                          <div className="parent-section__sub">{modules.length} module{modules.length === 1 ? '' : 's'}</div>
+                        </div>
+                      </div>
+                      {modules.length ? (
+                        <div className="parent-module-list">
+                          {modules.map((module) => (
+                            <article key={module.id} className="parent-module-card">
+                              <div>
+                                <div className="parent-list-row__title">{module.title || `Module ${module.moduleNumber || module.module_number || ''}`}</div>
+                                <div className="parent-list-row__meta">
+                                  {module.helper || 'Status from curriculum progress'} - Assessment: {module.assessmentPassed ? 'Passed' : module.assessmentScore != null ? `${module.assessmentScore}%` : 'No records available.'}
+                                </div>
+                              </div>
+                              <div className="parent-module-card__side">
+                                <ModuleStatusChip status={module.status} />
+                                <span>{Number(module.progress || 0)}%</span>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyState title="No modules available." subtitle={`${level.label} modules will appear when the curriculum module table has active records.`} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {showBadges && (
+          <section className="parent-section">
+            <div className="parent-section__head">
+              <div>
+                <div className="parent-section__title">Badges & Achievements</div>
+                <div className="parent-section__sub">Existing LinawLetra badge system, shown as read-only for parents.</div>
+              </div>
+              <StatusChip variant="progress">{earnedBadgeIds.size} earned</StatusChip>
+            </div>
+            {!selectedChild ? (
+              <EmptyState title="No children enrolled yet." subtitle="Badges appear after a child is linked to your account." />
+            ) : (
+              <>
+                {earnedBadgeIds.size === 0 && (
+                  <EmptyState title="No badges earned yet." subtitle="Badges will unlock as your child completes learning activities." />
+                )}
+                <div className="parent-badge-grid">
+                  {badgeCatalog.map((badge) => (
+                    <article key={badge.id} className={`parent-badge-card ${badge.earned ? 'is-earned' : 'is-locked'}`}>
+                      <img src={badge.image} alt="" className="parent-badge-card__image" aria-hidden="true" />
+                      <div>
+                        <div className="parent-list-row__title">{badge.name}</div>
+                        <div className="parent-list-row__meta">{badge.description}</div>
+                        <StatusChip variant={badge.earned ? 'completed' : 'progress'}>{badge.earned ? 'Earned' : 'Locked'}</StatusChip>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
+        {showDownloads && (
+          <section className="parent-section">
+            <div className="parent-section__head">
+              <div>
+                <div className="parent-section__title">Download Reports</div>
+                <div className="parent-section__sub">Generate the existing PDF report for the selected child.</div>
+              </div>
+            </div>
+            {!selectedChild ? (
+              <EmptyState title="No children enrolled yet." subtitle="PDF reports appear after a child is linked to your account." />
+            ) : reportLoading ? (
+              <div className="parent-list-row">Preparing report...</div>
+            ) : reportError ? (
+              <div className="parent-error">{reportError}</div>
+            ) : (
+              <div className="parent-download-panel">
+                <div>
+                  <div className="parent-section__title">{selectedChild?.name || 'Selected child'}</div>
+                  <div className="parent-section__sub">The PDF uses the same real report data shown in Child Reports.</div>
+                </div>
+                <button type="button" className="parent-btn parent-btn--primary" onClick={handleDownloadReport}>
+                  Download PDF Report
+                </button>
+              </div>
             )}
           </section>
         )}

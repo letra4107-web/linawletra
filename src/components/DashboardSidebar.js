@@ -3,8 +3,10 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import {
   FiBarChart2,
+  FiAward,
   FiBookOpen,
   FiCalendar,
+  FiDownload,
   FiFileText,
   FiGrid,
   FiLogOut,
@@ -68,9 +70,12 @@ export default function DashboardSidebar({
         return [
           { path: '/parent/summary', label: 'Dashboard', icon: <FiGrid /> },
           { path: '/parent/children', label: 'My Children', icon: <FiUsers /> },
+          { path: '/parent/progress', label: 'Progress Report', icon: <FiBarChart2 /> },
           { path: '/parent/schedules', label: 'Calendar', icon: <FiCalendar /> },
-          { path: '/parent/reports', label: 'Reports', icon: <FiFileText /> },
-          { path: '/parent/profile', label: 'Profile', icon: <FiUser /> },
+          { path: '/parent/modules', label: 'Modules', icon: <FiBookOpen /> },
+          { path: '/parent/badges', label: 'Badges & Achievements', icon: <FiAward /> },
+          { path: '/parent/reports', label: 'Child Reports', icon: <FiFileText /> },
+          { path: '/parent/downloads', label: 'Download Reports', icon: <FiDownload /> },
           { path: '/parent/settings', label: 'Settings', icon: <FiSettings /> },
         ];
       case 'student':
