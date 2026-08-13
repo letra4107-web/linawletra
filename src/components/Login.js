@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { supabase } from '../config/supabase';
 import { validateEmail } from '../services/validation';
 import { authService } from '../services/api';
 import { AuthContext } from '../context/AuthContext';
@@ -183,7 +184,17 @@ export default function Login() {
 
       if (response.data?.success && response.data?.user) {
         const token = response.data.token || response.data.session?.access_token;
-        login(response.data.user, token);
+        const refreshToken = response.data.session?.refresh_token;
+
+        if (token && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: token,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) throw sessionError;
+        }
+
+        login(response.data.user, token && !refreshToken ? token : null);
 
         const normalizedRole = String(response.data.user.role || '').toLowerCase();
         if (normalizedRole === 'parent') navigate('/parent/summary', { replace: true });

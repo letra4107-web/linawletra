@@ -93,9 +93,10 @@ const verifyAdmin = async (req, res, next) => {
 
     const decodedToken = await verifyTokenWithCache(token);
     let role = String(decodedToken.role || 'user').toLowerCase();
+    let dbUser = null;
 
     if (decodedToken.email) {
-      const dbUser = await User.findOne({ uid: decodedToken.uid, email: decodedToken.email.toLowerCase() }).catch(() => null);
+      dbUser = await User.findOne({ uid: decodedToken.uid, email: decodedToken.email.toLowerCase() }).catch(() => null);
       if (dbUser?.role) {
         role = String(dbUser.role).toLowerCase();
       }

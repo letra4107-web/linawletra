@@ -115,6 +115,22 @@ function RoleBasedRedirect() {
   }
 }
 
+function AdminAliasRedirect() {
+  const sectionMap = {
+    users: 'users',
+    teachers: 'teachers',
+    analytics: 'analytics',
+    reports: 'reports',
+    archive: 'users',
+    settings: 'system-settings',
+    'system-settings': 'system-settings',
+    communication: 'communication',
+    content: 'content',
+  };
+  const path = window.location.pathname.split('/').filter(Boolean)[1] || 'overview';
+  return <Navigate to={`/admin-dashboard/${sectionMap[path] || 'overview'}`} replace />;
+}
+
 function AppRoutes() {
   const { user } = useContext(AuthContext);
 
@@ -168,7 +184,8 @@ function AppRoutes() {
           <Route path="ai-settings" element={<AISettings />} />
           <Route path="system-settings" element={<SystemSettings />} />
         </Route>
-        <Route path="/admin" element={<Navigate to="/admin-dashboard/overview" replace />} />
+        <Route path="/admin" element={<PrivateRoute allowedRoles={['admin']}><Navigate to="/admin-dashboard/overview" replace /></PrivateRoute>} />
+        <Route path="/admin/:section" element={<PrivateRoute allowedRoles={['admin']}><AdminAliasRedirect /></PrivateRoute>} />
 
         <Route path="/student-dashboard" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />

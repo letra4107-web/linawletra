@@ -1045,7 +1045,7 @@ const StudentDashboard = () => {
   // Get accuracy explanation based on score
   const getAccuracyExplanation = (accuracyScore, spoken, target) => {
     if (accuracyScore === 100) {
-      return "Perfect pronunciation! ??";
+      return 'Perfect pronunciation!';
     } else if (accuracyScore >= 80) {
       return "Great pronunciation, just minor differences";
     } else if (accuracyScore >= 60) {

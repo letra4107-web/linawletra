@@ -81,7 +81,7 @@ const createOrUpdateUserProfile = async (authUser, profileData) => {
 };
 
 const createAdmin = async () => {
-  const email = 'admin@linawletra.app';
+  const email = 'admin@linawletra.com';
   const password = 'Admin123!';
   const profile = {
     firstName: 'Admin',

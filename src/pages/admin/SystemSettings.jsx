@@ -1,8 +1,18 @@
-import React, { useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 
 export default function SystemSettings() {
-  const [profile, setProfile] = useState({ fullName: 'Admin User', email: 'admin@linaw.com' });
+  const { user } = useContext(AuthContext);
+  const initialProfile = useMemo(() => ({
+    fullName: user?.displayName || user?.name || 'Admin User',
+    email: user?.email || '',
+  }), [user?.displayName, user?.email, user?.name]);
+  const [profile, setProfile] = useState(initialProfile);
   const [preferences, setPreferences] = useState({ emailNotifications: true, twoFactorAuth: false, maintenanceMode: false });
+
+  useEffect(() => {
+    setProfile(initialProfile);
+  }, [initialProfile]);
 
   const handleProfileChange = (field, value) => setProfile((prev) => ({ ...prev, [field]: value }));
   const handlePreferenceChange = (field, value) => setPreferences((prev) => ({ ...prev, [field]: value }));
