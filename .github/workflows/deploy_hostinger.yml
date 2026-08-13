@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HOSTINGER_SFTP_PRIVATE_KEY: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+      HOSTINGER_SFTP_PASSWORD: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,13 +30,21 @@ jobs:
         run: |
           if [ ! -f build/.htaccess ]; then echo "ERROR: build/.htaccess missing"; exit 1; fi
 
+      - name: Validate Hostinger credentials
+        run: |
+          if [ -z "$HOSTINGER_SFTP_PRIVATE_KEY" ] && [ -z "$HOSTINGER_SFTP_PASSWORD" ]; then
+            echo "::error::Set HOSTINGER_SFTP_PRIVATE_KEY or HOSTINGER_SFTP_PASSWORD in GitHub Actions secrets."
+            exit 1
+          fi
+
       - name: Remove remote files (SSH)
-        if: ${{ env.HOSTINGER_SFTP_PRIVATE_KEY != '' }}
+        if: ${{ env.HOSTINGER_SFTP_PRIVATE_KEY != '' || env.HOSTINGER_SFTP_PASSWORD != '' }}
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.HOSTINGER_SFTP_HOST }}
           username: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
           key: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+          password: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SFTP_PORT || '22' }}
           script: |
             set -e
@@ -53,6 +62,7 @@ jobs:
           host: ${{ secrets.HOSTINGER_SFTP_HOST }}
           username: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
           key: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+          password: ${{ secrets.HOSTINGER_SFTP_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SFTP_PORT || '22' }}
           source: "build/"
           target: ${{ secrets.HOSTINGER_SFTP_TARGET }}
