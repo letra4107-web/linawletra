@@ -8,22 +8,45 @@ const unwrapStudents = (payload) => {
   return [];
 };
 
+const isGenericStudentName = (value) =>
+  ['student', 'child', 'learner'].includes(String(value || '').trim().toLowerCase());
+
+const firstRealName = (...values) => {
+  const real = values.find((value) => {
+    const text = String(value || '').trim();
+    return text && !isGenericStudentName(text);
+  });
+  return real || values.find((value) => String(value || '').trim()) || '';
+};
+
 const normalizeChild = (child = {}) => {
   const user = child.user || child.users || child.student || child.profile || {};
   const metadata = user.metadata || child.metadata || {};
+  const raw = child.raw || {};
+  const rawUser = raw.user || raw.users || {};
+  const rawMetadata = rawUser.metadata || raw.metadata || {};
   const id = child.id || child.student_id || child._id;
   const userId = child.user_id || user.id || child.uid || id;
-  const name =
-    child.name ||
-    child.full_name ||
-    user.name ||
-    user.displayName ||
-    user.display_name ||
-    metadata.displayName ||
-    [metadata.firstName || user.first_name, metadata.lastName || user.last_name].filter(Boolean).join(' ') ||
-    child.email ||
-    user.email ||
-    'Child';
+  const name = firstRealName(
+    child.name,
+    child.full_name,
+    user.name,
+    user.displayName,
+    user.display_name,
+    metadata.displayName,
+    raw.name,
+    raw.full_name,
+    rawUser.name,
+    rawUser.displayName,
+    rawUser.display_name,
+    rawMetadata.displayName,
+    [metadata.firstName || user.first_name, metadata.lastName || user.last_name].filter(Boolean).join(' '),
+    [rawMetadata.firstName || rawUser.first_name, rawMetadata.lastName || rawUser.last_name].filter(Boolean).join(' '),
+    child.email,
+    user.email,
+    rawUser.email,
+    'Child'
+  );
 
   return {
     ...child,
@@ -68,7 +91,13 @@ export const parentDashboardApi = {
           try {
             const statsRes = await progressService.getCanonicalStats(normalized.studentId);
             const stats = statsRes?.data?.data ?? statsRes?.data ?? {};
-            return normalizeChild({ ...normalized, ...stats });
+            return normalizeChild({
+              ...normalized,
+              ...stats,
+              name: firstRealName(normalized.name, stats.name),
+              user: normalized.user || normalized.raw?.user,
+              raw: normalized.raw || normalized,
+            });
           } catch {
             return normalized;
           }
@@ -92,7 +121,13 @@ export const parentDashboardApi = {
           try {
             const statsRes = await progressService.getCanonicalStats(normalized.studentId);
             const stats = statsRes?.data?.data ?? statsRes?.data ?? {};
-            return normalizeChild({ ...normalized, ...stats });
+            return normalizeChild({
+              ...normalized,
+              ...stats,
+              name: firstRealName(normalized.name, stats.name),
+              user: normalized.user || normalized.raw?.user,
+              raw: normalized.raw || normalized,
+            });
           } catch {
             return normalized;
           }
@@ -111,9 +146,12 @@ export const parentDashboardApi = {
       ]);
       const studentData = studentRes?.data?.data ?? studentRes?.data ?? {};
       const dashboardData = dashboardRes?.data?.data ?? dashboardRes?.data ?? {};
+      const rawStudent = studentData.student || studentData || {};
       const student = normalizeChild({
-        ...(studentData.student || studentData || {}),
+        ...rawStudent,
         ...(dashboardData || {}),
+        name: firstRealName(rawStudent.name, dashboardData?.name),
+        raw: rawStudent,
       });
       return {
         ...dashboardData,

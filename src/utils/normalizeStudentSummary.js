@@ -16,6 +16,17 @@ const normalizeHistory = (input = {}) => {
 const toTimestamp = (item = {}) =>
   item.timestamp || item.created_at || item.createdAt || item.completed_at || item.completedAt || item.date || null;
 
+const isGenericStudentName = (value) =>
+  ['student', 'child', 'learner'].includes(String(value || '').trim().toLowerCase());
+
+const firstRealName = (...values) => {
+  const real = values.find((value) => {
+    const text = String(value || '').trim();
+    return text && !isGenericStudentName(text);
+  });
+  return real || values.find((value) => String(value || '').trim()) || '';
+};
+
 const countWeeklyPracticeDays = (history = []) => {
   const now = Date.now();
   const weekAgo = now - (7 * 24 * 60 * 60 * 1000);
@@ -38,15 +49,19 @@ export function normalizeStudentSummary(input = {}) {
   const source = input.stats ? { ...input, ...input.stats } : input;
   const raw = source.raw || source;
   const user = raw.user || raw.users || source.user || {};
-  const name =
-    source.name ||
-    raw.name ||
-    raw.full_name ||
-    user.name ||
-    user.display_name ||
-    user.displayName ||
-    user.email ||
-    'Student';
+  const metadata = user.metadata || source.metadata || raw.metadata || {};
+  const name = firstRealName(
+    source.name,
+    raw.name,
+    raw.full_name,
+    user.name,
+    user.display_name,
+    user.displayName,
+    metadata.displayName,
+    [metadata.firstName || user.first_name, metadata.lastName || user.last_name].filter(Boolean).join(' '),
+    user.email,
+    'Student'
+  );
 
   const currentPhoneticLevel =
     source.progress?.currentLevel || source.currentPhoneticLevel || raw.current_phonetic_level || 'Easy';
