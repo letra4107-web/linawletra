@@ -8,8 +8,9 @@ import { createStudent,
   updateStudent,
   deleteStudent, } from '../controllers/studentController.js';
 import { supabase } from '../config/supabase.js';
-import { canAccessStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
-import { getManyStudentStats } from '../services/studentStatsService.js';
+import { canAccessStudentResolved, getVisibleStudentIds } from '../utils/studentAccess.js';
+import { getManyStudentStats, getStudentStats } from '../services/studentStatsService.js';
+import { createSimplePdf } from '../utils/simplePdf.js';
 
 const router = express.Router();
 
@@ -97,7 +98,7 @@ router.get('/:id/dashboard', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    if (!canAccessStudent(req, student)) {
+    if (!(await canAccessStudentResolved(req, student))) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -105,6 +106,139 @@ router.get('/:id/dashboard', authMiddleware, async (req, res) => {
     res.json({ student: studentWithUser });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+const noRecords = (value) => {
+  if (value === undefined || value === null || value === '') return 'No records available.';
+  if (Array.isArray(value) && value.length === 0) return 'No records available.';
+  return value;
+};
+
+const buildStudentReport = async (req, studentId) => {
+  let { student, error } = await findStudentByIdOrUserId(studentId);
+
+  if (error || !student) {
+    const ensured = await ensureStudentRecordForAuthenticatedUser(req, studentId);
+    student = ensured.student;
+    error = ensured.error;
+  }
+
+  if (error || !student) {
+    return { status: 404, body: { success: false, message: 'Student not found' } };
+  }
+
+  if (!(await canAccessStudentResolved(req, student))) {
+    return { status: 403, body: { success: false, message: 'You do not have permission to access this student report' } };
+  }
+
+  const [studentWithUser] = await attachUserProfiles(supabase, [student]);
+  const stats = await getStudentStats(student.id);
+  const profile = studentWithUser.user || {};
+  const name = stats?.name || profile.name || profile.metadata?.displayName || profile.email || 'Student';
+  const report = {
+    child: {
+      id: student.id,
+      userId: student.user_id,
+      childId: stats?.childId || student.child_id || null,
+      name,
+      grade: student.grade_level || 'No records available.',
+      readingLevel: stats?.level || student.reading_level || 'No records available.',
+      currentModule: stats?.currentModule || 'No records available.',
+    },
+    summary: {
+      overallProgress: stats?.progress?.percentage ?? 0,
+      practiceAttempts: stats?.totalAttempts ?? 0,
+      accuracy: stats?.accuracy ?? 0,
+      wordsPracticed: stats?.totalAttempts ?? 0,
+      wordsMastered: stats?.wordMastery?.mastered ?? 0,
+      difficultWords: stats?.wordMasteryDetail?.difficult || [],
+      modulesCompleted: stats?.modulesCompleted ?? 0,
+      assessmentsPassed: stats?.assessmentsPassed ?? 0,
+      xp: stats?.xp ?? 0,
+      streak: stats?.streak ?? 0,
+      longestStreak: stats?.longestStreak ?? 0,
+      activeDays: stats?.activeDays ?? 0,
+      learningTime: stats?.learningTimeAvailable ? `${stats.trackedPracticeMinutes} minutes` : 'Learning time tracking is not available yet.',
+    },
+    badges: stats?.badges || [],
+    modules: stats?.modules || { completed: 0, totalRecords: 0, records: [] },
+    assessments: stats?.assessments || { passed: 0, total: 0, records: [] },
+    recentActivity: stats?.recentActivities || [],
+    progressOverTime: stats?.readingProgressOverTime || [],
+    insights: stats?.ruleBasedInsights?.length ? stats.ruleBasedInsights : ['More learning activity is needed to generate insights.'],
+  };
+
+  return { status: 200, body: { success: true, report, stats } };
+};
+
+const buildReportPdfLines = (report) => [
+  `Generated: ${new Date().toISOString()}`,
+  '',
+  'CHILD INFORMATION',
+  `Name: ${noRecords(report.child.name)}`,
+  `Grade: ${noRecords(report.child.grade)}`,
+  `Reading level: ${noRecords(report.child.readingLevel)}`,
+  `Current module: ${noRecords(report.child.currentModule)}`,
+  '',
+  'PROGRESS SUMMARY',
+  `Overall progress: ${report.summary.overallProgress}%`,
+  `Practice attempts: ${report.summary.practiceAttempts}`,
+  `Accuracy: ${report.summary.accuracy}%`,
+  `Words practiced: ${report.summary.wordsPracticed}`,
+  `Words mastered: ${report.summary.wordsMastered}`,
+  `Modules completed: ${report.summary.modulesCompleted}`,
+  `Assessments passed: ${report.summary.assessmentsPassed}`,
+  `XP: ${report.summary.xp}`,
+  `Current streak: ${report.summary.streak}`,
+  `Longest streak: ${report.summary.longestStreak}`,
+  `Active days: ${report.summary.activeDays}`,
+  `Learning time: ${report.summary.learningTime}`,
+  '',
+  'DIFFICULT WORDS',
+  noRecords((report.summary.difficultWords || []).map((row) => row.word).filter(Boolean).join(', ')),
+  '',
+  'BADGES',
+  noRecords((report.badges || []).map((badge) => badge.id || badge.name).filter(Boolean).join(', ')),
+  '',
+  'RECENT LEARNING ACTIVITY',
+  ...((report.recentActivity || []).length
+    ? report.recentActivity.slice(0, 8).map((item) => `${item.lessonTitle || item.activityType || 'Activity'} - ${item.completedAt || 'No date'}${item.score != null ? ` - ${Math.round(Number(item.score))}%` : ''}`)
+    : ['No records available.']),
+  '',
+  'PROGRESS OVER TIME',
+  ...((report.progressOverTime || []).length
+    ? report.progressOverTime.map((point) => `${point.date}: ${point.value}%`)
+    : ['No records available.']),
+  '',
+  'RULE-BASED INSIGHTS',
+  ...((report.insights || []).length ? report.insights : ['More learning activity is needed to generate insights.']),
+];
+
+router.get('/:id/report', authMiddleware, async (req, res) => {
+  try {
+    const result = await buildStudentReport(req, req.params.id);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Students] Report error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to build student report' });
+  }
+});
+
+router.get('/:id/report/pdf', authMiddleware, async (req, res) => {
+  try {
+    const result = await buildStudentReport(req, req.params.id);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+
+    const report = result.body.report;
+    const pdf = createSimplePdf(`LinawLetra Parent Report - ${report.child.name}`, buildReportPdfLines(report));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="parent-report-${req.params.id}.pdf"`);
+    res.setHeader('Content-Length', pdf.length);
+    return res.send(pdf);
+  } catch (error) {
+    console.error('[Students] PDF report error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to generate student report PDF' });
   }
 });
 

@@ -216,6 +216,8 @@ export const studentService = {
   },
   getStudent: (id) => axiosInstance.get(`/students/${id}`),
   getStudentDashboard: (id) => axiosInstance.get(`/students/${id}/dashboard`),
+  getStudentReport: (id) => axiosInstance.get(`/students/${id}/report`),
+  downloadStudentReportPdf: (id) => axiosInstance.get(`/students/${id}/report/pdf`, { responseType: 'blob' }),
   getDashboardData: (id) => axiosInstance.get(`/progress/${id}/stats`),
   getCanonicalStats: (id) => axiosInstance.get(`/progress/${id}/stats`),
   updateStudent: (id, data) => axiosInstance.put(`/students/${id}`, data),

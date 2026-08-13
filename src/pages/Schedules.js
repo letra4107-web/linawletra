@@ -378,7 +378,8 @@ export default function Schedules() {
           </div>
           <div className="calendar-summary-card">
             <span><FiClock /> {summary.minutesLabel || 'Tracked Practice Minutes'}</span>
-            <strong>{summary.trackedPracticeMinutes ?? 0}</strong>
+            <strong>{summary.learningTimeAvailable ? summary.trackedPracticeMinutes : 'Not available'}</strong>
+            {!summary.learningTimeAvailable && <small>Learning time tracking is not available yet.</small>}
           </div>
           <div className="calendar-summary-card">
             <span><FiCheck /> Completed Lessons</span>

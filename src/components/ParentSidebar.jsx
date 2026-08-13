@@ -5,6 +5,8 @@ import {
   FiGrid,
   FiUsers,
   FiBarChart2,
+  FiCalendar,
+  FiFileText,
   FiSettings,
   FiMenu,
   FiX,
@@ -15,6 +17,8 @@ const sidebarItems = [
   { path: '/parent/summary', label: 'Dashboard Overview', icon: <FiGrid /> },
   { path: '/parent/children', label: 'My Children', icon: <FiUsers /> },
   { path: '/parent/progress', label: 'Progress Report', icon: <FiBarChart2 /> },
+  { path: '/parent/schedules', label: 'Calendar', icon: <FiCalendar /> },
+  { path: '/parent/reports', label: 'Reports', icon: <FiFileText /> },
   { path: '/parent/settings', label: 'Settings', icon: <FiSettings /> },
 ];
 

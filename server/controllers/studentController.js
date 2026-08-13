@@ -2,7 +2,7 @@
 import { sendStudentEnrollmentEmail } from '../services/emailService.js';
 import { generateStudentCredentials } from '../services/credentialGenerator.js';
 import { VALID_READING_LEVELS, normalizeReadingLevel } from '../services/readingLevels.js';
-import { canAccessStudent } from '../utils/studentAccess.js';
+import { canAccessStudentResolved, getVisibleStudentIds } from '../utils/studentAccess.js';
 
 const VALID_GRADE_LEVELS = ['1', '2', '3', '4', '5', '6'];
 
@@ -444,12 +444,20 @@ export const getStudentsByParent =async (req, res) => {
 
     console.log('[Get Students] Fetching students for parent:', parentId);
 
-    // Get students linked to this parent, then attach profiles separately so
-    // this route does not depend on Supabase's embedded FK cache name.
+    const visibleStudentIds = await getVisibleStudentIds(req);
+    if (!visibleStudentIds.length) {
+      return res.json({
+        success: true,
+        students: [],
+      });
+    }
+
+    // Get visible students, then attach profiles separately so this route does
+    // not depend on Supabase's embedded FK cache name.
     const { data: students, error } = await supabase
       .from('students')
       .select('*')
-      .eq('parent_id', parentId);
+      .in('id', visibleStudentIds);
 
     if (error) {
       console.error('[Get Students] Error:', error);
@@ -511,7 +519,7 @@ export const getStudent =async (req, res) => {
       });
     }
 
-    if (!canAccessStudent(req, student)) {
+    if (!(await canAccessStudentResolved(req, student))) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to access this student',
@@ -572,7 +580,7 @@ export const updateStudent =async (req, res) => {
       });
     }
 
-    if (!canAccessStudent(req, existingStudent)) {
+    if (!(await canAccessStudentResolved(req, existingStudent))) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to update this student',

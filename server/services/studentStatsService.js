@@ -5,6 +5,7 @@ import { resolveStudent } from '../utils/studentAccess.js';
 const MISSING_TABLE_CODES = new Set(['PGRST205', 'PGRST204', '42P01', '42703']);
 
 const numberOr = (value, fallback = 0) => {
+  if (value === null || value === undefined || value === '') return fallback;
   const next = Number(value);
   return Number.isFinite(next) ? next : fallback;
 };
@@ -148,7 +149,7 @@ export const getStudentStats = async (studentIdOrUserId) => {
   const { child, childProgress } = await resolveChildProgress(student);
   const progressStudentIds = [...new Set([student.id, student.user_id, student.child_id, child?.id].filter(Boolean))];
 
-  const [profile, attempts, lessons, curriculum, mastery, confusions, notifications] = await Promise.all([
+  const [profile, attempts, lessons, curriculum, moduleProgress, assessments, contentAttempts, pronunciationSessions, notifications] = await Promise.all([
     getStudentProfile(student),
     safeSelect('reading_attempts', (query) =>
       query.select('*').in('student_id', progressStudentIds).order('completed_at', { ascending: false }).limit(500)
@@ -159,14 +160,29 @@ export const getStudentStats = async (studentIdOrUserId) => {
     safeSelect('curriculum_progress', (query) =>
       query.select('*, curriculum_items(content)').in('student_id', progressStudentIds).order('updated_at', { ascending: false }).limit(500)
     ),
+    safeSelect('student_module_progress', (query) =>
+      query.select('*, curriculum_modules(title,module_number,reading_level)').in('student_id', progressStudentIds).order('updated_at', { ascending: false }).limit(200)
+    ),
+    safeSelect('assessments', (query) =>
+      query.select('*').in('student_id', progressStudentIds).order('updated_at', { ascending: false }).limit(100)
+    ),
+    safeSelect('student_content_attempts', (query) =>
+      query.select('*').in('student_id', progressStudentIds).order('created_at', { ascending: false }).limit(500)
+    ),
+    safeSelect('pronunciation_practice_sessions', (query) =>
+      query.select('*').in('student_id', progressStudentIds).order('created_at', { ascending: false }).limit(500)
+    ),
+    safeSelect('notifications', (query) =>
+      query.select('*').in('user_id', [student.user_id, student.id].filter(Boolean)).order('created_at', { ascending: false }).limit(20)
+    ),
+  ]);
+
+  const [mastery, confusions] = await Promise.all([
     safeSelect('word_mastery', (query) =>
       query.select('word, mastery_status, avg_phoneme_accuracy, avg_syllable_accuracy, last_attempt_at').in('student_id', progressStudentIds)
     ),
     safeSelect('confusion_patterns', (query) =>
       query.select('pattern_type, occurrence_count').in('student_id', progressStudentIds).order('occurrence_count', { ascending: false }).limit(5)
-    ),
-    safeSelect('notifications', (query) =>
-      query.select('*').in('user_id', [student.user_id, student.id].filter(Boolean)).order('created_at', { ascending: false }).limit(20)
     ),
   ]);
 
@@ -177,9 +193,11 @@ export const getStudentStats = async (studentIdOrUserId) => {
   ].filter((word, index, list) => word && list.indexOf(word) === index);
   const completedLessons = lessons.filter((row) => String(row.status || '').toLowerCase() === 'completed').length;
   const completedCurriculum = curriculum.filter((row) => row.completed_at || row.is_completed || row.status === 'completed').length;
+  const pronunciationScores = pronunciationSessions.map((session) => numberOr(session.accuracy_percentage, null)).filter((score) => score != null);
+  const contentScores = contentAttempts.map((attempt) => numberOr(attempt.accuracy, null)).filter((score) => score != null);
   const attemptScores = attempts.map((attempt) => numberOr(attempt.accuracy_score, null)).filter((score) => score != null);
   const historyScores = history.map((entry) => numberOr(entry.score ?? entry.accuracy ?? entry.accuracy_percentage, null)).filter((score) => score != null);
-  const allScores = attemptScores.length ? attemptScores : historyScores;
+  const allScores = [...attemptScores, ...pronunciationScores, ...contentScores, ...historyScores];
 
   const mobileTotalAttempts = numberOr(childProgress?.total_attempts ?? student.total_attempts, 0);
   const totalAttempts = Math.max(mobileTotalAttempts, attempts.length, history.length);
@@ -206,6 +224,40 @@ export const getStudentStats = async (studentIdOrUserId) => {
   const recentActivity = buildRecentActivity({ history, attempts, lessons, curriculum });
   const wordOfTheDayDate = student.word_of_day_completed_date || childProgress?.word_of_day_completed_date || null;
   const lastActivityAt = toTimestamp(recentActivity[0]) || student.last_practice_date || student.updated_at || null;
+  const learningRows = [...attempts, ...pronunciationSessions, ...contentAttempts, ...lessons, ...curriculum, ...moduleProgress];
+  const activeDays = [...new Set(learningRows.map((row) => String(toTimestamp(row) || '').slice(0, 10)).filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day)))].length;
+  const trackedPracticeSeconds = [...pronunciationSessions, ...contentAttempts]
+    .reduce((sum, row) => sum + numberOr(row.duration_seconds, 0), 0);
+  const completedModules = moduleProgress.filter((row) =>
+    String(row.status || '').toLowerCase() === 'completed' || row.completed_at || row.assessment_passed
+  ).length;
+  const passedAssessments = assessments.filter((row) =>
+    row.completed_at || row.assessment_passed || numberOr(row.overall_score, 0) >= 75
+  ).length;
+  const progressByDateMap = new Map();
+  [...attempts, ...pronunciationSessions, ...contentAttempts].forEach((row) => {
+    const day = String(toTimestamp(row) || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    const score = row.accuracy_score ?? row.accuracy_percentage ?? row.accuracy;
+    const current = progressByDateMap.get(day) || [];
+    if (Number.isFinite(Number(score))) current.push(Number(score));
+    progressByDateMap.set(day, current);
+  });
+  const readingProgressOverTime = [...progressByDateMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, scores]) => ({
+      date,
+      value: scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0,
+    }));
+  const insights = [];
+  if (readingProgressOverTime.length >= 2) {
+    const first = readingProgressOverTime[0].value;
+    const latest = readingProgressOverTime[readingProgressOverTime.length - 1].value;
+    if (latest !== first) insights.push(`Accuracy ${latest > first ? 'improved' : 'changed'} from ${first}% to ${latest}% across recorded practice days.`);
+  }
+  if (completedModules > 0) insights.push(`${completedModules} module${completedModules === 1 ? '' : 's'} completed from recorded module progress.`);
+  const difficultWords = mastery.filter((row) => row.mastery_status === 'difficult').map((row) => row.word).filter(Boolean);
+  if (difficultWords.length) insights.push(`Words needing the most support: ${difficultWords.slice(0, 5).join(', ')}.`);
 
   const statsBase = {
     studentId: student.id,
@@ -229,6 +281,15 @@ export const getStudentStats = async (studentIdOrUserId) => {
     accuracy,
     activitiesCompleted,
     activities_completed: activitiesCompleted,
+    activeDays,
+    active_days: activeDays,
+    trackedPracticeSeconds,
+    tracked_practice_seconds: trackedPracticeSeconds,
+    trackedPracticeMinutes: trackedPracticeSeconds > 0 ? Math.round(trackedPracticeSeconds / 60) : null,
+    tracked_practice_minutes: trackedPracticeSeconds > 0 ? Math.round(trackedPracticeSeconds / 60) : null,
+    learningTimeAvailable: trackedPracticeSeconds > 0,
+    learning_time_available: trackedPracticeSeconds > 0,
+    learningTimeMessage: trackedPracticeSeconds > 0 ? null : 'Learning time tracking is not available yet.',
     completed: activitiesCompleted,
     wordsCompleted,
     words_completed: wordsCompleted,
@@ -267,7 +328,28 @@ export const getStudentStats = async (studentIdOrUserId) => {
     had_streak_break: Boolean(student.had_streak_break),
     recentActivity,
     recentActivities: recentActivity,
+    readingProgressOverTime,
+    reading_progress_over_time: readingProgressOverTime,
+    lessonPerformance: readingProgressOverTime.map((point) => point.value),
+    lesson_performance: readingProgressOverTime.map((point) => point.value),
     history,
+    modules: {
+      current: moduleProgress[0] || null,
+      completed: completedModules,
+      totalRecords: moduleProgress.length,
+      records: moduleProgress,
+    },
+    currentModule: moduleProgress[0]?.curriculum_modules?.title || moduleProgress[0]?.module_id || null,
+    current_module: moduleProgress[0]?.curriculum_modules?.title || moduleProgress[0]?.module_id || null,
+    modulesCompleted: completedModules,
+    modules_completed: completedModules,
+    assessments: {
+      passed: passedAssessments,
+      total: assessments.length,
+      records: assessments,
+    },
+    assessmentsPassed: passedAssessments,
+    assessments_passed: passedAssessments,
     wordMastery: {
       mastered: mastery.filter((row) => row.mastery_status === 'mastered').length,
       needsPractice: mastery.filter((row) => row.mastery_status === 'needs_practice').length,
@@ -279,6 +361,8 @@ export const getStudentStats = async (studentIdOrUserId) => {
       difficult: mastery.filter((row) => row.mastery_status === 'difficult'),
     },
     topConfusions: confusions,
+    insights,
+    ruleBasedInsights: insights,
     notifications,
     lastActivityAt,
     totalLessons: lessons.length,

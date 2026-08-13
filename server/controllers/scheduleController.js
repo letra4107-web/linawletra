@@ -1,6 +1,6 @@
 import Schedule from '../models/Schedule.js';
 import Student from '../models/Student.js';
-import { authorizeStudent, canAccessStudent, getVisibleStudentIds, resolveStudent } from '../utils/studentAccess.js';
+import { authorizeStudent, canAccessStudentResolved, getVisibleStudentIds, resolveStudent } from '../utils/studentAccess.js';
 import { supabase } from '../config/supabase.js';
 
 const MISSING_TABLE_CODES = new Set(['PGRST205', 'PGRST204', '42P01', '42703']);
@@ -372,7 +372,7 @@ export const createSchedule = async (req, res) => {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    if (!canAccessStudent(req, student, { allowAdmin: false })) {
+    if (!(await canAccessStudentResolved(req, student, { allowAdmin: false }))) {
       return res.status(403).json({ message: 'You can only create schedules for students assigned to you.' });
     }
 
@@ -481,6 +481,7 @@ export const getParentCalendar = async (req, res) => {
     });
 
     const trackedPracticeSeconds = learningEvents.reduce((sum, event) => sum + Number(event.durationSeconds || 0), 0);
+    const learningTimeAvailable = trackedPracticeSeconds > 0;
     const completedLessons = learningEvents.filter((event) => event.kind === 'completed_lesson').length;
     const completedPractice = learningEvents.filter((event) => event.kind === 'practice').length;
     const activeDays = [...new Set(learningEvents.map((event) => event.date).filter(Boolean))].length;
@@ -505,8 +506,10 @@ export const getParentCalendar = async (req, res) => {
         completedLessons,
         completedPractice,
         trackedPracticeSeconds,
-        trackedPracticeMinutes: Math.round(trackedPracticeSeconds / 60),
-        minutesLabel: 'Tracked Practice Minutes',
+        trackedPracticeMinutes: learningTimeAvailable ? Math.round(trackedPracticeSeconds / 60) : null,
+        learningTimeAvailable,
+        learningTimeMessage: learningTimeAvailable ? null : 'Learning time tracking is not available yet.',
+        minutesLabel: learningTimeAvailable ? 'Tracked Practice Minutes' : 'Learning Time',
       },
       dataQuality: {
         scheduledActivitiesSource: 'scheduled_activities',
@@ -523,8 +526,10 @@ export const getParentCalendar = async (req, res) => {
           studentId: student.studentId,
           name: student.name,
         })),
-        minutesArePartial: true,
-        minutesNote: 'Minutes include only activity rows with duration_seconds.',
+        minutesArePartial: learningTimeAvailable,
+        minutesNote: learningTimeAvailable
+          ? 'Minutes include only activity rows with duration_seconds.'
+          : 'Learning time tracking is not available yet.',
       },
     });
   } catch (error) {
@@ -551,7 +556,7 @@ export const updateSchedule = async (req, res) => {
     }
 
     const student = await resolveStudentForSchedule(schedule);
-    if (!student || !canAccessStudent(req, student, { allowAdmin: false })) {
+    if (!student || !(await canAccessStudentResolved(req, student, { allowAdmin: false }))) {
       return res.status(403).json({ message: 'You do not have permission to update this schedule' });
     }
 
@@ -581,7 +586,7 @@ export const deleteSchedule = async (req, res) => {
     }
 
     const student = await resolveStudentForSchedule(schedule);
-    if (!student || !canAccessStudent(req, student, { allowAdmin: false })) {
+    if (!student || !(await canAccessStudentResolved(req, student, { allowAdmin: false }))) {
       return res.status(403).json({ message: 'You do not have permission to delete this schedule' });
     }
 

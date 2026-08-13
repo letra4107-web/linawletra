@@ -202,6 +202,18 @@ export default function ParentDashboard() {
   const [confusionPatterns, setConfusionPatterns] = useState([]);
   const [recommendedWords, setRecommendedWords] = useState([]);
   const [aiInsights, setAiInsights] = useState(null);
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [settingsForm, setSettingsForm] = useState({
+    name: user?.displayName || user?.name || '',
+    school: '',
+    grade: '',
+    avatarInitials: '',
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState('');
 
   const currentSection = (section || 'summary').toLowerCase();
 
@@ -329,6 +341,8 @@ export default function ParentDashboard() {
       setProgress(null);
       setActivities(null);
       setWordMastery(null);
+      setReport(null);
+      setReportError('');
       setConfusionPatterns([]);
       setRecommendedWords([]);
       try {
@@ -357,6 +371,61 @@ export default function ParentDashboard() {
       cancelled = true;
     };
   }, [selectedChild]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const childId = selectedChild?.id ?? selectedChild?.studentId;
+    if (currentSection !== 'reports' || !childId) return undefined;
+
+    const loadReport = async () => {
+      setReportLoading(true);
+      setReportError('');
+      try {
+        const nextReport = await parentDashboardApi.getReportByChildId(childId);
+        if (!cancelled) setReport(nextReport);
+      } catch (err) {
+        if (!cancelled) setReportError(err?.response?.data?.message || err?.message || 'Unable to load your child report. Please try again.');
+      } finally {
+        if (!cancelled) setReportLoading(false);
+      }
+    };
+
+    loadReport();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSection, selectedChild]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (currentSection !== 'settings') return undefined;
+
+    const loadSettings = async () => {
+      setSettingsLoading(true);
+      setSettingsMessage('');
+      try {
+        const profile = await parentDashboardApi.getSettings();
+        const metadata = profile?.metadata || {};
+        if (!cancelled) {
+          setSettingsForm({
+            name: profile?.name || user?.displayName || user?.name || '',
+            school: metadata.school || '',
+            grade: metadata.grade || metadata.gradeLevel || '',
+            avatarInitials: metadata.avatarInitials || '',
+          });
+        }
+      } catch (err) {
+        if (!cancelled) setSettingsMessage(err?.response?.data?.message || err?.message || 'Unable to load settings.');
+      } finally {
+        if (!cancelled) setSettingsLoading(false);
+      }
+    };
+
+    loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSection, user?.displayName, user?.name]);
 
   const summaryCards = useMemo(() => {
     const selectedProgress = progress?.student || selectedChild || {};
@@ -409,6 +478,42 @@ export default function ParentDashboard() {
     () => normalizeStudentSummary(selectedStudentForDisplay || {}),
     [selectedStudentForDisplay]
   );
+
+  const reportData = report?.report || report || null;
+
+  const handleDownloadReport = async () => {
+    const childId = selectedChild?.id ?? selectedChild?.studentId;
+    if (!childId) return;
+    try {
+      setReportError('');
+      const response = await parentDashboardApi.downloadReportPdf(childId);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `parent-report-${childId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setReportError(err?.response?.data?.message || err?.message || 'Unable to download the PDF report.');
+    }
+  };
+
+  const handleSettingsSubmit = async (event) => {
+    event.preventDefault();
+    setSettingsSaving(true);
+    setSettingsMessage('');
+    try {
+      await parentDashboardApi.updateSettings(settingsForm);
+      setSettingsMessage('Settings saved.');
+    } catch (err) {
+      setSettingsMessage(err?.response?.data?.message || err?.message || 'Unable to save settings.');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -492,6 +597,7 @@ export default function ParentDashboard() {
   const showRecent = showSummary;
   const showChildren = currentSection === 'children';
   const showSettings = currentSection === 'settings';
+  const showReports = currentSection === 'reports';
 
   return (
     <div className="parent-dashboard-page">
@@ -517,6 +623,10 @@ export default function ParentDashboard() {
             selectedId={selectedChild?.id ?? selectedChild?.studentId}
             onSelect={setSelectedChildId}
           />
+        )}
+
+        {Array.isArray(children) && children.length === 0 && !showChildren && (
+          <EmptyState title="No children enrolled yet." subtitle="Enroll a child or contact the classroom administrator to link an existing child profile." />
         )}
 
         {showSummary && selectedChild && (
@@ -733,7 +843,82 @@ export default function ParentDashboard() {
                 )}
               </div>
             ) : (
-              <EmptyState title="No children enrolled" subtitle="Contact the classroom/admin to enroll your child." />
+              <EmptyState title="No children enrolled yet." subtitle="Contact the classroom/admin to enroll your child." />
+            )}
+          </section>
+        )}
+
+        {showReports && (
+          <section className="parent-section">
+            <div className="parent-section__head">
+              <div>
+                <div className="parent-section__title">Parent Report</div>
+                <div className="parent-section__sub">Real learning history for {selectedChild?.name || 'your selected child'}.</div>
+              </div>
+              {selectedChild && (
+                <button type="button" className="parent-btn parent-btn--primary" onClick={handleDownloadReport}>
+                  Download PDF
+                </button>
+              )}
+            </div>
+
+            {!selectedChild ? (
+              <EmptyState title="No children enrolled yet." subtitle="Reports appear after a child is linked to your account." />
+            ) : reportLoading ? (
+              <div className="parent-list-row">Loading report...</div>
+            ) : reportError ? (
+              <div className="parent-error">{reportError}</div>
+            ) : reportData ? (
+              <div className="parent-report-grid">
+                <div className="parent-child-detail__metric">
+                  <span>Reading Level</span>
+                  <strong>{reportData.child?.readingLevel || 'No records available.'}</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>Current Module</span>
+                  <strong>{reportData.child?.currentModule || 'No records available.'}</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>Accuracy</span>
+                  <strong>{reportData.summary?.accuracy ?? 0}%</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>Practice Attempts</span>
+                  <strong>{reportData.summary?.practiceAttempts ?? 0}</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>Words Mastered</span>
+                  <strong>{reportData.summary?.wordsMastered ?? 0}</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>Modules Completed</span>
+                  <strong>{reportData.summary?.modulesCompleted ?? 0}</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>XP</span>
+                  <strong>{reportData.summary?.xp ?? 0}</strong>
+                </div>
+                <div className="parent-child-detail__metric">
+                  <span>Learning Time</span>
+                  <strong>{reportData.summary?.learningTime || 'Learning time tracking is not available yet.'}</strong>
+                </div>
+                <div className="parent-report-block">
+                  <div className="parent-section__title">Recent Learning Activity</div>
+                  <RecentActivityList items={reportData.recentActivity || []} />
+                </div>
+                <div className="parent-report-block">
+                  <div className="parent-section__title">Insights</div>
+                  <div className="parent-list">
+                    {(reportData.insights || ['More learning activity is needed to generate insights.']).map((item, index) => (
+                      <div key={index} className="parent-list-row">
+                        <div className="parent-list-row__title">{item}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState title="No records available." subtitle="Report data will appear after learning activity is recorded." />
             )}
           </section>
         )}
@@ -746,7 +931,65 @@ export default function ParentDashboard() {
                 <div className="parent-section__sub">Account preferences</div>
               </div>
             </div>
-            <div style={{ display: 'grid', gap: 10 }}>
+            {settingsLoading ? (
+              <div className="parent-list-row">Loading settings...</div>
+            ) : (
+              <form className="parent-form parent-section--form" onSubmit={handleSettingsSubmit}>
+                <div className="parent-list-row" style={{ borderStyle: 'dashed' }}>
+                  <div>
+                    <div className="parent-list-row__title">Profile</div>
+                    <div className="parent-list-row__meta">Email: {user?.email || 'No email available'}</div>
+                  </div>
+                  <StatusChip variant="progress">Info</StatusChip>
+                </div>
+                <div className="parent-form-group">
+                  <label className="parent-label" htmlFor="parent-name">Name</label>
+                  <input
+                    id="parent-name"
+                    className="parent-input"
+                    value={settingsForm.name}
+                    onChange={(event) => setSettingsForm((prev) => ({ ...prev, name: event.target.value }))}
+                  />
+                </div>
+                <div className="parent-form-grid">
+                  <div className="parent-form-group">
+                    <label className="parent-label" htmlFor="parent-school">School</label>
+                    <input
+                      id="parent-school"
+                      className="parent-input"
+                      value={settingsForm.school}
+                      onChange={(event) => setSettingsForm((prev) => ({ ...prev, school: event.target.value }))}
+                    />
+                  </div>
+                  <div className="parent-form-group">
+                    <label className="parent-label" htmlFor="parent-grade">Preferred Grade View</label>
+                    <input
+                      id="parent-grade"
+                      className="parent-input"
+                      value={settingsForm.grade}
+                      onChange={(event) => setSettingsForm((prev) => ({ ...prev, grade: event.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="parent-form-group">
+                  <label className="parent-label" htmlFor="parent-avatar">Avatar Initials</label>
+                  <input
+                    id="parent-avatar"
+                    className="parent-input"
+                    maxLength="4"
+                    value={settingsForm.avatarInitials}
+                    onChange={(event) => setSettingsForm((prev) => ({ ...prev, avatarInitials: event.target.value }))}
+                  />
+                </div>
+                {settingsMessage && <div className="parent-notice">{settingsMessage}</div>}
+                <div className="parent-form-footer">
+                  <button type="submit" className="parent-btn parent-btn--primary" disabled={settingsSaving}>
+                    {settingsSaving ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </div>
+              </form>
+            )}
+            <div style={{ display: 'none' }}>
               <div className="parent-list-row" style={{ borderStyle: 'dashed' }}>
                 <div>
                   <div className="parent-list-row__title">Profile</div>
@@ -754,7 +997,6 @@ export default function ParentDashboard() {
                 </div>
                 <StatusChip variant="progress">Info</StatusChip>
               </div>
-              <EmptyState title="Settings UI placeholder" subtitle="Connect this panel to /api/users/profile or /api/parent/settings when available." />
             </div>
           </section>
         )}

@@ -1,4 +1,4 @@
-import { studentService, progressService, readingService } from './api';
+import { studentService, progressService, readingService, userService } from './api';
 
 const unwrapStudents = (payload) => {
   const data = payload?.data ?? payload;
@@ -135,6 +135,23 @@ export const parentDashboardApi = {
 
   getNotifications: async () => {
     return [];
+  },
+
+  getReportByChildId: async (childId) => {
+    const res = await studentService.getStudentReport(childId);
+    return res?.data?.report || res?.data || null;
+  },
+
+  downloadReportPdf: async (childId) => studentService.downloadStudentReportPdf(childId),
+
+  getSettings: async () => {
+    const res = await userService.getProfile();
+    return res?.data?.user || res?.data || null;
+  },
+
+  updateSettings: async (payload) => {
+    const res = await userService.updateProfile(payload);
+    return res?.data?.user || res?.data || null;
   },
 
   getWordMastery: async (childId) => {
