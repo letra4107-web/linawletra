@@ -27,9 +27,17 @@ const withTimeout = (promise, ms, label) =>
     ),
   ]);
 
+const LOGOUT_TIMEOUT_MS = 4000;
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  // Holds the in-flight logout promise so repeated clicks (or several
+  // sidebar/settings-page logout buttons firing in the same tick) all await
+  // the same signOut() call instead of each starting a new one -- that's
+  // what previously made "click Logout" feel like it needed several tries.
+  const logoutPromiseRef = React.useRef(null);
   const isCustomTokenAuthRef = React.useRef(false);
   // Tracks the id of the user profile currently loaded, so a Supabase auth
   // event that fires for the *same* user (e.g. the SIGNED_IN event that
@@ -201,22 +209,44 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const logout = async () => {
-    try {
-      await logoutUser();
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      setUser(null);
-      loadedUserIdRef.current = null;
-      isCustomTokenAuthRef.current = false;
-      localStorage.removeItem('user');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('token');
-      localStorage.removeItem('verificationOtpSent');
-      localStorage.removeItem('verificationResendAvailableAt');
-      return true;
+  const clearLocalAuthState = () => {
+    setUser(null);
+    loadedUserIdRef.current = null;
+    isCustomTokenAuthRef.current = false;
+    localStorage.removeItem('user');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('token');
+    localStorage.removeItem('verificationOtpSent');
+    localStorage.removeItem('verificationResendAvailableAt');
+  };
+
+  const logout = () => {
+    // Already logging out: return the same in-flight promise instead of
+    // starting a second signOut() call (handles rapid double-clicks and
+    // several logout buttons on the same page firing together).
+    if (logoutPromiseRef.current) {
+      return logoutPromiseRef.current;
     }
+
+    setIsLoggingOut(true);
+    const promise = (async () => {
+      try {
+        // A hung signOut() (e.g. a stuck Supabase auth lock across tabs)
+        // must not leave the user stuck on a protected page forever -- fall
+        // through to clearing local state either way after a short timeout.
+        await withTimeout(logoutUser(), LOGOUT_TIMEOUT_MS, 'supabase.auth.signOut()');
+      } catch (error) {
+        console.error('Logout error:', error);
+      } finally {
+        clearLocalAuthState();
+        setIsLoggingOut(false);
+        logoutPromiseRef.current = null;
+      }
+      return true;
+    })();
+
+    logoutPromiseRef.current = promise;
+    return promise;
   };
 
   const login = (userData, token) => {
@@ -244,7 +274,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isLoggingOut }}>
       {children}
     </AuthContext.Provider>
   );

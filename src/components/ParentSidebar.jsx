@@ -49,12 +49,13 @@ const sidebarGroups = [
 ];
 
 export default function ParentSidebar() {
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout, isLoggingOut } = useContext(AuthContext);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
     try {
       await logout();
     } catch (error) {
@@ -130,11 +131,11 @@ export default function ParentSidebar() {
         </nav>
 
         <div className="parent-sidebar__footer">
-          <button type="button" className="parent-sidebar__logout" onClick={handleLogout}>
+          <button type="button" className="parent-sidebar__logout" onClick={handleLogout} disabled={isLoggingOut}>
             <span className="parent-sidebar__logout-icon">
               <FiLogOut />
             </span>
-            <span className="parent-sidebar__logout-label">Logout</span>
+            <span className="parent-sidebar__logout-label">{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
           </button>
         </div>
       </aside>

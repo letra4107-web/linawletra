@@ -173,7 +173,7 @@ const sectionFromPath = (path = '') => {
 // ============================================================================
 // Educational feedback messages for incorrect pronunciations
 const StudentDashboard = () => {
-  const { user: authUser, logout } = useContext(AuthContext);
+  const { user: authUser, logout, isLoggingOut } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
   const [dateTime, setDateTime] = useState(new Date());
@@ -213,9 +213,16 @@ const StudentDashboard = () => {
   const [selectedModuleNumber, setSelectedModuleNumber] = useState(null);
   const [equippedModuleNumber, setEquippedModuleNumber] = useState(null);
   const [assessmentPreview, setAssessmentPreview] = useState(null);
+  // Interactive module-assessment quiz session: one question at a time, built
+  // entirely on top of the already-verified module-practice pipeline
+  // (modulePronunciation/startModulePractice/handleModuleMicClick). Kept
+  // separate from assessmentPreview (the result modal) and from Practice's
+  // own state, which this feature must not touch.
+  const [assessmentSession, setAssessmentSession] = useState(null);
   const [expectedText, setExpectedText] = useState('');
   const [activePracticeWord, setActivePracticeWord] = useState(null);
   const [activeCurriculumItem, setActiveCurriculumItem] = useState(null);
+  const [wordOfDayItem, setWordOfDayItem] = useState(null);
   const [curriculumSummary, setCurriculumSummary] = useState(null);
   const [curriculumModulesByLevel, setCurriculumModulesByLevel] = useState({});
   const [curriculumLoading, setCurriculumLoading] = useState(false);
@@ -246,6 +253,22 @@ const StudentDashboard = () => {
   const [accuracyExplanation, setAccuracyExplanation] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [canAdvanceCurrentWord, setCanAdvanceCurrentWord] = useState(false);
+  const [modulePronunciation, setModulePronunciation] = useState({
+    target: null,
+    transcribedText: '',
+    statusMessage: '',
+    recognitionResult: 'neutral',
+    recognitionDistance: null,
+    isListening: false,
+    isProcessing: false,
+    recordedAudio: null,
+    status: 'idle',
+    accuracy: null,
+    accuracyExplanation: '',
+    isEvaluating: false,
+    canAdvance: false,
+    feedback: '',
+  });
   const [currentPhoneticLevel, setCurrentPhoneticLevel] = useState('Easy');
   const [progressInCurrentLevel, setProgressInCurrentLevel] = useState(0);
   const [highestPhoneticLevel, setHighestPhoneticLevel] = useState('Easy');
@@ -258,6 +281,12 @@ const StudentDashboard = () => {
   const [confettiPopup, setConfettiPopup] = useState(false);
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
+  const recognitionTimeoutRef = useRef(null);
+  const pronunciationAttemptIdRef = useRef(0);
+  const moduleMediaRecorderRef = useRef(null);
+  const moduleRecognitionRef = useRef(null);
+  const moduleRecognitionTimeoutRef = useRef(null);
+  const modulePronunciationAttemptIdRef = useRef(0);
   const ttsAudioRef = useRef(null);
   // Bumped at the start of every speakTagalog*() call. A request only gets to
   // touch shared audio/highlight state if it's still the latest one when its
@@ -370,7 +399,7 @@ const StudentDashboard = () => {
             history: progressData.history || [],
             ...progressData,
           });
-          assignedLevel = progressData.practiceLevel || progressData.practice_level || progressData.currentLevel || assignedLevel;
+          assignedLevel = progressData.practiceLevel || progressData.practice_level || progressData.readingLevel || progressData.reading_level || progressData.currentLevel || assignedLevel;
           setCompletedWords(progressData.completedWords || progressData.completed_words || []);
           setPerfectWords(progressData.perfectWords || progressData.perfect_words || []);
           setXp(progressData.xp || 0);
@@ -401,7 +430,7 @@ const StudentDashboard = () => {
             console.warn('Practice level fetch failed:', practiceError);
           }
         }
-        const nextLevel = userData.readingLevel || assignedLevel || 'beginner';
+        const nextLevel = userData.readingLevel || userData.reading_level || assignedLevel || 'beginner';
         setPracticeLevel(nextLevel);
         // Only now is it safe to let the save effect write to the backend, and
         // for the achievement check to run -- every real saved value has been
@@ -416,9 +445,27 @@ const StudentDashboard = () => {
   }, [authUser]);
   useEffect(() => {
     return () => {
+      if (recognitionTimeoutRef.current) {
+        clearTimeout(recognitionTimeoutRef.current);
+        recognitionTimeoutRef.current = null;
+      }
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        recognitionRef.current.abort();
+        try { recognitionRef.current.stop(); } catch (error) { /* already stopped */ }
+        try { recognitionRef.current.abort(); } catch (error) { /* already stopped */ }
+      }
+      if (mediaRecorderRef.current) {
+        try { mediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+      }
+      if (moduleRecognitionTimeoutRef.current) {
+        clearTimeout(moduleRecognitionTimeoutRef.current);
+        moduleRecognitionTimeoutRef.current = null;
+      }
+      if (moduleRecognitionRef.current) {
+        try { moduleRecognitionRef.current.stop(); } catch (error) { /* already stopped */ }
+        try { moduleRecognitionRef.current.abort(); } catch (error) { /* already stopped */ }
+      }
+      if (moduleMediaRecorderRef.current) {
+        try { moduleMediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
       }
     };
   }, []);
@@ -484,7 +531,7 @@ const StudentDashboard = () => {
     }
   };
   const handleLogout = async () => {
-    console.log('[Logout] clicked. currentStudentId:', currentStudentId, 'hasLoadedProgress:', hasLoadedProgress);
+    if (isLoggingOut) return;
     try {
       await logout();
     } catch (error) {
@@ -908,6 +955,72 @@ const StudentDashboard = () => {
     }
   };
 
+  const loadNextPracticeItem = async ({ speak = false } = {}) => {
+    if (!currentStudentId) return null;
+    setCurriculumLoading(true);
+    try {
+      const response = await curriculumService.getNextPracticeItem({ studentId: currentStudentId });
+      const payload = response?.data || response || {};
+      const item = payload.item || null;
+      if (!item) {
+        setActiveCurriculumItem(null);
+        setFeedback(`No ${payload.readingLevel || practiceLevel} practice item is ready yet.`);
+        return null;
+      }
+
+      const practiceItem = {
+        ...curriculumItemToPracticeWord(item),
+        sourceCurriculumItemId: item.id,
+        curriculumItemId: null,
+        activityType: 'word_practice',
+      };
+      setActiveCurriculumItem(null);
+      setActivePracticeWord(practiceItem);
+      setHomographPanelOpenId(null);
+      setExpectedText(item.content);
+      resetPracticeAttemptState();
+      if (speak) {
+        setTimeout(() => {
+          speakTagalog(practiceItem.accentedSpelling || practiceItem.word, { trackSyllables: true });
+        }, 150);
+      }
+      return item;
+    } catch (error) {
+      console.warn('Practice curriculum item fetch failed; using recommendations if available:', error.message);
+      setActiveCurriculumItem(null);
+      return null;
+    } finally {
+      setCurriculumLoading(false);
+    }
+  };
+
+  const loadWordOfDay = async () => {
+    if (!currentStudentId) return null;
+    try {
+      const response = await curriculumService.getWordOfDay({ studentId: currentStudentId });
+      const payload = response?.data || response || {};
+      const item = payload.item || null;
+      if (!item || item.reading_level !== payload.readingLevel) {
+        setWordOfDayItem(null);
+        return null;
+      }
+      const practiceItem = {
+        ...curriculumItemToPracticeWord(item),
+        id: `word-of-day-${payload.date}-${item.id}`,
+        sourceCurriculumItemId: item.id,
+        curriculumItemId: null,
+        activityType: 'word_of_day',
+        wordOfDayDate: payload.date,
+      };
+      setWordOfDayItem(practiceItem);
+      return practiceItem;
+    } catch (error) {
+      console.warn('Word of the Day fetch failed:', error.message);
+      setWordOfDayItem(null);
+      return null;
+    }
+  };
+
   const loadCurriculumModules = async ({ level = selectedLibraryLevel, silent = false } = {}) => {
     if (!currentStudentId || userRole !== 'student') return [];
     if (!silent) setCurriculumLoading(true);
@@ -929,17 +1042,18 @@ const StudentDashboard = () => {
   useEffect(() => {
     if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return;
     let isMounted = true;
-    loadNextCurriculumItem().then((item) => {
+    loadNextPracticeItem().then((item) => {
       if (!isMounted || item) return;
-      setFeedback('No curriculum item is ready yet. Loading a recommended practice word if one is available.');
+      setFeedback('No practice item is ready yet. Loading a recommended practice word if one is available.');
     });
+    loadWordOfDay();
     ['Beginner', 'Intermediate', 'Advanced'].forEach((level) => {
       loadCurriculumModules({ level, silent: true });
     });
     return () => {
       isMounted = false;
     };
-  }, [hasLoadedProgress, currentStudentId, userRole]);
+  }, [hasLoadedProgress, currentStudentId, userRole, practiceLevel]);
 
   useEffect(() => {
     if (!hasLoadedProgress || !currentStudentId || userRole !== 'student') return;
@@ -969,7 +1083,6 @@ const StudentDashboard = () => {
     setWordsCompleted(Number(studentProgress.wordsCompleted ?? studentProgress.words_completed ?? 0));
     setCompletedWords(Array.isArray(studentProgress.completedWords) ? studentProgress.completedWords : Array.isArray(studentProgress.completed_words) ? studentProgress.completed_words : []);
     setAchievements(Number(studentProgress.achievements || studentProgress.badges?.length || studentProgress.unlockedAchievementIds?.length || 0));
-    setAccuracy(Number(studentProgress.accuracy || 0));
     setProgressInCurrentLevel(Number(studentProgress.progress?.completed ?? studentProgress.progressInCurrentLevel ?? studentProgress.progress_in_level ?? 0));
     setCurrentPhoneticLevel(studentProgress.progress?.currentLevel || studentProgress.currentPhoneticLevel || studentProgress.current_phonetic_level || 'Easy');
     setHighestPhoneticLevel(studentProgress.highestPhoneticLevel || studentProgress.highest_phonetic_level || 'Easy');
@@ -1118,6 +1231,25 @@ const StudentDashboard = () => {
     }
   };
   const resetPracticeAttemptState = () => {
+    pronunciationAttemptIdRef.current += 1;
+    if (recognitionTimeoutRef.current) {
+      clearTimeout(recognitionTimeoutRef.current);
+      recognitionTimeoutRef.current = null;
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.onstart = null;
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onend = null;
+      try { recognitionRef.current.abort(); } catch (error) { /* already stopped */ }
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current) {
+      try { mediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+      mediaRecorderRef.current = null;
+    }
+    setIsListening(false);
+    setIsProcessing(false);
     setCanAdvanceCurrentWord(false);
     setStatus('idle');
     setAccuracy(null);
@@ -1128,6 +1260,43 @@ const StudentDashboard = () => {
     setRecognitionDistance(null);
     setRecordedAudio(null);
     resetSyllableHighlight();
+  };
+
+  const resetModulePronunciationState = ({ keepTarget = true } = {}) => {
+    modulePronunciationAttemptIdRef.current += 1;
+    if (moduleRecognitionTimeoutRef.current) {
+      clearTimeout(moduleRecognitionTimeoutRef.current);
+      moduleRecognitionTimeoutRef.current = null;
+    }
+    if (moduleRecognitionRef.current) {
+      moduleRecognitionRef.current.onstart = null;
+      moduleRecognitionRef.current.onresult = null;
+      moduleRecognitionRef.current.onerror = null;
+      moduleRecognitionRef.current.onend = null;
+      try { moduleRecognitionRef.current.abort(); } catch (error) { /* already stopped */ }
+      moduleRecognitionRef.current = null;
+    }
+    if (moduleMediaRecorderRef.current) {
+      try { moduleMediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+      moduleMediaRecorderRef.current = null;
+    }
+    setModulePronunciation((prev) => ({
+      ...prev,
+      target: keepTarget ? prev.target : null,
+      transcribedText: '',
+      statusMessage: '',
+      recognitionResult: 'neutral',
+      recognitionDistance: null,
+      isListening: false,
+      isProcessing: false,
+      recordedAudio: null,
+      status: 'idle',
+      accuracy: null,
+      accuracyExplanation: '',
+      isEvaluating: false,
+      canAdvance: false,
+      feedback: '',
+    }));
   };
 
   const moveToNextPracticeWord = async () => {
@@ -1144,8 +1313,8 @@ const StudentDashboard = () => {
       return;
     }
 
-    const curriculumItem = await loadNextCurriculumItem({ speak: true });
-    if (curriculumItem) return;
+    const practiceItem = await loadNextPracticeItem({ speak: true });
+    if (practiceItem) return;
 
     const nextRecommendation = recommendedPracticeWords
       .map(recommendationToPracticeWord)
@@ -1195,13 +1364,16 @@ const StudentDashboard = () => {
   };
   const comparePronunciation = async (spoken) => {
     if (isEvaluating) return;
+    const attemptId = pronunciationAttemptIdRef.current + 1;
+    pronunciationAttemptIdRef.current = attemptId;
+    const isCurrentAttempt = () => pronunciationAttemptIdRef.current === attemptId;
     setIsEvaluating(true);
     const expected = expectedText;
     const evaluation = evaluatePronunciation(spoken, expected);
     let { score } = evaluation;
     const { feedback: tagalogFeedback, distance } = evaluation;
-    const isCurriculumAttempt = Boolean(activeCurriculumItem || activePracticeWord?.curriculumItemId);
-    const isWordOfDayAttempt = Boolean(wordOfTheDay) && activePracticeWord?.id === wordOfTheDay?.id;
+    const isWordOfDayAttempt = activePracticeWord?.activityType === 'word_of_day';
+    const isCurriculumAttempt = !isWordOfDayAttempt && Boolean(activeCurriculumItem || activePracticeWord?.curriculumItemId);
     let curriculumAttempt = null;
     let readingAttempt = null;
     if (isCurriculumAttempt) {
@@ -1222,6 +1394,7 @@ const StudentDashboard = () => {
         }
         await loadCurriculumModules({ level: selectedLibraryLevel, silent: true });
       } catch (error) {
+        if (!isCurrentAttempt()) return;
         console.error('Failed to record curriculum attempt:', error);
         setRecognitionResult('error');
         setStatus('incorrect');
@@ -1247,6 +1420,7 @@ const StudentDashboard = () => {
           score = readingAttempt.result.accuracyScore;
         }
       } catch (error) {
+        if (!isCurrentAttempt()) return;
         console.error('Failed to record word attempt:', error);
         setRecognitionResult('error');
         setStatus('incorrect');
@@ -1259,9 +1433,12 @@ const StudentDashboard = () => {
         return;
       }
     }
+    if (!isCurrentAttempt()) return;
+
     const passedAttempt = score >= 80;
     const isClose = score >= 70 && score < 80;
-    const serverAttemptXp = readingAttempt?.studentProgress?.history?.at?.(-1)?.xp;
+    const serverProgress = readingAttempt?.studentProgress || curriculumAttempt?.studentStats || null;
+    const serverAttemptXp = serverProgress?.history?.at?.(-1)?.xp;
     const attemptXp = Number.isFinite(Number(serverAttemptXp)) ? Number(serverAttemptXp) : score === 100
       ? PRONUNCIATION_XP.perfect
       : passedAttempt
@@ -1269,7 +1446,7 @@ const StudentDashboard = () => {
         : isClose
           ? PRONUNCIATION_XP.close
           : PRONUNCIATION_XP.practice;
-    const serverProgressAvailable = !isCurriculumAttempt && Boolean(readingAttempt?.studentProgress);
+    const serverProgressAvailable = Boolean(serverProgress);
     setTranscribedText(spoken);
     setRecognitionDistance(distance);
     setAccuracy(score);
@@ -1289,7 +1466,7 @@ const StudentDashboard = () => {
       timestamp: Date.now(),
     };
     if (serverProgressAvailable) {
-      applyServerStudentProgress(readingAttempt.studentProgress);
+      applyServerStudentProgress(serverProgress);
     } else {
       setProgress((prev) => ({
         ...prev,
@@ -1302,7 +1479,6 @@ const StudentDashboard = () => {
     if (score < 80) {
       const encouragement = ENCOURAGEMENT_MESSAGES[Math.floor(Math.random() * ENCOURAGEMENT_MESSAGES.length)];
       showReassurance(encouragement, 'encourage');
-      playYeheySound();
       setTimeout(() => speakTagalog(expected, { trackSyllables: true }), 900);
       setFeedback(`${tagalogFeedback} Pakinggan mo ito.`);
     }
@@ -1397,21 +1573,53 @@ const StudentDashboard = () => {
       setRecognitionResult('error');
       setFeedback('Speech recognition is not supported by your browser.');
       setStatusMessage('Try a modern browser like Chrome.');
-      return;
-    }
-    if (isListening) {
-      recognitionRef.current?.stop();
-      mediaRecorderRef.current?.stop();
+      setIsListening(false);
+      setIsProcessing(false);
       setStatus('idle');
       return;
     }
-    setIsProcessing(true);
+    if (isListening || status === 'listening') {
+      if (recognitionTimeoutRef.current) {
+        clearTimeout(recognitionTimeoutRef.current);
+        recognitionTimeoutRef.current = null;
+      }
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (error) { /* already stopped */ }
+      }
+      if (mediaRecorderRef.current) {
+        try { mediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+        mediaRecorderRef.current = null;
+      }
+      setIsListening(false);
+      setIsProcessing(false);
+      setStatus('idle');
+      setFeedback('Stopped listening. Tap Say the word when you are ready.');
+      setStatusMessage('');
+      return;
+    }
+    if (recognitionTimeoutRef.current) {
+      clearTimeout(recognitionTimeoutRef.current);
+      recognitionTimeoutRef.current = null;
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.onstart = null;
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onend = null;
+      try { recognitionRef.current.abort(); } catch (error) { /* already stopped */ }
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+    setIsProcessing(false);
     recognition.lang = 'tl-PH';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.continuous = false;
     // Start MediaRecorder for audio recording
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('media_devices_unavailable');
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       const chunks = [];
@@ -1426,8 +1634,14 @@ const StudentDashboard = () => {
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start();
     } catch (error) {
-      console.error('Error starting audio recording:', error);
-      // Continue without recording if audio access fails
+      console.warn('Microphone access failed before speech recognition started:', error?.name || error?.message);
+      setRecognitionResult('error');
+      setFeedback('Microphone permission is needed for pronunciation practice.');
+      setStatusMessage('Please allow microphone access, then try again.');
+      setIsListening(false);
+      setIsProcessing(false);
+      setStatus('idle');
+      return;
     }
     // Web Speech API fires `result` then `end` almost immediately after for
     // continuous=false. `end` used to unconditionally reset isProcessing and
@@ -1439,18 +1653,58 @@ const StudentDashboard = () => {
     // result (or error) already took over the processing state, so it only
     // resets to idle for the no-speech-detected case where neither fired.
     let resultHandled = false;
+    let processingStarted = false;
+    let timeoutRecoveryStarted = false;
+    const stopRecording = () => {
+      if (mediaRecorderRef.current) {
+        try { mediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+        mediaRecorderRef.current = null;
+      }
+    };
+    const clearSpeechTimeout = () => {
+      if (recognitionTimeoutRef.current) {
+        clearTimeout(recognitionTimeoutRef.current);
+        recognitionTimeoutRef.current = null;
+      }
+    };
+    const recoverFromRecognitionIssue = (feedbackMessage, nextStatusMessage) => {
+      clearSpeechTimeout();
+      stopRecording();
+      setIsListening(false);
+      setIsProcessing(false);
+      setStatus('idle');
+      setRecognitionResult('error');
+      setFeedback(feedbackMessage);
+      setStatusMessage(nextStatusMessage);
+    };
     recognition.onstart = () => {
       setIsListening(true);
+      setIsProcessing(false);
       setStatus('listening');
+      setRecognitionResult('neutral');
       setFeedback('Listening... Say the word clearly.');
       setStatusMessage('Listening for Tagalog pronunciation.');
+      clearSpeechTimeout();
+      recognitionTimeoutRef.current = setTimeout(() => {
+        resultHandled = true;
+        timeoutRecoveryStarted = true;
+        try { recognition.abort(); } catch (error) { /* already stopped */ }
+        recoverFromRecognitionIssue("We didn't hear anything. Let's try again!", 'Tap Say the word and speak a little closer to the microphone.');
+      }, 12000);
     };
     recognition.onresult = async (event) => {
       resultHandled = true;
+      processingStarted = true;
+      clearSpeechTimeout();
       setIsListening(false);
-      setStatus('idle');
-      mediaRecorderRef.current?.stop();
-      const spokenWord = event.results[0][0].transcript.toLowerCase().trim();
+      setIsProcessing(true);
+      setStatus('processing');
+      stopRecording();
+      const spokenWord = event.results?.[0]?.[0]?.transcript?.toLowerCase().trim() || '';
+      if (!spokenWord) {
+        recoverFromRecognitionIssue("We didn't catch a word. Let's try again!", 'Please say the word clearly.');
+        return;
+      }
       try {
         await comparePronunciation(spokenWord);
       } finally {
@@ -1458,25 +1712,35 @@ const StudentDashboard = () => {
       }
     };
     recognition.onerror = (event) => {
+      if (timeoutRecoveryStarted && event?.error === 'aborted') {
+        return;
+      }
       resultHandled = true;
-      setIsListening(false);
-      setIsProcessing(false);
-      setStatus('idle');
-      mediaRecorderRef.current?.stop();
-      setRecognitionResult('error');
-      setFeedback("We couldn't hear you clearly. Let's try again!");
-      setStatusMessage('Please try again.');
+      const errorMessages = {
+        'not-allowed': ['Microphone permission is needed for pronunciation practice.', 'Please allow microphone access, then try again.'],
+        'service-not-allowed': ['Speech recognition is blocked in this browser.', 'Check browser microphone and speech settings.'],
+        'audio-capture': ['No microphone was found.', 'Connect or enable a microphone, then try again.'],
+        'no-speech': ["We didn't hear anything. Let's try again!", 'Tap Say the word and speak clearly.'],
+        aborted: ['Listening stopped.', 'Tap Say the word when you are ready.'],
+      };
+      const [feedbackMessage, nextStatusMessage] = errorMessages[event?.error] || ["We couldn't hear you clearly. Let's try again!", 'Please try again.'];
+      recoverFromRecognitionIssue(feedbackMessage, nextStatusMessage);
     };
     recognition.onend = () => {
-      setIsListening(false);
-      mediaRecorderRef.current?.stop();
+      clearSpeechTimeout();
       if (!resultHandled) {
-        setIsProcessing(false);
-        setStatus('idle');
+        recoverFromRecognitionIssue("Listening ended before we heard a word. Let's try again!", 'Tap Say the word and speak clearly.');
+      } else if (!processingStarted) {
+        setIsListening(false);
       }
     };
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (error) {
+      console.warn('Speech recognition failed to start:', error?.name || error?.message);
+      recoverFromRecognitionIssue('Speech recognition could not start.', 'Please wait a moment and try again.');
+    }
   };
   const replayRecognizedWord = () => {
     if (!recordedAudio) {
@@ -1488,6 +1752,313 @@ const StudentDashboard = () => {
       console.error('Error playing recorded audio:', error);
       setFeedback('Unable to play recorded audio.');
     });
+  };
+
+  const compareModulePronunciation = async (spoken) => {
+    const target = modulePronunciation.target;
+    if (!target?.word || modulePronunciation.isEvaluating) return;
+    const attemptId = modulePronunciationAttemptIdRef.current + 1;
+    modulePronunciationAttemptIdRef.current = attemptId;
+    const isCurrentAttempt = () => modulePronunciationAttemptIdRef.current === attemptId;
+    const expected = target.word;
+    const evaluation = evaluatePronunciation(spoken, expected);
+    let { score } = evaluation;
+    const { feedback: tagalogFeedback, distance } = evaluation;
+
+    setModulePronunciation((prev) => ({ ...prev, isEvaluating: true }));
+    try {
+      if (!target.curriculumItemId) {
+        throw new Error('Module item is missing curriculumItemId');
+      }
+      const response = await curriculumService.submitAttempt({
+        curriculumItemId: target.curriculumItemId,
+        spokenText: spoken,
+        context: 'module',
+      });
+      const curriculumAttempt = response?.data || response || {};
+      if (!isCurrentAttempt()) return;
+      if (typeof curriculumAttempt.result?.accuracyScore === 'number') {
+        score = curriculumAttempt.result.accuracyScore;
+      }
+      if (curriculumAttempt.summary) {
+        setCurriculumSummary(curriculumAttempt.summary);
+        if (curriculumAttempt.summary.updatedLevel) {
+          setPracticeLevel(curriculumAttempt.summary.updatedLevel);
+        }
+      }
+      if (curriculumAttempt.studentStats) {
+        applyServerStudentProgress(curriculumAttempt.studentStats);
+      }
+      await loadCurriculumModules({ level: selectedLibraryLevel, silent: true });
+      await refreshCanonicalStats().catch((error) => {
+        console.warn('Canonical stats refresh failed:', error);
+      });
+    } catch (error) {
+      if (!isCurrentAttempt()) return;
+      console.error('Failed to record module pronunciation attempt:', error);
+      setModulePronunciation((prev) => ({
+        ...prev,
+        recognitionResult: 'error',
+        status: 'incorrect',
+        feedback: 'Could not save your module attempt. Please try again.',
+        statusMessage: 'Your module answer was not saved.',
+        isEvaluating: false,
+        isProcessing: false,
+        isListening: false,
+      }));
+      setTimeout(() => {
+        if (isCurrentAttempt()) {
+          setModulePronunciation((prev) => ({ ...prev, status: 'idle' }));
+        }
+      }, 3000);
+      return;
+    }
+
+    if (!isCurrentAttempt()) return;
+
+    const passedAttempt = score >= 80;
+    const isClose = score >= 70 && score < 80;
+    setModulePronunciation((prev) => ({
+      ...prev,
+      transcribedText: spoken,
+      recognitionDistance: distance,
+      accuracy: score,
+      feedback: tagalogFeedback,
+      accuracyExplanation: getAccuracyExplanation(score, spoken, expected),
+      canAdvance: passedAttempt,
+      status: passedAttempt ? 'correct' : isClose ? 'almost' : 'incorrect',
+      recognitionResult: passedAttempt ? 'success' : isClose ? 'almost' : 'error',
+      statusMessage: passedAttempt ? `You said: ${spoken}` : `Mali ang bigkas. Sinabi mo: ${spoken}`,
+      isEvaluating: false,
+      isProcessing: false,
+      isListening: false,
+    }));
+
+    if (passedAttempt) {
+      showReassurance(score === 100 ? 'CONGRATULATIONS!' : 'GOOD JOB!', score === 100 ? 'perfect' : 'success');
+      if (score === 100) {
+        showConfetti();
+        playClapSound();
+      }
+    } else {
+      const encouragement = ENCOURAGEMENT_MESSAGES[Math.floor(Math.random() * ENCOURAGEMENT_MESSAGES.length)];
+      showReassurance(encouragement, 'encourage');
+      setTimeout(() => speakTagalog(expected, { trackSyllables: true }), 900);
+    }
+
+    setTimeout(() => {
+      if (isCurrentAttempt()) {
+        setModulePronunciation((prev) => ({ ...prev, status: 'idle', isEvaluating: false }));
+      }
+    }, 3000);
+  };
+
+  const handleModuleMicClick = async () => {
+    const target = modulePronunciation.target;
+    if (!target?.word) return;
+    const recognition = getSpeechRecognition();
+    if (!recognition) {
+      setModulePronunciation((prev) => ({
+        ...prev,
+        recognitionResult: 'error',
+        feedback: 'Speech recognition is not supported by your browser.',
+        statusMessage: 'Try a modern browser like Chrome.',
+        isListening: false,
+        isProcessing: false,
+        status: 'idle',
+      }));
+      return;
+    }
+
+    if (modulePronunciation.isListening || modulePronunciation.status === 'listening') {
+      if (moduleRecognitionTimeoutRef.current) {
+        clearTimeout(moduleRecognitionTimeoutRef.current);
+        moduleRecognitionTimeoutRef.current = null;
+      }
+      if (moduleRecognitionRef.current) {
+        try { moduleRecognitionRef.current.stop(); } catch (error) { /* already stopped */ }
+      }
+      if (moduleMediaRecorderRef.current) {
+        try { moduleMediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+        moduleMediaRecorderRef.current = null;
+      }
+      setModulePronunciation((prev) => ({
+        ...prev,
+        isListening: false,
+        isProcessing: false,
+        status: 'idle',
+        feedback: 'Stopped listening. Tap Module microphone when you are ready.',
+        statusMessage: '',
+      }));
+      return;
+    }
+
+    if (moduleRecognitionTimeoutRef.current) {
+      clearTimeout(moduleRecognitionTimeoutRef.current);
+      moduleRecognitionTimeoutRef.current = null;
+    }
+    if (moduleRecognitionRef.current) {
+      moduleRecognitionRef.current.onstart = null;
+      moduleRecognitionRef.current.onresult = null;
+      moduleRecognitionRef.current.onerror = null;
+      moduleRecognitionRef.current.onend = null;
+      try { moduleRecognitionRef.current.abort(); } catch (error) { /* already stopped */ }
+      moduleRecognitionRef.current = null;
+    }
+
+    recognition.lang = 'tl-PH';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('media_devices_unavailable');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const chunks = [];
+      mediaRecorder.ondataavailable = (event) => chunks.push(event.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setModulePronunciation((prev) => ({ ...prev, recordedAudio: blob }));
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      moduleMediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+    } catch (error) {
+      console.warn('Module microphone access failed before speech recognition started:', error?.name || error?.message);
+      setModulePronunciation((prev) => ({
+        ...prev,
+        recognitionResult: 'error',
+        feedback: 'Microphone permission is needed for module pronunciation practice.',
+        statusMessage: 'Please allow microphone access, then try again.',
+        isListening: false,
+        isProcessing: false,
+        status: 'idle',
+      }));
+      return;
+    }
+
+    let resultHandled = false;
+    let processingStarted = false;
+    let timeoutRecoveryStarted = false;
+    const stopRecording = () => {
+      if (moduleMediaRecorderRef.current) {
+        try { moduleMediaRecorderRef.current.stop(); } catch (error) { /* already stopped */ }
+        moduleMediaRecorderRef.current = null;
+      }
+    };
+    const clearSpeechTimeout = () => {
+      if (moduleRecognitionTimeoutRef.current) {
+        clearTimeout(moduleRecognitionTimeoutRef.current);
+        moduleRecognitionTimeoutRef.current = null;
+      }
+    };
+    const recoverFromRecognitionIssue = (feedbackMessage, nextStatusMessage) => {
+      clearSpeechTimeout();
+      stopRecording();
+      setModulePronunciation((prev) => ({
+        ...prev,
+        isListening: false,
+        isProcessing: false,
+        status: 'idle',
+        recognitionResult: 'error',
+        feedback: feedbackMessage,
+        statusMessage: nextStatusMessage,
+      }));
+    };
+
+    recognition.onstart = () => {
+      setModulePronunciation((prev) => ({
+        ...prev,
+        isListening: true,
+        isProcessing: false,
+        status: 'listening',
+        recognitionResult: 'neutral',
+        feedback: 'Listening for the module item...',
+        statusMessage: 'Module microphone is listening.',
+      }));
+      clearSpeechTimeout();
+      moduleRecognitionTimeoutRef.current = setTimeout(() => {
+        resultHandled = true;
+        timeoutRecoveryStarted = true;
+        try { recognition.abort(); } catch (error) { /* already stopped */ }
+        recoverFromRecognitionIssue("We didn't hear the module item. Let's try again!", 'Tap Module microphone and speak clearly.');
+      }, 12000);
+    };
+    recognition.onresult = async (event) => {
+      resultHandled = true;
+      processingStarted = true;
+      clearSpeechTimeout();
+      stopRecording();
+      const spokenWord = event.results?.[0]?.[0]?.transcript?.toLowerCase().trim() || '';
+      setModulePronunciation((prev) => ({ ...prev, isListening: false, isProcessing: true, status: 'processing' }));
+      if (!spokenWord) {
+        recoverFromRecognitionIssue("We didn't catch the module item. Let's try again!", 'Please say the module item clearly.');
+        return;
+      }
+      await compareModulePronunciation(spokenWord);
+    };
+    recognition.onerror = (event) => {
+      if (timeoutRecoveryStarted && event?.error === 'aborted') return;
+      resultHandled = true;
+      const errorMessages = {
+        'not-allowed': ['Microphone permission is needed for module pronunciation practice.', 'Please allow microphone access, then try again.'],
+        'service-not-allowed': ['Speech recognition is blocked in this browser.', 'Check browser microphone and speech settings.'],
+        'audio-capture': ['No microphone was found.', 'Connect or enable a microphone, then try again.'],
+        'no-speech': ["We didn't hear anything. Let's try again!", 'Tap Module microphone and speak clearly.'],
+        aborted: ['Module listening stopped.', 'Tap Module microphone when you are ready.'],
+      };
+      const [feedbackMessage, nextStatusMessage] = errorMessages[event?.error] || ["We couldn't hear the module item clearly. Let's try again!", 'Please try again.'];
+      recoverFromRecognitionIssue(feedbackMessage, nextStatusMessage);
+    };
+    recognition.onend = () => {
+      clearSpeechTimeout();
+      if (!resultHandled) {
+        recoverFromRecognitionIssue("Module listening ended before we heard an answer. Let's try again!", 'Tap Module microphone and speak clearly.');
+      } else if (!processingStarted) {
+        setModulePronunciation((prev) => ({ ...prev, isListening: false }));
+      }
+    };
+    moduleRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (error) {
+      console.warn('Module speech recognition failed to start:', error?.name || error?.message);
+      recoverFromRecognitionIssue('Module speech recognition could not start.', 'Please wait a moment and try again.');
+    }
+  };
+
+  const replayModuleRecognizedWord = () => {
+    if (!modulePronunciation.recordedAudio) {
+      setModulePronunciation((prev) => ({ ...prev, feedback: 'No module audio is available. Please record your voice first.' }));
+      return;
+    }
+    const audio = new Audio(URL.createObjectURL(modulePronunciation.recordedAudio));
+    audio.play().catch((error) => {
+      console.error('Error playing module recorded audio:', error);
+      setModulePronunciation((prev) => ({ ...prev, feedback: 'Unable to play recorded module audio.' }));
+    });
+  };
+
+  const moveToNextModuleItem = () => {
+    const target = modulePronunciation.target;
+    if (!target?.moduleNumber || !modulePronunciation.canAdvance) return;
+    const module = moduleRoadmap.find((candidate) => candidate.number === target.moduleNumber) || selectedModule || currentModule;
+    const currentIndex = module.items.findIndex((item) =>
+      String(item.curriculumItemId || item.practiceText || item.content || item.label) ===
+      String(target.curriculumItemId || target.word)
+    );
+    const nextItem = module.items[currentIndex >= 0 ? currentIndex + 1 : 0];
+    if (nextItem) {
+      startModulePractice(module, nextItem);
+      return;
+    }
+    setModulePronunciation((prev) => ({
+      ...prev,
+      canAdvance: false,
+      feedback: 'Module practice items are complete. You can open the assessment when it is ready.',
+      statusMessage: 'Module complete.',
+    }));
   };
   const renderWordHighlight = () => {
     const expectedWords = normalizeText(expectedText).split(' ').filter(Boolean);
@@ -1540,7 +2111,11 @@ const StudentDashboard = () => {
     [searchValue, assessments]
   );
   const lessonsGoal = progress.totalLessons || 7;
-  const completionPercent = Math.min(100, Math.round((Number(progress.completed || 0) / Number(lessonsGoal || 1)) * 100));
+  const lessonsCompleted = Number(progress.lessonsCompleted ?? progress.lessons_completed ?? progress.lessonCompletions ?? progress.lesson_completions ?? 0);
+  const activitiesCompleted = Number(progress.activitiesCompleted || progress.activities_completed || 0);
+  const practiceWordsCompleted = Number(progress.practiceWordsCompleted ?? progress.practice_words_completed ?? wordsCompleted ?? completedWords.length ?? 0);
+  const moduleItemsCompleted = Number(progress.moduleItemsCompleted ?? progress.module_items_completed ?? progress.modules?.itemsCompleted ?? 0);
+  const completionPercent = Math.min(100, Math.round((Number(lessonsCompleted || 0) / Number(lessonsGoal || 1)) * 100));
   const nextLesson = filteredLessons[0] || null;
   const recommendedLesson = sharedLessons.find((item) => getLessonStatus(item) !== 'Completed') || sharedLessons[0] || null;
   const completedLessonCount = sharedLessons.filter((item) => getLessonStatus(item) === 'Completed').length;
@@ -1610,15 +2185,31 @@ const StudentDashboard = () => {
     }
   };
   const xpHistory = useMemo(() => {
-    const history = progress.history || [];
-    if (Array.isArray(history) && history.length > 0) {
-      return history.slice(-7).map((entry) => ({
-        label: entry.date,
-        value: entry.xp,
-      }));
-    }
-    return [];
-  }, [progress.history]);
+    const history = Array.isArray(progress.history) ? progress.history : [];
+    const start = new Date(dateTime);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return {
+        key: date.toISOString().slice(0, 10),
+        label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date).slice(0, 3),
+        value: 0,
+      };
+    });
+    history.forEach((entry) => {
+      const xpValue = Number(entry?.xp || 0);
+      if (!xpValue) return;
+      const raw = getAttemptTimestamp(entry);
+      const time = typeof raw === 'number' ? raw : new Date(raw).getTime();
+      if (!Number.isFinite(time)) return;
+      const key = new Date(time).toISOString().slice(0, 10);
+      const day = days.find((item) => item.key === key);
+      if (day) day.value += xpValue;
+    });
+    return days;
+  }, [dateTime, progress.history]);
   const previewSentence = 'Aa Bb Cc';
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
@@ -1634,7 +2225,6 @@ const StudentDashboard = () => {
   const allTimeAccuracy = totalAttempts > 0
     ? Math.round(accuracySum / totalAttempts)
     : Number(progress.accuracy || 0);
-  const activitiesCompleted = Number(progress.activitiesCompleted || progress.activities_completed || progress.completed || 0);
   // Parity note: this intentionally mirrors mobile's current X/5 formula.
   // It is not a true midnight-reset daily counter; it rolls over every 5 attempts.
   const todayGoalDone = Math.min(totalAttempts % DAILY_GOAL, DAILY_GOAL);
@@ -1649,7 +2239,7 @@ const StudentDashboard = () => {
   const weeklyActivity = useMemo(() => {
     const start = new Date(dateTime);
     start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - start.getDay() + 1);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
     const days = Array.from({ length: 7 }, (_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
@@ -1670,6 +2260,8 @@ const StudentDashboard = () => {
     return days;
   }, [dateTime, history]);
   const weeklyMaxActivity = Math.max(1, ...weeklyActivity.map((day) => day.value));
+  const weeklyXpTotal = xpHistory.reduce((sum, day) => sum + Number(day.value || 0), 0);
+  const weeklyXpMax = Math.max(1, ...xpHistory.map((day) => Number(day.value || 0)));
   const streakDays = progress.streak || 0;
   const greetingHour = dateTime.getHours();
   const timeGreeting = greetingHour < 12 ? 'Magandang umaga' : greetingHour < 18 ? 'Magandang hapon' : 'Magandang gabi';
@@ -1785,15 +2377,22 @@ const StudentDashboard = () => {
     selectedModule.items.length,
     Math.round((selectedModule.progress / 100) * selectedModule.items.length)
   );
+  const currentModuleCompletedItems = Math.min(
+    currentModule.items.length,
+    currentModule.items.filter((item) => item.passed).length || Math.round((currentModule.progress / 100) * currentModule.items.length)
+  );
   const selectedLevelComplete = moduleRoadmap.length > 0 && completedModules.length === moduleRoadmap.length;
   const beginnerRoadmap = buildModuleRoadmapForLevel('Beginner');
   const beginnerModulesComplete = beginnerRoadmap.length > 0 && beginnerRoadmap.every((module) => module.status === 'completed');
-  const openAssessmentPreview = async (module) => {
-    if (!module || module.items.length === 0) return;
-    if (!module.id) {
+  // Submits the full set of quiz responses to the real backend contract
+  // (POST /curriculum/modules/:id/assessment with { attempts }) and feeds the
+  // result into the existing assessmentPreview result modal -- this is the
+  // repurposed tail of the old (silent, no-attempts) openAssessmentPreview.
+  const submitAssessmentAttempts = async (module, attempts) => {
+    if (!module || !module.id) {
       setAssessmentPreview({
-        moduleNumber: module.number,
-        title: module.title,
+        moduleNumber: module?.number,
+        title: module?.title,
         score: null,
         passed: false,
         items: [],
@@ -1801,20 +2400,9 @@ const StudentDashboard = () => {
       });
       return;
     }
-    if (!['assessment-ready', 'completed'].includes(module.status)) {
-      setAssessmentPreview({
-        moduleNumber: module.number,
-        title: module.title,
-        score: null,
-        passed: false,
-        items: module.items.map((item) => item.label || item.practiceText).slice(0, 12),
-        message: 'Finish the required module content before starting the assessment.',
-      });
-      return;
-    }
     setCurriculumLoading(true);
     try {
-      const response = await curriculumService.submitModuleAssessment(module.id);
+      const response = await curriculumService.submitModuleAssessment(module.id, { attempts });
       const payload = response?.data || response || {};
       if (Array.isArray(payload.modules)) {
         setCurriculumModulesByLevel((prev) => ({ ...prev, [selectedLibraryLevel]: payload.modules }));
@@ -1842,6 +2430,120 @@ const StudentDashboard = () => {
     } finally {
       setCurriculumLoading(false);
     }
+  };
+
+  // Builds the multiple-choice options for one assessment question: the
+  // correct item plus real distractors drawn from the item's module siblings
+  // (never fabricated text), shuffled. Falls back to fewer than 4 choices if
+  // the module doesn't have enough distinct sibling items.
+  const buildAssessmentChoices = (module, currentItem, maxChoices = 4) => {
+    const seen = new Set([currentItem.curriculumItemId]);
+    const siblingPool = (module.items || []).filter((item) => {
+      if (!item.curriculumItemId || seen.has(item.curriculumItemId)) return false;
+      seen.add(item.curriculumItemId);
+      return true;
+    });
+    const shuffledSiblings = [...siblingPool].sort(() => Math.random() - 0.5);
+    const distractors = shuffledSiblings.slice(0, Math.max(0, maxChoices - 1));
+    return [currentItem, ...distractors].sort(() => Math.random() - 0.5);
+  };
+
+  // Reads the question aloud (TTS only -- the assessment does not depend on
+  // the microphone/SpeechRecognition pipeline, which can be unreliable for
+  // very short sounds) and generates that question's multiple-choice options.
+  const startAssessmentQuestion = (module, questionIndex) => {
+    const item = module.items[questionIndex];
+    if (!item) return null;
+    const choices = buildAssessmentChoices(module, item);
+    const text = item.label || item.practiceText || item.content;
+    if (text) {
+      setTimeout(() => speakTagalog(text, { trackSyllables: true }), 300);
+    }
+    return choices;
+  };
+
+  // Entry point for the "Start Assessment" button. Keeps the same eligibility
+  // gates the old silent submission used, but now starts an interactive
+  // multiple-choice quiz (question 0 of module.items) instead of submitting
+  // immediately.
+  const startAssessmentQuiz = (module) => {
+    if (!module || module.items.length === 0) return;
+    if (!module.id) {
+      setAssessmentPreview({
+        moduleNumber: module.number,
+        title: module.title,
+        score: null,
+        passed: false,
+        items: [],
+        message: 'Assessment is not available because no real backend module id was returned.',
+      });
+      return;
+    }
+    if (!['assessment-ready', 'completed'].includes(module.status)) {
+      setAssessmentPreview({
+        moduleNumber: module.number,
+        title: module.title,
+        score: null,
+        passed: false,
+        items: module.items.map((item) => item.label || item.practiceText).slice(0, 12),
+        message: 'Finish the required module content before starting the assessment.',
+      });
+      return;
+    }
+    const choices = startAssessmentQuestion(module, 0);
+    setAssessmentSession({ module, questionIndex: 0, responses: [], choices, selectedChoiceId: null, feedback: null });
+  };
+
+  // Aborts an in-progress assessment quiz: clears the session without
+  // submitting whatever partial responses exist.
+  const cancelAssessmentQuiz = () => {
+    window.speechSynthesis?.cancel?.();
+    setAssessmentSession(null);
+  };
+
+  // Records the tapped choice for the current question, shows immediate
+  // correct/incorrect feedback, then either advances to the next question or
+  // (on the last question) submits the full attempts array. Guarded by
+  // `selectedChoiceId` so a second tap on an already-answered question can't
+  // record a duplicate response.
+  const selectAssessmentAnswer = (choice) => {
+    if (!assessmentSession || assessmentSession.selectedChoiceId) return;
+    const { module, questionIndex, responses } = assessmentSession;
+    const currentItem = module.items[questionIndex];
+    if (!currentItem) return;
+
+    const isCorrect = choice.curriculumItemId === currentItem.curriculumItemId;
+    // Represent the selected choice the same way a spoken answer is scored
+    // server-side (compareReadingText(item.content, spokenText)): submitting
+    // the chosen option's own practice text means a correct pick scores 100
+    // and a wrong pick scores low, through the existing scoring pipeline --
+    // no separate assessment-scoring logic needed.
+    const spokenText = choice.practiceText || choice.label || '';
+    const nextResponses = [...responses, { curriculumItemId: currentItem.curriculumItemId, spokenText }];
+
+    setAssessmentSession((prev) => (prev ? {
+      ...prev,
+      selectedChoiceId: choice.curriculumItemId,
+      feedback: isCorrect ? 'correct' : 'incorrect',
+      responses: nextResponses,
+    } : prev));
+
+    const nextIndex = questionIndex + 1;
+    setTimeout(() => {
+      if (nextIndex < module.items.length) {
+        const nextChoices = startAssessmentQuestion(module, nextIndex);
+        setAssessmentSession((prev) => (prev ? {
+          ...prev,
+          questionIndex: nextIndex,
+          choices: nextChoices,
+          selectedChoiceId: null,
+          feedback: null,
+        } : prev));
+      } else {
+        setAssessmentSession(null);
+        submitAssessmentAttempts(module, nextResponses);
+      }
+    }, 1200);
   };
   const todayActivity = useMemo(() => {
     const todayKey = dateTime.toISOString().slice(0, 10);
@@ -1882,7 +2584,7 @@ const StudentDashboard = () => {
     fontSize: `${accessibilitySettings.textSize}px`,
     letterSpacing: accessibilitySettings.letterSpacing === 'wide' ? '0.08em' : 'normal',
   };
-  const wordOfTheDay = activePracticeWord || null;
+  const wordOfTheDay = wordOfDayItem || null;
   const wordOfTheDayAttempts = useMemo(() => {
     if (!wordOfTheDay) return [];
     return (progress.history || []).filter((entry) =>
@@ -1893,6 +2595,10 @@ const StudentDashboard = () => {
   const latestWordOfTheDayAttempt = wordOfTheDayAttempts[wordOfTheDayAttempts.length - 1] || null;
   const hasPracticedWordOfTheDay = Boolean(latestWordOfTheDayAttempt) || completedWords.includes(wordOfTheDay?.word);
   const selectPracticeWord = (practiceWord) => {
+    resetModulePronunciationState({ keepTarget: true });
+    ttsRequestIdRef.current += 1;
+    try { ttsAudioRef.current?.pause?.(); } catch (error) { /* already stopped */ }
+    window.speechSynthesis?.cancel?.();
     setActiveCurriculumItem(null);
     setActivePracticeWord(practiceWord);
     setHomographPanelOpenId(null);
@@ -1902,11 +2608,19 @@ const StudentDashboard = () => {
   const startModulePractice = (module, item) => {
     if (!module || !item) return;
     const practiceText = item.practiceText || item.content || item.label || String(item);
-    selectPracticeWord({
+    ttsRequestIdRef.current += 1;
+    try { ttsAudioRef.current?.pause?.(); } catch (error) { /* already stopped */ }
+    window.speechSynthesis?.cancel?.();
+    resetPracticeAttemptState();
+    resetModulePronunciationState({ keepTarget: false });
+    setModulePronunciation((prev) => ({
+      ...prev,
       id: item.curriculumItemId || `module-${module.number}-${practiceText}`,
-      word: practiceText,
-      accentedSpelling: item.label || practiceText,
-      meaning: module.type === 'Words'
+      target: {
+        id: item.curriculumItemId || `module-${module.number}-${practiceText}`,
+        word: practiceText,
+        accentedSpelling: item.label || practiceText,
+        meaning: module.type === 'Words'
         ? item.kind === 'syllable_practice'
           ? 'Syllable practice from your current module.'
           : item.definition || 'Practice word from your current module.'
@@ -1915,17 +2629,45 @@ const StudentDashboard = () => {
           : ['Sentences', 'Reading'].includes(module.type)
             ? 'Reading practice from your current module.'
             : 'Practice sound from your current phonetics module.',
-      example: null,
-      isHomograph: false,
-      homographGroup: null,
-      difficulty: practiceLevel,
-      itemType: item.itemType || (module.type === 'Words' ? 'word' : 'phonetic'),
-      moduleNumber: module.number,
-      moduleId: module.id,
-      curriculumItemId: item.curriculumItemId,
-    });
-    handleNav('practice');
+        example: null,
+        isHomograph: false,
+        homographGroup: null,
+        difficulty: practiceLevel,
+        itemType: item.itemType || (module.type === 'Words' ? 'word' : 'phonetic'),
+        moduleNumber: module.number,
+        moduleId: module.id,
+        moduleTitle: module.title,
+        curriculumItemId: item.curriculumItemId,
+      },
+      transcribedText: '',
+      statusMessage: '',
+      recognitionResult: 'neutral',
+      recognitionDistance: null,
+      isListening: false,
+      isProcessing: false,
+      recordedAudio: null,
+      status: 'idle',
+      accuracy: null,
+      accuracyExplanation: '',
+      isEvaluating: false,
+      canAdvance: false,
+      feedback: '',
+    }));
+    handleNav('content');
   };
+
+  useEffect(() => {
+    ttsRequestIdRef.current += 1;
+    try { ttsAudioRef.current?.pause?.(); } catch (error) { /* already stopped */ }
+    window.speechSynthesis?.cancel?.();
+    if (activeSection !== 'practice') {
+      resetPracticeAttemptState();
+    }
+    if (activeSection !== 'content') {
+      resetModulePronunciationState({ keepTarget: true });
+    }
+  }, [activeSection]);
+
   const hasPracticePrompt = Boolean(activePracticeWord?.word || expectedText);
   const visiblePracticeLabel = hasPracticePrompt
     ? (activePracticeWord ? activePracticeWord.accentedSpelling : expectedText)
@@ -2042,9 +2784,9 @@ const StudentDashboard = () => {
               <small className="student-sidebar-tier">{tier}</small>
             </span>
           </button>
-          <button type="button" className="student-sidebar-logout" onClick={handleLogout}>
+          <button type="button" className="student-sidebar-logout" onClick={handleLogout} disabled={isLoggingOut}>
             <FiLogOut aria-hidden="true" />
-            <span className="student-sidebar-link-label">Log Out</span>
+            <span className="student-sidebar-link-label">{isLoggingOut ? 'Logging out...' : 'Log Out'}</span>
           </button>
         </div>
       </aside>
@@ -2124,10 +2866,14 @@ const StudentDashboard = () => {
                   onClick={() => {
                     const previewModule = moduleRoadmap.find((module) => module.number === assessmentPreview.moduleNumber) || selectedModule;
                     setAssessmentPreview(null);
-                    startModulePractice(previewModule, previewModule.items[0]);
+                    if (assessmentPreview.passed) {
+                      startModulePractice(previewModule, previewModule.items[0]);
+                    } else {
+                      startAssessmentQuiz(previewModule);
+                    }
                   }}
                 >
-                  {assessmentPreview.passed ? 'Review Module' : 'Practice Again'} <FiChevronRight aria-hidden="true" />
+                  {assessmentPreview.passed ? 'Review Module' : 'Retake Assessment'} <FiChevronRight aria-hidden="true" />
                 </button>
                 {assessmentPreview.passed && (
                   <button
@@ -2143,6 +2889,81 @@ const StudentDashboard = () => {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+        {assessmentSession && (
+          <div className="student-assessment-preview student-assessment-quiz" role="dialog" aria-modal="true" aria-labelledby="student-assessment-quiz-title">
+            <div className="student-assessment-preview-card student-assessment-quiz-card">
+              <button
+                type="button"
+                className="student-assessment-close"
+                onClick={cancelAssessmentQuiz}
+                aria-label="Close assessment"
+              >
+                <FiX aria-hidden="true" />
+              </button>
+              <span className="student-library-kicker">Module {assessmentSession.module.number} Assessment</span>
+              <h3 id="student-assessment-quiz-title">PAGSUSULIT</h3>
+              <p className="student-assessment-quiz-subheader">
+                Tanong {assessmentSession.questionIndex + 1} sa {assessmentSession.module.items.length}
+              </p>
+              <div
+                className="student-assessment-quiz-progress"
+                role="progressbar"
+                aria-valuenow={assessmentSession.questionIndex + 1}
+                aria-valuemin={1}
+                aria-valuemax={assessmentSession.module.items.length}
+              >
+                <div
+                  className="student-assessment-quiz-progress-fill"
+                  style={{ width: `${((assessmentSession.questionIndex + 1) / assessmentSession.module.items.length) * 100}%` }}
+                />
+              </div>
+              {(() => {
+                const currentItem = assessmentSession.module.items[assessmentSession.questionIndex];
+                if (!currentItem) return null;
+                const questionText = currentItem.label || currentItem.practiceText || currentItem.content;
+                return (
+                  <div className="student-assessment-quiz-word">
+                    <button
+                      type="button"
+                      className="button-large button-secondary student-assessment-quiz-listen"
+                      onClick={() => speakTagalog(questionText, { trackSyllables: true })}
+                    >
+                      <FiVolume2 aria-hidden="true" /> Pakinggan muli
+                    </button>
+                    <p className="student-assessment-quiz-instruction">
+                      {assessmentSession.feedback
+                        ? (assessmentSession.feedback === 'correct' ? 'Tama! Magaling.' : `Mali. Ang tamang sagot ay "${questionText}".`)
+                        : 'I-tap ang narinig mong sagot.'}
+                    </p>
+                    <div className="student-assessment-quiz-choices" role="group" aria-label="Answer choices">
+                      {(assessmentSession.choices || []).map((choice) => {
+                        const isSelected = assessmentSession.selectedChoiceId === choice.curriculumItemId;
+                        const isCorrectChoice = choice.curriculumItemId === currentItem.curriculumItemId;
+                        const answered = Boolean(assessmentSession.selectedChoiceId);
+                        const stateClass = answered && isCorrectChoice
+                          ? 'is-correct'
+                          : answered && isSelected
+                            ? 'is-incorrect'
+                            : '';
+                        return (
+                          <button
+                            key={choice.curriculumItemId}
+                            type="button"
+                            className={`student-assessment-quiz-choice ${stateClass}`}
+                            onClick={() => selectAssessmentAnswer(choice)}
+                            disabled={answered}
+                          >
+                            {choice.label || choice.practiceText}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -2214,7 +3035,7 @@ const StudentDashboard = () => {
                 <span className="student-home-stat-icon"><FiBookOpen aria-hidden="true" /></span>
                 <div>
                   <p>Lessons Completed</p>
-                  <strong>{activitiesCompleted} / {lessonsGoal}</strong>
+                  <strong>{lessonsCompleted} / {lessonsGoal}</strong>
                   <small>{completionPercent}% complete</small>
                 </div>
               </article>
@@ -2568,7 +3389,7 @@ const StudentDashboard = () => {
                     disabled={isProcessing || !hasPracticePrompt}
                   >
                     <FiMic aria-hidden="true" />
-                    {status === 'listening' ? 'Listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Say the word'}
+                    {status === 'listening' ? 'Practice listening…' : status === 'correct' ? 'Correct!' : status === 'incorrect' ? 'Try again' : 'Practice microphone'}
                   </button>
                   <button
                     className="button-large button-secondary"
@@ -2618,7 +3439,7 @@ const StudentDashboard = () => {
                     )}
                   </div>
                   <div className="feedback-text">
-                    <p>{statusMessage || 'Press Say the word and speak the Tagalog word clearly.'}</p>
+                    <p>{statusMessage || 'Press Practice microphone and speak the Tagalog word clearly.'}</p>
                     {accuracy !== null && (
                       <div className="accuracy-display">
                         <div className="accuracy-score">
@@ -2632,7 +3453,7 @@ const StudentDashboard = () => {
                     <span>
                       {recognitionDistance !== null
                         ? `Distance: ${recognitionDistance}`
-                        : feedback || (transcribedText ? 'Your pronunciation was evaluated.' : 'Say the word to get started.')}
+                        : feedback || (transcribedText ? 'Your pronunciation was evaluated.' : 'Practice microphone is ready.')}
                     </span>
                   </div>
                 </div>
@@ -2892,6 +3713,115 @@ const StudentDashboard = () => {
                       );
                     })}
                   </div>
+                  {modulePronunciation.target && (
+                    <div className="current-practice-panel module-pronunciation-panel">
+                      <div className="student-library-section-title">
+                        <div>
+                          <span className="student-library-kicker">Module microphone</span>
+                          <h3>{modulePronunciation.target.moduleTitle || selectedModule.title}</h3>
+                        </div>
+                        <span className={`student-learn-status ${modulePronunciation.status}`}>{modulePronunciation.status}</span>
+                      </div>
+                      <div className="word-card">
+                        <div className="word-card-top">
+                          <span className="word-card-kicker">Module target</span>
+                          <span className="student-activity-status">Module {modulePronunciation.target.moduleNumber}</span>
+                        </div>
+                        <div className="word-display">
+                          <div
+                            className={`practice-word ${modulePronunciation.status === 'listening' ? 'is-listening' : ''}`}
+                            aria-label={modulePronunciation.target.accentedSpelling || modulePronunciation.target.word}
+                          >
+                            {syllabify(modulePronunciation.target.accentedSpelling || modulePronunciation.target.word).map((syllable, index, arr) => (
+                              <span className="practice-syllable" key={`${syllable}-${index}`}>
+                                {syllable}
+                                {index < arr.length - 1 && <span className="syllable-divider" aria-hidden="true">&middot;</span>}
+                              </span>
+                            ))}
+                          </div>
+                          {modulePronunciation.target.meaning && (
+                            <p className="word-meaning">{modulePronunciation.target.meaning}</p>
+                          )}
+                        </div>
+                        <div className="word-actions">
+                          <button
+                            className={`button-large ${modulePronunciation.status === 'listening' ? 'button-danger listening-pulse' : modulePronunciation.status === 'correct' ? 'button-primary correct-highlight' : modulePronunciation.status === 'incorrect' ? 'button-danger incorrect-shake' : 'button-primary'}`}
+                            onClick={handleModuleMicClick}
+                            disabled={modulePronunciation.isProcessing || !modulePronunciation.target?.word}
+                          >
+                            <FiMic aria-hidden="true" />
+                            {modulePronunciation.status === 'listening' ? 'Module listening...' : modulePronunciation.status === 'correct' ? 'Correct!' : modulePronunciation.status === 'incorrect' ? 'Try again' : 'Module microphone'}
+                          </button>
+                          <button
+                            className="button-large button-secondary"
+                            type="button"
+                            onClick={() => speakTagalog(modulePronunciation.target.accentedSpelling || modulePronunciation.target.word, { trackSyllables: true })}
+                            disabled={!modulePronunciation.target?.word}
+                          >
+                            <FiVolume2 aria-hidden="true" /> Listen
+                          </button>
+                          <button className="button-large button-secondary" type="button" onClick={replayModuleRecognizedWord}>
+                            <FiRepeat aria-hidden="true" /> Replay Module Voice
+                          </button>
+                          <button
+                            className="button-large button-primary"
+                            type="button"
+                            onClick={moveToNextModuleItem}
+                            disabled={!modulePronunciation.canAdvance || modulePronunciation.isEvaluating || curriculumLoading}
+                          >
+                            <FiCheck aria-hidden="true" /> Next
+                          </button>
+                        </div>
+                      </div>
+                      <div className="feedback-panel">
+                        <h4>Module pronunciation check</h4>
+                        <div className={`feedback-result ${modulePronunciation.recognitionResult}`}>
+                          <div className="feedback-icon">
+                            {modulePronunciation.recognitionResult === 'success' ? (
+                              <FiCheckCircle aria-hidden="true" />
+                            ) : modulePronunciation.recognitionResult === 'almost' ? (
+                              <FiAlertTriangle aria-hidden="true" />
+                            ) : modulePronunciation.recognitionResult === 'error' ? (
+                              <FiX aria-hidden="true" />
+                            ) : (
+                              <FiMic aria-hidden="true" />
+                            )}
+                          </div>
+                          <div className="feedback-text">
+                            <p>{modulePronunciation.statusMessage || 'Press Module microphone and speak this module item clearly.'}</p>
+                            {modulePronunciation.accuracy !== null && (
+                              <div className="accuracy-display">
+                                <div className="accuracy-score">
+                                  <strong>Accuracy: {modulePronunciation.accuracy}%</strong>
+                                </div>
+                                <div className="accuracy-explanation">
+                                  {modulePronunciation.accuracyExplanation}
+                                </div>
+                              </div>
+                            )}
+                            <span>
+                              {modulePronunciation.recognitionDistance !== null
+                                ? `Distance: ${modulePronunciation.recognitionDistance}`
+                                : modulePronunciation.feedback || (modulePronunciation.transcribedText ? 'Your module pronunciation was evaluated.' : 'Module microphone is ready.')}
+                            </span>
+                          </div>
+                        </div>
+                        {modulePronunciation.status === 'listening' && (
+                          <div className="mic-waveform" role="status" aria-label="Module listening">
+                            {Array.from({ length: 7 }).map((_, index) => (
+                              <span key={index} className="mic-waveform-bar" style={{ animationDelay: `${index * 0.08}s` }} />
+                            ))}
+                          </div>
+                        )}
+                        {modulePronunciation.isProcessing && (
+                          <div className="processing-row">
+                            <span className="processing-spinner" aria-hidden="true" />
+                            Checking your module voice...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="student-module-assessment-card">
                     <div>
                       <span className="student-library-kicker">Assessment</span>
@@ -2902,7 +3832,7 @@ const StudentDashboard = () => {
                       type="button"
                       className="button-large button-primary"
                       disabled={selectedModule.items.length === 0 || !['assessment-ready', 'completed'].includes(selectedModule.status)}
-                      onClick={() => openAssessmentPreview(selectedModule)}
+                      onClick={() => startAssessmentQuiz(selectedModule)}
                     >
                       {selectedModule.items.length === 0 ? 'Content Pending' : selectedModule.progress >= 100 ? 'Review Assessment' : 'Finish Content First'} <FiChevronRight aria-hidden="true" />
                     </button>
@@ -3024,39 +3954,39 @@ const StudentDashboard = () => {
           </section>
         )}
         {activeSection === 'progress' && (
-          <section id="progress-section" className="detail-block">
+          <section id="progress-section" className="detail-block progress-page-redesign">
             <div className="detail-block-title">Progress summary</div>
             {!hasLoadedProgress ? (
               <p className="student-home-muted">Loading your progress...</p>
             ) : (
               <div className="progress-metrics">
                 <div className="metric-card">
-                  <strong>{activitiesCompleted}</strong>
+                  <strong>{lessonsCompleted}</strong>
                   <span>Lessons completed</span>
                 </div>
                 <div className="metric-card">
-                  <strong>{streakDays}</strong>
-                  <span>Daily streak</span>
+                  <strong>{practiceWordsCompleted}</strong>
+                  <span>Practice words</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{moduleItemsCompleted}</strong>
+                  <span>Module items</span>
                 </div>
                 <div className="metric-card">
                   <strong>{progressXp}</strong>
                   <span>Total XP</span>
                 </div>
                 <div className="metric-card">
-                  <strong>{allTimeAccuracy}%</strong>
-                  <span>All-time accuracy</span>
-                </div>
-                <div className="metric-card">
                   <strong>{totalAttempts}</strong>
                   <span>Practice sessions</span>
                 </div>
                 <div className="metric-card">
-                  <strong>{longestStreak}</strong>
-                  <span>Longest streak</span>
+                  <strong>{allTimeAccuracy}%</strong>
+                  <span>All-time accuracy</span>
                 </div>
                 <div className="metric-card">
-                  <strong>{todayGoalDone}/{DAILY_GOAL}</strong>
-                  <span>Today's reading goal</span>
+                  <strong>{streakDays}</strong>
+                  <span>Daily streak</span>
                 </div>
                 <div className="metric-card">
                   <strong>{weeklyPracticeDays}</strong>
@@ -3064,13 +3994,67 @@ const StudentDashboard = () => {
                 </div>
               </div>
             )}
+            <div className="progress-focus-grid">
+              <div className="chart-card progress-focus-card">
+                <div className="student-library-section-title">
+                  <div>
+                    <span className="student-library-kicker">Practice Progress</span>
+                    <h3>{practiceProgressCurrent} / {practiceProgressTarget} words</h3>
+                  </div>
+                  <span>{Math.round(practiceProgressPercent)}%</span>
+                </div>
+                <div className="progress-bar student-home-progress-bar">
+                  <div className="progress-fill" style={{ width: `${practiceProgressPercent}%` }} />
+                </div>
+                <div className="progress-card-actions">
+                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('practice')}>
+                    Previous
+                  </button>
+                  <button type="button" className="button-small button-primary" onClick={() => handleNav('practice')}>
+                    Next <FiChevronRight aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              <div className="chart-card progress-focus-card">
+                <div className="student-library-section-title">
+                  <div>
+                    <span className="student-library-kicker">Current Module</span>
+                    <h3>Module {currentModule.number} - {currentModule.title}</h3>
+                  </div>
+                  <span>{currentModule.progress}%</span>
+                </div>
+                <p className="student-home-muted">{currentModuleCompletedItems} / {currentModule.items.length || 0} items completed</p>
+                <div className="progress-bar student-home-progress-bar">
+                  <div className="progress-fill" style={{ width: `${Math.max(0, currentModule.progress)}%` }} />
+                </div>
+                <div className="progress-card-actions">
+                  <button type="button" className="button-small button-secondary" onClick={() => handleNav('content')}>
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="button-small button-primary"
+                    onClick={() => {
+                      handleNav('content');
+                      const nextItemIndex = Math.min(currentModuleCompletedItems, Math.max(currentModule.items.length - 1, 0));
+                      if (currentModule.items[nextItemIndex]) {
+                        startModulePractice(currentModule, currentModule.items[nextItemIndex]);
+                      }
+                    }}
+                    disabled={!currentModule.items.length || currentModule.needsContent}
+                  >
+                    Next <FiChevronRight aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="chart-card">
               <div className="detail-block-title">XP progress this week</div>
               <div className="progress-chart">
-                {xpHistory.length > 0 ? (
+                {weeklyXpTotal > 0 ? (
                   xpHistory.map((point) => (
                     <div key={point.label} className="chart-column">
-                      <div className="chart-bar" style={{ height: `${Math.max(point.value, 16)}%` }}>
+                      <div className="chart-bar" style={{ height: `${Math.max((Number(point.value || 0) / weeklyXpMax) * 100, 16)}%` }}>
                         <span className="chart-value">{point.value}</span>
                       </div>
                       <div className="chart-label">{point.label}</div>
@@ -3078,8 +4062,8 @@ const StudentDashboard = () => {
                   ))
                 ) : (
                   <div className="empty-chart-state">
-                    <p>No progress chart is available yet.</p>
-                    <p>Complete a few lessons to visualize your growth.</p>
+                    <p>No XP earned yet this week.</p>
+                    <p>Complete a practice activity or module to start earning XP.</p>
                   </div>
                 )}
               </div>
@@ -3346,7 +4330,7 @@ const StudentDashboard = () => {
               <div className="home-summary-grid">
                 <article className="stat-card">
                   <p className="stat-title">Lessons completed</p>
-                  <p className="stat-value">{activitiesCompleted}</p>
+                  <p className="stat-value">{lessonsCompleted}</p>
                 </article>
                 <article className="stat-card">
                   <p className="stat-title">Total XP</p>

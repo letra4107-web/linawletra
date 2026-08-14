@@ -553,6 +553,16 @@ router.get('/overview', async (req, res) => {
       .select('id,student_id,activity_type,completed_at,accuracy_score')
       .order('completed_at', { ascending: false })
       .limit(6);
+    const { data: recentCurriculum } = await supabase
+      .from('curriculum_progress')
+      .select('id,student_id,status,best_accuracy,last_attempt_at,updated_at,curriculum_item_id')
+      .order('updated_at', { ascending: false })
+      .limit(6);
+    const { data: recentModules } = await supabase
+      .from('student_module_progress')
+      .select('id,student_id,module_id,status,progress,assessment_score,completed_at,last_activity_at,updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(6);
 
     const { data: scoreRows, error: scoreError } = await supabase
       .from('reading_attempts')
@@ -563,13 +573,34 @@ router.get('/overview', async (req, res) => {
     const totalProgress = totalCurriculumProgress + totalModuleProgress;
     const completedProgress = completedCurriculumProgress + completedModuleProgress;
     const averageScore = average((scoreRows || []).map((row) => row.accuracy_score));
-    const recentActivities = (recentAttempts || []).map((item) => ({
-      id: item.id,
-      type: item.activity_type || 'reading_attempt',
-      when: item.completed_at || null,
-      createdAt: item.completed_at || null,
-      description: `Reading attempt recorded${Number.isFinite(Number(item.accuracy_score)) ? ` (${Math.round(Number(item.accuracy_score))}%)` : ''}`,
-    }));
+    const recentActivities = [
+      ...(recentAttempts || []).map((item) => ({
+        id: item.id,
+        type: item.activity_type || 'reading_attempt',
+        when: item.completed_at || null,
+        createdAt: item.completed_at || null,
+        studentId: item.student_id,
+        description: `Reading attempt recorded${Number.isFinite(Number(item.accuracy_score)) ? ` (${Math.round(Number(item.accuracy_score))}%)` : ''}`,
+      })),
+      ...(recentCurriculum || []).map((item) => ({
+        id: item.id,
+        type: 'curriculum_progress',
+        when: item.last_attempt_at || item.updated_at || null,
+        createdAt: item.last_attempt_at || item.updated_at || null,
+        studentId: item.student_id,
+        description: `Curriculum practice ${item.status || 'updated'}${Number.isFinite(Number(item.best_accuracy)) ? ` (${Math.round(Number(item.best_accuracy))}%)` : ''}`,
+      })),
+      ...(recentModules || []).map((item) => ({
+        id: item.id,
+        type: 'module_progress',
+        when: item.completed_at || item.last_activity_at || item.updated_at || null,
+        createdAt: item.completed_at || item.last_activity_at || item.updated_at || null,
+        studentId: item.student_id,
+        description: `Module ${item.status || 'progress'}${Number.isFinite(Number(item.assessment_score)) ? ` (${Math.round(Number(item.assessment_score))}%)` : ''}`,
+      })),
+    ]
+      .sort((a, b) => new Date(b.when || 0) - new Date(a.when || 0))
+      .slice(0, 8);
 
     const response = {
       totalUsers: users.length,

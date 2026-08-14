@@ -43,10 +43,11 @@ const navSections = [
 ];
 
 export default function Sidebar() {
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout, isLoggingOut } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
     try {
       await logout();
     } catch (error) {
@@ -99,9 +100,9 @@ export default function Sidebar() {
             <div className="sidebar-user-role">{user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Teacher'}</div>
           </div>
         </div>
-        <button type="button" className="sidebar-logout" onClick={handleLogout}>
+        <button type="button" className="sidebar-logout" onClick={handleLogout} disabled={isLoggingOut}>
           <LogOut size={16} />
-          Logout
+          {isLoggingOut ? 'Logging out...' : 'Logout'}
         </button>
       </div>
     </aside>

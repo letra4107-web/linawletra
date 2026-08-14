@@ -1,15 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase configuration
-const supabaseUrl = String(process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL || '')
+const supabaseUrl = String(process.env.REACT_APP_SUPABASE_URL || '')
   .trim()
   .replace(/\/rest\/v1\/?$/i, '')
   .replace(/\/+$/, '');
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
+  const target = process.env.NODE_ENV === 'production'
+    ? 'Hostinger/GitHub Actions build environment'
+    : 'local .env.local';
   console.error(
-    'Missing Supabase configuration. Set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in Hostinger environment variables, then redeploy.'
+    `Missing Supabase configuration. Set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in the ${target}. Do not use SUPABASE_SERVICE_ROLE_KEY in the frontend.`
   );
 }
 

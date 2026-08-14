@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, describe } from 'node:test';
 import { computeTranscriptScore } from '../services/pronunciationScoring.js';
+import { compareReadingText } from '../services/readingAccuracy.js';
 
 describe('pronunciation scoring', () => {
   test('exact match -> 100', () => {
@@ -40,5 +41,34 @@ describe('pronunciation scoring', () => {
     const b = computeTranscriptScore('níño', 'nino');
     assert.equal(a, 100);
     assert.equal(b, 100);
+  });
+  test('short Tagalog vowel i accepts Web Speech I/ee transcripts', () => {
+    assert.equal(compareReadingText('i', 'I').accuracyScore, 100);
+    assert.equal(compareReadingText('i', 'i').accuracyScore, 100);
+    assert.equal(compareReadingText('i', 'ee').accuracyScore, 100);
+  });
+
+  test('short consonant-vowel syllables accept Web Speech long-vowel spellings', () => {
+    const cases = [
+      ['ba', 'bah'], ['be', 'beh'], ['bi', 'bee'], ['bi', 'BI'], ['bo', 'boh'], ['bu', 'boo'],
+      ['ka', 'kah'], ['ke', 'keh'], ['ki', 'kee'], ['ko', 'koh'], ['ku', 'koo'],
+      ['da', 'dah'], ['de', 'deh'], ['di', 'dee'], ['do', 'doh'], ['du', 'doo'],
+    ];
+    for (const [expected, spoken] of cases) {
+      assert.equal(
+        compareReadingText(expected, spoken).accuracyScore, 100,
+        `expected "${expected}" to accept spoken "${spoken}" as a match`
+      );
+    }
+  });
+
+  test('a wrong consonant or vowel in a short syllable is still rejected', () => {
+    const cases = [['bi', 'ki'], ['bi', 'di'], ['ba', 'da'], ['ka', 'ta'], ['ku', 'tu'], ['di', 'gi'], ['bo', 'do'], ['bi', 'ba']];
+    for (const [expected, spoken] of cases) {
+      assert.ok(
+        compareReadingText(expected, spoken).accuracyScore < 80,
+        `expected "${expected}" spoken as "${spoken}" to score below 80, was scored too high`
+      );
+    }
   });
 });

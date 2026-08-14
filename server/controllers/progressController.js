@@ -1,7 +1,7 @@
 ﻿import Progress from '../models/Progress.js';
 import { supabase } from '../config/supabase.js';
 import { authorizeStudent, getVisibleStudentIds } from '../utils/studentAccess.js';
-import { getStudentStats } from '../services/studentStatsService.js';
+import { getManyStudentStats, getStudentStats } from '../services/studentStatsService.js';
 
 async function assertParentOwnsStudent(req, studentId) {
   const { allowed } = await authorizeStudent(req, studentId);
@@ -195,12 +195,38 @@ export const getProgressReports =async (req, res) => {
       return res.json({ reports: [] });
     }
 
-    const progress = req.user.role === 'admin'
-      ? await Progress.find({})
-      : (await Promise.all(visibleStudentIds.map((studentId) => Progress.find({ studentId })))).flat();
-    const reports = await attachStudentInfo(
-      [...progress].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
-    );
+    const statsRows = await getManyStudentStats(visibleStudentIds);
+    const reports = statsRows.flatMap((stats) => {
+      const activities = stats.recentActivities || stats.recentActivity || [];
+      if (!activities.length) {
+        return [{
+          id: `summary-${stats.studentId}`,
+          studentId: stats.studentId,
+          student_id: stats.studentId,
+          studentName: stats.name,
+          grade: stats.gradeLevel || stats.grade || '',
+          date: stats.lastActivityAt || stats.updated_at || null,
+          score: stats.accuracy,
+          trend: 'stable',
+          categories: { summary: stats.activitiesCompleted || stats.totalAttempts || 0 },
+          recentActivities: [],
+        }];
+      }
+      return activities.map((activity, index) => ({
+        id: activity.id || `${stats.studentId}-${index}`,
+        studentId: stats.studentId,
+        student_id: stats.studentId,
+        studentName: stats.name,
+        grade: stats.gradeLevel || stats.grade || '',
+        date: activity.completedAt || activity.completed_at || activity.createdAt || activity.created_at || stats.lastActivityAt,
+        score: activity.score ?? null,
+        trend: Number(activity.score ?? stats.accuracy ?? 0) >= 80 ? 'up' : 'stable',
+        categories: { [activity.activityType || activity.activity_type || 'activity']: 1 },
+        lessonTitle: activity.lessonTitle || activity.lesson_name || 'Reading activity',
+        activityType: activity.activityType || activity.activity_type || 'activity',
+        recentActivities: [activity],
+      }));
+    }).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     res.json({ reports });
   } catch (error) {

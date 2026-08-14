@@ -13,7 +13,10 @@ import {
 const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'];
 const PASS_ACCURACY = 80;
 const MASTERY_ACCURACY = 100;
+const XP_PER_CORRECT_WORD = 50;
+const XP_BONUS_PERFECT_WORD = 25;
 const PASSED_STATUSES = new Set(['passed_80', 'mastered_100']);
+const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 const TYPE_REQUIREMENT_KEYS = {
   word: 'required_words',
@@ -23,10 +26,38 @@ const TYPE_REQUIREMENT_KEYS = {
   paragraph: 'required_paragraphs',
 };
 
+const WORD_OF_DAY_TYPES_BY_LEVEL = {
+  beginner: ['word'],
+  intermediate: ['word', 'phrase'],
+  advanced: ['word', 'sentence'],
+};
+
+const WORD_OF_DAY_SOURCE_SHEETS_BY_LEVEL = {
+  beginner: ['Level 1 Simple'],
+  intermediate: ['Level 2 Intermediate', 'Intermediate Phrases'],
+  advanced: ['Level 3 Advanced', 'Advanced Sentences'],
+};
+
+const PRACTICE_TYPES_BY_LEVEL = WORD_OF_DAY_TYPES_BY_LEVEL;
+const PRACTICE_SOURCE_SHEETS_BY_LEVEL = WORD_OF_DAY_SOURCE_SHEETS_BY_LEVEL;
+
 const normalizeLevel = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   return LEVEL_ORDER.includes(normalized) ? normalized : 'beginner';
 };
+
+const stableDailyIndex = (seed, size) => {
+  if (!size) return -1;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0) % size;
+};
+
+const getUtc8DateString = (date = new Date()) =>
+  new Date(date.getTime() + UTC8_OFFSET_MS).toISOString().slice(0, 10);
 
 const nextLevelFor = (level) => {
   const index = LEVEL_ORDER.indexOf(normalizeLevel(level));
@@ -55,6 +86,50 @@ const requiredTypesFor = (requirement = {}) =>
   Object.entries(TYPE_REQUIREMENT_KEYS)
     .filter(([, key]) => Number(requirement[key] || 0) > 0)
     .map(([type]) => type);
+
+export const filterWordOfDayItems = (items = [], levelValue = 'beginner') => {
+  const level = normalizeLevel(levelValue);
+  const allowedTypes = new Set(WORD_OF_DAY_TYPES_BY_LEVEL[level] || ['word']);
+  const sourceSheets = new Set(WORD_OF_DAY_SOURCE_SHEETS_BY_LEVEL[level] || []);
+  const sourceMatched = (items || []).filter((item) =>
+    normalizeLevel(item?.reading_level) === level &&
+    allowedTypes.has(String(item?.item_type || '').toLowerCase()) &&
+    sourceSheets.has(String(item?.source_sheet || '').trim())
+  );
+
+  if (sourceMatched.length) return sourceMatched;
+
+  return (items || []).filter((item) => {
+    const itemType = String(item?.item_type || '').toLowerCase();
+    const category = String(item?.backend_category || '').toLowerCase();
+    return normalizeLevel(item?.reading_level) === level &&
+      allowedTypes.has(itemType) &&
+      itemType !== 'phonetic' &&
+      !category.includes('phonetic');
+  });
+};
+
+export const filterPracticeItems = (items = [], levelValue = 'beginner') => {
+  const level = normalizeLevel(levelValue);
+  const allowedTypes = new Set(PRACTICE_TYPES_BY_LEVEL[level] || ['word']);
+  const sourceSheets = new Set(PRACTICE_SOURCE_SHEETS_BY_LEVEL[level] || []);
+  const sourceMatched = (items || []).filter((item) =>
+    normalizeLevel(item?.reading_level) === level &&
+    allowedTypes.has(String(item?.item_type || '').toLowerCase()) &&
+    sourceSheets.has(String(item?.source_sheet || '').trim())
+  );
+
+  if (sourceMatched.length) return sourceMatched;
+
+  return (items || []).filter((item) => {
+    const itemType = String(item?.item_type || '').toLowerCase();
+    const category = String(item?.backend_category || '').toLowerCase();
+    return normalizeLevel(item?.reading_level) === level &&
+      allowedTypes.has(itemType) &&
+      itemType !== 'phonetic' &&
+      !category.includes('phonetic');
+  });
+};
 
 export async function getCurrentStudentForUser(userId) {
   return resolveStudent(userId);
@@ -224,6 +299,121 @@ export async function getNextCurriculumItemForStudent(req, studentIdOrUserId) {
   };
 }
 
+export async function getNextPracticeItemForStudent(req, studentIdOrUserId) {
+  const { student, allowed } = await authorizeStudent(req, studentIdOrUserId);
+  if (!student) return { status: 404, body: { success: false, message: 'Student not found' } };
+  if (!allowed) return { status: 403, body: { success: false, message: 'You do not have permission to access this student practice' } };
+
+  const level = normalizeLevel(student.reading_level || student.practice_level);
+  const eligibleTypes = PRACTICE_TYPES_BY_LEVEL[level] || ['word'];
+
+  const { data: items, error: itemsError } = await supabase
+    .from('curriculum_items')
+    .select('*')
+    .eq('reading_level', level)
+    .in('item_type', eligibleTypes)
+    .eq('is_active', true)
+    .order('sequence_no', { ascending: true })
+    .limit(500);
+
+  if (itemsError) throw itemsError;
+
+  const eligibleItems = filterPracticeItems(items || [], level);
+  if (!eligibleItems.length) {
+    return {
+      status: 404,
+      body: { success: false, message: `No ${level} practice content is available` },
+    };
+  }
+
+  const targets = [...new Set(eligibleItems.map((item) => item.content).filter(Boolean))];
+  const { data: attempts, error: attemptsError } = targets.length
+    ? await supabase
+        .from('reading_attempts')
+        .select('word_target,expected_text,accuracy_score,completed_at')
+        .eq('student_id', student.id)
+        .in('word_target', targets)
+        .order('completed_at', { ascending: false })
+        .limit(1000)
+    : { data: [], error: null };
+
+  if (attemptsError) throw attemptsError;
+
+  const bestScoreByTarget = new Map();
+  (attempts || []).forEach((attempt) => {
+    const target = attempt.word_target || attempt.expected_text;
+    if (!target) return;
+    const current = Number(bestScoreByTarget.get(target) || 0);
+    const next = Number(attempt.accuracy_score || 0);
+    if (next > current) bestScoreByTarget.set(target, next);
+  });
+
+  const item = eligibleItems.find((candidate) => Number(bestScoreByTarget.get(candidate.content) || 0) < PASS_ACCURACY)
+    || eligibleItems[stableDailyIndex(`${student.id}:practice:${level}:${getUtc8DateString()}`, eligibleItems.length)];
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      studentId: student.id,
+      readingLevel: level,
+      item,
+      progress: item ? { bestAccuracy: Number(bestScoreByTarget.get(item.content) || 0) } : null,
+      source: 'practice_curriculum',
+      selection: {
+        types: eligibleTypes,
+        sourceSheets: PRACTICE_SOURCE_SHEETS_BY_LEVEL[level] || [],
+      },
+    },
+  };
+}
+
+export async function getWordOfDayForStudent(req, studentIdOrUserId) {
+  const { student, allowed } = await authorizeStudent(req, studentIdOrUserId);
+  if (!student) return { status: 404, body: { success: false, message: 'Student not found' } };
+  if (!allowed) return { status: 403, body: { success: false, message: 'You do not have permission to access this student curriculum' } };
+
+  const level = normalizeLevel(student.reading_level || student.practice_level);
+  const eligibleTypes = WORD_OF_DAY_TYPES_BY_LEVEL[level] || ['word'];
+
+  const { data: items, error: itemsError } = await supabase
+    .from('curriculum_items')
+    .select('*')
+    .eq('reading_level', level)
+    .in('item_type', eligibleTypes)
+    .eq('is_active', true)
+    .order('sequence_no', { ascending: true })
+    .limit(500);
+
+  if (itemsError) throw itemsError;
+
+  const eligibleItems = filterWordOfDayItems(items || [], level);
+  if (!eligibleItems.length) {
+    return {
+      status: 404,
+      body: { success: false, message: `No ${level} curriculum content is available for Word of the Day` },
+    };
+  }
+
+  const today = getUtc8DateString();
+  const item = eligibleItems[stableDailyIndex(`${student.id}:${level}:${today}`, eligibleItems.length)];
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      date: today,
+      studentId: student.id,
+      readingLevel: level,
+      item,
+      selection: {
+        types: eligibleTypes,
+        sourceSheets: WORD_OF_DAY_SOURCE_SHEETS_BY_LEVEL[level] || [],
+      },
+    },
+  };
+}
+
 export async function recordCurriculumAttemptForStudent(req, { curriculumItemId, spokenText }) {
   const student = await getCurrentStudentForUser(req.user.id);
   if (!student) return { status: 404, body: { success: false, message: 'Student profile not found' } };
@@ -262,6 +452,11 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
 
   const nextStatus = statusForAccuracy(accuracy, existing?.status);
   const nextBestAccuracy = Math.max(Number(existing?.best_accuracy || 0), accuracy);
+  const wasAlreadyPassed = PASSED_STATUSES.has(existing?.status);
+  const wasAlreadyMastered = existing?.status === 'mastered_100';
+  const earnsCompletionXp = accuracy >= PASS_ACCURACY && !wasAlreadyPassed;
+  const earnsPerfectBonus = accuracy >= MASTERY_ACCURACY && !wasAlreadyMastered;
+  const earnedXp = (earnsCompletionXp ? XP_PER_CORRECT_WORD : 0) + (earnsPerfectBonus ? XP_BONUS_PERFECT_WORD : 0);
   const payload = {
     student_id: student.id,
     curriculum_item_id: item.id,
@@ -295,6 +490,9 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
       spoken: spokenText,
       score: accuracy,
       correct: accuracy >= PASS_ACCURACY,
+      xp: earnedXp,
+      completionXpAwarded: earnsCompletionXp,
+      perfectBonusAwarded: earnsPerfectBonus,
       activityType: 'curriculum_practice',
       timestamp: Date.now(),
     },
@@ -307,8 +505,10 @@ export async function recordCurriculumAttemptForStudent(req, { curriculumItemId,
       total_attempts: previousTotalAttempts + 1,
       accuracy_sum: previousAccuracySum + accuracy,
       baseline_accuracy: student.baseline_accuracy ?? (previousTotalAttempts === 0 ? accuracy : null),
-      activities_completed: Number(student.activities_completed || student.completed || 0) + 1,
-      completed: Number(student.completed || 0) + 1,
+      ...(earnsCompletionXp
+        ? { activities_completed: Number(student.activities_completed || 0) + 1 }
+        : {}),
+      xp: Number(student.xp || 0) + earnedXp,
       accuracy: Math.round((previousAccuracySum + accuracy) / (previousTotalAttempts + 1)),
       last_practice_date: now,
       updated_at: now,

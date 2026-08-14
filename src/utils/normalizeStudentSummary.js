@@ -80,6 +80,23 @@ export function normalizeStudentSummary(input = {}) {
   const activitiesCompleted = Number(
     source.activitiesCompleted ?? raw.activities_completed ?? raw.completedLessons ?? raw.completed_lessons ?? raw.completed ?? 0
   );
+  const lessonsCompleted = Number(
+    source.lessonsCompleted ??
+      raw.lessonsCompleted ??
+      source.lessonCompletions ??
+      raw.lessonCompletions ??
+      source.lesson_completions ??
+      raw.lesson_completions ??
+      raw.completedLessons ??
+      raw.completed_lessons ??
+      0
+  );
+  const practiceWordsCompleted = Number(
+    source.practiceWordsCompleted ?? raw.practiceWordsCompleted ?? raw.practice_words_completed ?? 0
+  );
+  const moduleItemsCompleted = Number(
+    source.moduleItemsCompleted ?? raw.moduleItemsCompleted ?? raw.module_items_completed ?? 0
+  );
 
   return {
     id: source.id ?? source.studentId ?? raw.id ?? raw.student_id,
@@ -99,7 +116,9 @@ export function normalizeStudentSummary(input = {}) {
     dailyGoalTarget: Number(source.dailyGoal?.target ?? raw.dailyGoal?.target ?? 0),
     weeklyPracticeDays: Number(source.weeklyPracticeDays ?? raw.weekly_practice_days ?? countWeeklyPracticeDays(history)),
     activitiesCompleted,
-    lessonsCompleted: activitiesCompleted,
+    lessonsCompleted,
+    practiceWordsCompleted,
+    moduleItemsCompleted,
     achievements: Number(source.achievements ?? raw.achievements ?? source.unlockedAchievementIds?.length ?? raw.unlocked_achievement_ids?.length ?? 0),
     wordsCompleted: Number(
       source.wordsCompleted ?? raw.words_completed ?? raw.completed_words?.length ?? 0

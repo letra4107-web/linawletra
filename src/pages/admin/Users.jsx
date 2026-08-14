@@ -6,12 +6,50 @@ const formatNumber = (value) => {
   return Number(value).toLocaleString();
 };
 
-const formatDate = (value) => {
-  if (!value) return 'No data';
+const formatDateParts = (value) => {
+  if (!value) return { date: 'No data', time: '' };
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'No data';
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  if (Number.isNaN(date.getTime())) return { date: 'No data', time: '' };
+  return {
+    date: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    time: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+  };
 };
+
+const DateCell = ({ value }) => {
+  const { date, time } = formatDateParts(value);
+  return (
+    <span className="cell-date" title={date === 'No data' ? undefined : `${date} ${time}`}>
+      <span>{date}</span>
+      {time && <span className="cell-date-time">{time}</span>}
+    </span>
+  );
+};
+
+const statusBadgeStyle = (status) => {
+  switch (status) {
+    case 'active':
+      return { background: '#DCFCE7', color: '#166534' };
+    case 'disabled':
+      return { background: '#FEE2E2', color: '#B91C1C' };
+    case 'archived':
+      return { background: '#F1F5F9', color: '#475569' };
+    default:
+      return { background: '#F1F5F9', color: '#475569' };
+  }
+};
+
+const StatusBadge = ({ status }) => (
+  <span className="status-badge" style={statusBadgeStyle(status)}>
+    {status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'}
+  </span>
+);
+
+const VerifiedBadge = ({ verified }) => (
+  <span className={`verified-badge ${verified ? 'is-verified' : 'is-unverified'}`}>
+    {verified ? 'Verified' : 'Not verified'}
+  </span>
+);
 
 const normalizeUser = (user = {}) => {
   const metadata = user.metadata || {};
@@ -84,6 +122,8 @@ const ConfirmDialog = ({ open, title, message, confirmLabel, onCancel, onConfirm
   );
 };
 
+const USERS_PER_PAGE = 8;
+
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [archivedUsers, setArchivedUsers] = useState([]);
@@ -98,6 +138,11 @@ export default function Users() {
   const [pendingAction, setPendingAction] = useState(null); // { type: 'disable' | 'restore', user }
   const [actionBusy, setActionBusy] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, roleFilter, statusFilter, viewMode, refreshToken]);
 
   useEffect(() => {
     if (viewMode !== 'active') return undefined;
@@ -211,6 +256,10 @@ export default function Users() {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(users.length / USERS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedUsers = users.slice((currentPage - 1) * USERS_PER_PAGE, currentPage * USERS_PER_PAGE);
+
   return (
     <section className="dashboard-section">
       <div className="section-heading">
@@ -246,7 +295,12 @@ export default function Users() {
               <div className="field-grid">
                 <label>
                   Search users
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or email" />
+                  <input
+                    className="admin-search-input"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by name or email"
+                  />
                 </label>
                 <label>
                   Role
@@ -282,7 +336,18 @@ export default function Users() {
               {loading ? (
                 <div className="list-skeleton">Loading users...</div>
               ) : (
-                <table className="simple-table">
+                <table className="simple-table users-table">
+                  <colgroup>
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '19%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '9%' }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>Name</th>
@@ -297,27 +362,33 @@ export default function Users() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.length === 0 ? (
+                    {pagedUsers.length === 0 ? (
                       <tr>
                         <td colSpan="9">No users found.</td>
                       </tr>
-                    ) : users.map((user) => (
+                    ) : pagedUsers.map((user) => (
                       <tr key={user.id}>
-                        <td>{user.name}</td>
-                        <td>{user.email}</td>
-                        <td>{user.role}</td>
+                        <td><span className="cell-ellipsis cell-name" title={user.name}>{user.name}</span></td>
+                        <td><span className="cell-ellipsis" title={user.email}>{user.email}</span></td>
+                        <td><span className="cell-ellipsis" title={user.role}>{user.role}</span></td>
                         <td><PlatformBadge platform={user.platform} /></td>
-                        <td>{user.status}</td>
-                        <td>{user.emailVerified ? 'Verified' : 'Not verified'}</td>
-                        <td>{formatDate(user.registeredAt)}</td>
-                        <td>{formatDate(user.lastActivityAt)}</td>
+                        <td><StatusBadge status={user.status} /></td>
+                        <td><VerifiedBadge verified={user.emailVerified} /></td>
+                        <td><DateCell value={user.registeredAt} /></td>
+                        <td><DateCell value={user.lastActivityAt} /></td>
                         <td>
-                          <button type="button" className="btn-secondary" onClick={() => handleStatusChange(user.id, user.status)}>
-                            {user.status === 'active' ? 'Disable' : 'Activate'}
-                          </button>
-                          <button type="button" className="btn-secondary" onClick={() => requestDisable(user)}>
-                            Archive
-                          </button>
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className={`btn-secondary ${user.status === 'active' ? 'btn-action-disable' : 'btn-action-activate'}`}
+                              onClick={() => handleStatusChange(user.id, user.status)}
+                            >
+                              {user.status === 'active' ? 'Disable' : 'Activate'}
+                            </button>
+                            <button type="button" className="btn-secondary btn-action-archive" onClick={() => requestDisable(user)}>
+                              Archive
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -325,6 +396,46 @@ export default function Users() {
                 </table>
               )}
             </div>
+            {!loading && users.length > 0 && (
+              <div className="pagination-row">
+                <span className="pagination-summary">
+                  Showing {(currentPage - 1) * USERS_PER_PAGE + 1}
+                  {'–'}
+                  {Math.min(currentPage * USERS_PER_PAGE, users.length)} of {formatNumber(users.length)} users
+                </span>
+                <div className="pagination-controls">
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    aria-label="Previous page"
+                  >
+                    Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      className={`pagination-btn ${pageNum === currentPage ? 'is-active' : ''}`}
+                      onClick={() => setPage(pageNum)}
+                      aria-current={pageNum === currentPage ? 'page' : undefined}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    aria-label="Next page"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -342,7 +453,17 @@ export default function Users() {
             {archiveLoading ? (
               <div className="list-skeleton">Loading archived users...</div>
             ) : (
-              <table className="simple-table">
+              <table className="simple-table users-table">
+                <colgroup>
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -362,20 +483,22 @@ export default function Users() {
                     </tr>
                   ) : archivedUsers.map((user) => (
                     <tr key={user.id}>
-                      <td>{user.name}</td>
-                      <td>{user.email}</td>
-                      <td>{user.role}</td>
+                      <td><span className="cell-ellipsis cell-name" title={user.name}>{user.name}</span></td>
+                      <td><span className="cell-ellipsis" title={user.email}>{user.email}</span></td>
+                      <td><span className="cell-ellipsis" title={user.role}>{user.role}</span></td>
                       <td><PlatformBadge platform={user.platform} /></td>
-                      <td>{formatDate(user.archivedDate)}</td>
-                      <td>{user.archivedBy || 'No data'}</td>
-                      <td>{user.previousStatus || 'active'}</td>
+                      <td><DateCell value={user.archivedDate} /></td>
+                      <td><span className="cell-ellipsis" title={user.archivedBy || 'No data'}>{user.archivedBy || 'No data'}</span></td>
+                      <td><span className="cell-ellipsis" title={user.previousStatus || 'active'}>{user.previousStatus || 'active'}</span></td>
                       <td>
-                        <button type="button" className="btn-secondary" onClick={() => requestRestore(user)}>
-                          Restore
-                        </button>
-                        <button type="button" className="btn-secondary" onClick={() => window.alert(`Profile and learning history for ${user.name} remain preserved in Supabase.`)}>
-                          View Details
-                        </button>
+                        <div className="table-actions">
+                          <button type="button" className="btn-secondary" onClick={() => requestRestore(user)}>
+                            Restore
+                          </button>
+                          <button type="button" className="btn-secondary" onClick={() => window.alert(`Profile and learning history for ${user.name} remain preserved in Supabase.`)}>
+                            View Details
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

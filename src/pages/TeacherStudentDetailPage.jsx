@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BarChart3, BookOpen, ChevronLeft } from 'lucide-react';
+import { BarChart3, BookOpen, ChevronLeft, ClipboardList } from 'lucide-react';
 import PageLayout from '../components/layout/PageLayout';
 import StudentOverviewPanel from '../components/StudentOverviewPanel';
-import { progressService, readingService, studentService } from '../services/api';
+import { assessmentService, progressService, readingService, studentService } from '../services/api';
 import '../styles/TeacherDashboard.css';
 
 const normalizeStudent = (student = {}) => {
@@ -30,6 +30,8 @@ export default function TeacherStudentDetailPage() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [startingAssessment, setStartingAssessment] = useState(false);
+  const [assessmentError, setAssessmentError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +76,23 @@ export default function TeacherStudentDetailPage() {
     };
   }, [studentId]);
 
+  const handleStartAssessment = async () => {
+    if (startingAssessment) return;
+    setStartingAssessment(true);
+    setAssessmentError('');
+    try {
+      const response = await assessmentService.createAssessment({ studentId });
+      const assessment = response?.data?.assessment || response?.assessment;
+      if (!assessment?.id) throw new Error('Assessment was not created.');
+      navigate(`/assessment/${assessment.id}`);
+    } catch (err) {
+      console.error('Start assessment error:', err);
+      setAssessmentError(err?.response?.data?.message || err?.message || 'Unable to start a new assessment for this student.');
+    } finally {
+      setStartingAssessment(false);
+    }
+  };
+
   const recentActivity = useMemo(
     () => reports.slice(0, 6).map((report) => ({
       lessonTitle: report.lessonTitle || report.lesson_name || report.word || 'Reading activity',
@@ -100,8 +119,17 @@ export default function TeacherStudentDetailPage() {
             <button type="button" className="detail-action" onClick={() => navigate('/teacher/learning-paths')}>
               <BookOpen size={16} /> Learning Paths
             </button>
+            <button type="button" className="detail-action" onClick={handleStartAssessment} disabled={startingAssessment}>
+              <ClipboardList size={16} /> {startingAssessment ? 'Starting...' : 'New Assessment'}
+            </button>
           </div>
         </section>
+
+        {assessmentError && (
+          <div className="empty-state">
+            <p className="empty-copy">{assessmentError}</p>
+          </div>
+        )}
 
         {loading ? (
           <div className="skeleton-card" />

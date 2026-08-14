@@ -606,6 +606,201 @@
   font-weight: 700;
 }
 
+/* .users-table adds fixed-proportion columns (set via <colgroup> in
+   Users.jsx) on top of .simple-table so Name/Email don't balloon and
+   Role/Platform/Status/Verified stay compact. min-width keeps cells
+   legible on narrow viewports; .table-scroll's overflow-x handles the
+   rest so only the table -- not the page -- scrolls horizontally. */
+.users-table {
+  table-layout: fixed;
+  min-width: 760px;
+}
+
+.users-table th,
+.users-table td {
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+
+.users-table td {
+  font-size: 0.92rem;
+}
+
+.cell-ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.cell-date {
+  display: grid;
+  gap: 2px;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+
+.cell-date-time {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.verified-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.verified-badge.is-verified {
+  color: #166534;
+}
+
+.verified-badge.is-unverified {
+  color: var(--muted);
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.table-actions .btn-secondary {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  min-height: auto;
+}
+
+.btn-action-disable {
+  background: #FEF2F2;
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #DC2626;
+}
+
+.btn-action-disable:hover {
+  background: #FEE2E2;
+}
+
+.btn-action-archive {
+  background: #EF4444;
+  border-color: #DC2626;
+  color: #fff;
+}
+
+.btn-action-archive:hover {
+  background: #DC2626;
+}
+
+.btn-action-activate {
+  background: #ECFDF5;
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #047857;
+}
+
+.btn-action-activate:hover {
+  background: #D1FAE5;
+}
+
+/* Plain inputs/selects have no visible border anywhere else in the app
+   (src/index.css sets none), so the search box was effectively invisible
+   against the card background -- give it a clear outline + focus ring. */
+.field-grid input,
+.field-grid select {
+  width: 100%;
+  border: 1.5px solid rgba(31, 41, 55, 0.22);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: #fff;
+}
+
+.field-grid input:focus,
+.field-grid select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.admin-search-input::placeholder {
+  color: rgba(31, 41, 55, 0.45);
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.pagination-summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 41, 55, 0.14);
+  background: #fff;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.pagination-btn.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .teacher-form {
   display: grid;
   gap: 18px;

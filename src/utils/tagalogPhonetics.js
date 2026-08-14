@@ -14,6 +14,34 @@
 // this file is intentionally duplicated there, same as readingAccuracy.js).
 
 export const TAGALOG_VOWELS = new Set(['a', 'e', 'i', 'o', 'u']);
+const SHORT_TAGALOG_SOUND_ALIASES = {
+  a: new Set(['a', 'ah']),
+  e: new Set(['e', 'eh']),
+  i: new Set(['i', 'ee']),
+  o: new Set(['o', 'oh']),
+  u: new Set(['u', 'oo']),
+};
+const TAGALOG_CONSONANTS_ALIAS = new Set('bcdfghjklmnpqrstvwxyz'.split(''));
+
+// Browsers' SpeechRecognition commonly transcribes short Tagalog vowel/CV-syllable
+// sounds using English long-vowel spelling ("bi" -> "bee", "ku" -> "koo"). Accept
+// those specific spellings as matches for the vowel they stand in for, but only
+// when every consonant in the syllable still matches exactly -- a genuinely wrong
+// consonant (e.g. "ka" spoken as "ta") must still fail, not get silently upgraded.
+const normalizeShortSoundAlias = (expectedWord, spokenWord) => {
+  const expected = String(expectedWord || '').toLowerCase().trim();
+  const spoken = String(spokenWord || '').toLowerCase().trim();
+  if (expected.length === 1) {
+    return SHORT_TAGALOG_SOUND_ALIASES[expected]?.has(spoken) ? expected : spoken;
+  }
+  if (expected.length === 2 && TAGALOG_CONSONANTS_ALIAS.has(expected[0]) && SHORT_TAGALOG_SOUND_ALIASES[expected[1]]) {
+    const [consonant, vowel] = expected;
+    if (spoken[0] === consonant && SHORT_TAGALOG_SOUND_ALIASES[vowel].has(spoken.slice(1))) {
+      return expected;
+    }
+  }
+  return spoken;
+};
 
 // Two-consonant sequences Filipino orthography actually allows as a single
 // syllable onset (the "ng"/"ts" digraphs, plus consonant+r/l/w/y clusters
@@ -247,7 +275,7 @@ export function alignSyllables(expectedWord, spokenWord) {
  */
 export function evaluateWord(expectedWord, spokenWord) {
   const expected = String(expectedWord || '').toLowerCase().trim();
-  const spoken = String(spokenWord || '').toLowerCase().trim();
+  const spoken = normalizeShortSoundAlias(expected, spokenWord);
 
   if (!expected) {
     return { pronunciationScore: 0, phonemeAccuracy: 0, syllableAccuracy: 0, syllableBreakdown: [], phonemeOps: [], confusions: [] };

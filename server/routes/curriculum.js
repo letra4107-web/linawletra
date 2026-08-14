@@ -3,7 +3,9 @@ import { authMiddleware } from '../middleware/auth.js';
 import { supabase } from '../config/supabase.js';
 import {
   getNextCurriculumItemForStudent,
+  getNextPracticeItemForStudent,
   getStudentCurriculumSummary,
+  getWordOfDayForStudent,
   recordCurriculumAttemptForStudent,
 } from '../services/curriculumProgress.js';
 import {
@@ -108,6 +110,28 @@ router.get('/next', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('[Curriculum] Failed to fetch next item:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch next curriculum item' });
+  }
+});
+
+router.get('/practice/next', authMiddleware, async (req, res) => {
+  try {
+    const studentId = req.query.studentId || req.user.id;
+    const result = await getNextPracticeItemForStudent(req, studentId);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to fetch next practice item:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch next practice item' });
+  }
+});
+
+router.get('/word-of-day', authMiddleware, async (req, res) => {
+  try {
+    const studentId = req.query.studentId || req.user.id;
+    const result = await getWordOfDayForStudent(req, studentId);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('[Curriculum] Failed to fetch word of the day:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch Word of the Day' });
   }
 });
 

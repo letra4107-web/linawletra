@@ -4817,6 +4817,93 @@ body,
   gap: 10px;
 }
 
+.student-assessment-quiz-card {
+  width: min(560px, 100%);
+}
+
+.student-assessment-quiz-subheader {
+  margin: 0;
+  color: #6339df;
+  font-weight: 900;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.student-assessment-quiz-progress {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #f3f1ff;
+  overflow: hidden;
+}
+
+.student-assessment-quiz-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6d35f6, #a78bfa);
+  transition: width 0.3s ease;
+}
+
+.student-assessment-quiz-word {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.student-assessment-quiz-listen {
+  width: fit-content;
+}
+
+.student-assessment-quiz-instruction {
+  margin: 0;
+  color: #4b3a86;
+  font-weight: 700;
+  text-align: center;
+  min-height: 1.4em;
+}
+
+.student-assessment-quiz-choices {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.student-assessment-quiz-choice {
+  padding: 18px 12px;
+  border-radius: 16px;
+  border: 2px solid rgba(99, 57, 223, 0.18);
+  background: #ffffff;
+  color: #11166a;
+  font-weight: 800;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.student-assessment-quiz-choice:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: #6d35f6;
+}
+
+.student-assessment-quiz-choice:disabled {
+  cursor: default;
+}
+
+.student-assessment-quiz-choice.is-correct {
+  background: #e8f9ee;
+  border-color: #34c759;
+  color: #147a3a;
+}
+
+.student-assessment-quiz-choice.is-incorrect {
+  background: #fdecec;
+  border-color: #ff4d4f;
+  color: #b3261e;
+}
+
 .student-home-module-card {
   background: linear-gradient(135deg, #f7f3ff 0%, #ffffff 100%);
   border: 1px solid rgba(99, 57, 223, 0.12);
@@ -5597,6 +5684,300 @@ body,
 
 .student-profile-module-chip strong {
   font-weight: 950;
+}
+
+.progress-page-redesign {
+  display: grid;
+  gap: 18px;
+}
+
+.progress-page-redesign .progress-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.progress-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.progress-focus-card {
+  display: grid;
+  gap: 14px;
+}
+
+.progress-card-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-page-redesign .progress-chart {
+  min-height: 180px;
+}
+
+.progress-page-redesign .empty-chart-state {
+  min-height: 120px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .progress-focus-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final dark-mode audit overrides. Keep this block at the end so it wins over
+   the later student-page redesign rules that set explicit light surfaces. */
+.dashboard-page.dark-mode {
+  --mobile-bg: #211b2b;
+  --surface: #30283d;
+  --surface-soft: #3a3148;
+  --surface-muted: #292238;
+  --border: #7d6f9b;
+  --text: #fff8e8;
+  --text-secondary: #e8ddc8;
+  --accent-soft: rgba(124, 111, 207, 0.22);
+  background: var(--mobile-bg);
+  color: var(--text);
+}
+
+.dashboard-page.dark-mode,
+.dashboard-page.dark-mode .student-shell,
+.dashboard-page.dark-mode .student-main,
+.dashboard-page.dark-mode .student-content,
+.dashboard-page.dark-mode .dashboard-container {
+  background: linear-gradient(135deg, #211b2b 0%, #2d2636 52%, #3b2832 100%);
+  color: var(--text);
+}
+
+.dashboard-page.dark-mode .student-sidebar,
+.dashboard-page.dark-mode .student-sidebar-header,
+.dashboard-page.dark-mode .student-topbar,
+.dashboard-page.dark-mode .student-home-card,
+.dashboard-page.dark-mode .detail-block,
+.dashboard-page.dark-mode .student-panel-card,
+.dashboard-page.dark-mode .student-library-panel,
+.dashboard-page.dark-mode .student-module-card,
+.dashboard-page.dark-mode .student-module-detail,
+.dashboard-page.dark-mode .student-module-detail.is-assessment-focused,
+.dashboard-page.dark-mode .student-module-item,
+.dashboard-page.dark-mode .student-module-content-missing,
+.dashboard-page.dark-mode .student-module-assessment-card,
+.dashboard-page.dark-mode .student-book-card,
+.dashboard-page.dark-mode .student-reading-progress-card,
+.dashboard-page.dark-mode .student-my-badges-card,
+.dashboard-page.dark-mode .student-completed-modules-card,
+.dashboard-page.dark-mode .word-card,
+.dashboard-page.dark-mode .feedback-panel,
+.dashboard-page.dark-mode .feedback-result,
+.dashboard-page.dark-mode .current-practice-panel,
+.dashboard-page.dark-mode .metric-card,
+.dashboard-page.dark-mode .stat-card,
+.dashboard-page.dark-mode .content-card,
+.dashboard-page.dark-mode .assessment-card,
+.dashboard-page.dark-mode .settings-block,
+.dashboard-page.dark-mode .settings-switch,
+.dashboard-page.dark-mode .settings-theme-card,
+.dashboard-page.dark-mode .preview-box,
+.dashboard-page.dark-mode .preview-text,
+.dashboard-page.dark-mode .empty-state-card,
+.dashboard-page.dark-mode .student-home-today-item,
+.dashboard-page.dark-mode .student-activity-row,
+.dashboard-page.dark-mode .home-achievement-card {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-page.dark-mode .student-module-card.status-locked,
+.dashboard-page.dark-mode .student-module-open-button:disabled,
+.dashboard-page.dark-mode .student-learn-status.locked,
+.dashboard-page.dark-mode .student-learn-status.status-locked {
+  background: #282435;
+  color: #bdb2d5;
+  border-color: #5d5278;
+}
+
+.dashboard-page.dark-mode input,
+.dashboard-page.dark-mode select,
+.dashboard-page.dark-mode textarea,
+.dashboard-page.dark-mode .student-library-search,
+.dashboard-page.dark-mode .top-search-box input {
+  background: #241f31;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.dashboard-page.dark-mode input::placeholder,
+.dashboard-page.dark-mode textarea::placeholder {
+  color: #c8bdda;
+}
+
+.dashboard-page.dark-mode h1,
+.dashboard-page.dark-mode h2,
+.dashboard-page.dark-mode h3,
+.dashboard-page.dark-mode h4,
+.dashboard-page.dark-mode strong,
+.dashboard-page.dark-mode .brand-name,
+.dashboard-page.dark-mode .student-module-card h4,
+.dashboard-page.dark-mode .student-book-card h4,
+.dashboard-page.dark-mode .student-module-detail h3,
+.dashboard-page.dark-mode .student-module-assessment-card h4,
+.dashboard-page.dark-mode .student-module-item strong,
+.dashboard-page.dark-mode .student-module-content-missing strong,
+.dashboard-page.dark-mode .student-reading-progress-card h4,
+.dashboard-page.dark-mode .student-library-ring,
+.dashboard-page.dark-mode .stat-value,
+.dashboard-page.dark-mode .metric-card strong,
+.dashboard-page.dark-mode .accuracy-score,
+.dashboard-page.dark-mode .practice-word {
+  color: var(--text);
+}
+
+.dashboard-page.dark-mode p,
+.dashboard-page.dark-mode small,
+.dashboard-page.dark-mode span,
+.dashboard-page.dark-mode label,
+.dashboard-page.dark-mode .brand-tagline,
+.dashboard-page.dark-mode .profile-meta,
+.dashboard-page.dark-mode .student-home-muted,
+.dashboard-page.dark-mode .practice-sub,
+.dashboard-page.dark-mode .practice-level-note,
+.dashboard-page.dark-mode .stat-title,
+.dashboard-page.dark-mode .stat-note,
+.dashboard-page.dark-mode .student-module-card p,
+.dashboard-page.dark-mode .student-module-detail p,
+.dashboard-page.dark-mode .student-module-assessment-card p,
+.dashboard-page.dark-mode .student-module-content-missing span,
+.dashboard-page.dark-mode .student-reading-progress-card p,
+.dashboard-page.dark-mode .feedback-text span,
+.dashboard-page.dark-mode .accuracy-explanation,
+.dashboard-page.dark-mode .word-hint {
+  color: var(--text-secondary);
+}
+
+.dashboard-page.dark-mode .button-secondary,
+.dashboard-page.dark-mode .button-small,
+.dashboard-page.dark-mode .student-module-open-button,
+.dashboard-page.dark-mode .homograph-toggle,
+.dashboard-page.dark-mode .student-library-tabs button {
+  background: #413656;
+  border-color: var(--border);
+  color: #fff8e8;
+}
+
+.dashboard-page.dark-mode .button-secondary:hover,
+.dashboard-page.dark-mode .button-small:hover,
+.dashboard-page.dark-mode .student-module-open-button:hover,
+.dashboard-page.dark-mode .student-library-tabs button:hover,
+.dashboard-page.dark-mode .student-library-tabs button.active {
+  background: #5f52b0;
+  color: #ffffff;
+}
+
+.dashboard-page.dark-mode .button-large:disabled,
+.dashboard-page.dark-mode .button-primary:disabled,
+.dashboard-page.dark-mode .button-secondary:disabled,
+.dashboard-page.dark-mode .student-level-switcher button:disabled,
+.dashboard-page.dark-mode .student-module-open-button:disabled {
+  background: #282435;
+  border-color: #5d5278;
+  color: #d6cde9;
+  opacity: 1;
+}
+
+.dashboard-page.dark-mode .student-sidebar-link,
+.dashboard-page.dark-mode .student-sidebar-profile-link,
+.dashboard-page.dark-mode .student-sidebar-logout,
+.dashboard-page.dark-mode .student-topbar-link {
+  color: var(--text-secondary);
+}
+
+.dashboard-page.dark-mode .student-sidebar-link:hover,
+.dashboard-page.dark-mode .student-sidebar-link.active,
+.dashboard-page.dark-mode .student-topbar-link:hover,
+.dashboard-page.dark-mode .student-topbar-link.active {
+  background: rgba(159, 140, 255, 0.22);
+  color: #ffffff;
+}
+
+.dashboard-page.dark-mode .student-sidebar-link-icon,
+.dashboard-page.dark-mode .student-sidebar-link.active .student-sidebar-link-icon {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.dashboard-page.dark-mode .word-meaning,
+.dashboard-page.dark-mode .homograph-panel,
+.dashboard-page.dark-mode .accuracy-pill,
+.dashboard-page.dark-mode .status-message,
+.dashboard-page.dark-mode .student-learn-status.in-progress {
+  background: var(--surface-soft);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.dashboard-page.dark-mode .correct-word {
+  background: rgba(35, 164, 85, 0.28);
+  color: #e7ffef;
+}
+
+.dashboard-page.dark-mode .wrong-word {
+  background: rgba(224, 107, 76, 0.26);
+  color: #fff1ec;
+}
+
+.dashboard-page.dark-mode .progress-bar,
+.dashboard-page.dark-mode .student-home-progress-bar,
+.dashboard-page.dark-mode .progress-bar-compact {
+  background: #211b2b;
+  border: 1px solid #5d5278;
+}
+
+.dashboard-page.dark-mode .progress-fill {
+  background: linear-gradient(90deg, #9f8cff 0%, #66c08a 100%);
+}
+
+.dashboard-page.dark-mode .student-library-ring {
+  background:
+    radial-gradient(circle at center, #30283d 55%, transparent 57%),
+    conic-gradient(#9f8cff calc(var(--progress) * 1%), #4a405f 0);
+}
+
+.dashboard-page.dark-mode .feedback-result.success,
+.dashboard-page.dark-mode .student-module-item.is-complete {
+  background: rgba(35, 164, 85, 0.2);
+  color: #dffce9;
+}
+
+.dashboard-page.dark-mode .feedback-result.almost,
+.dashboard-page.dark-mode .student-module-assessment-card {
+  background: rgba(227, 151, 26, 0.18);
+  color: #fff1c8;
+}
+
+.dashboard-page.dark-mode .feedback-result.error {
+  background: rgba(224, 107, 76, 0.18);
+  color: #ffe3da;
+}
+
+.dashboard-page.dark-mode .student-home-card-icon,
+.dashboard-page.dark-mode .student-home-large-icon,
+.dashboard-page.dark-mode .metric-icon,
+.dashboard-page.dark-mode .profile-avatar {
+  background: rgba(159, 140, 255, 0.2);
+  color: #d9d0ff;
+}
+
+.dashboard-page.dark-mode .student-learn-category-card,
+.dashboard-page.dark-mode .student-book-body,
+.dashboard-page.dark-mode .student-profile-module-grid {
+  background: transparent;
 }
 
 @media (max-width: 1180px) {

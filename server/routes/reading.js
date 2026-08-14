@@ -48,6 +48,17 @@ const normalizePracticeText = (value = '') =>
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+// Same as normalizePracticeText but keeps hyphens intact, matching how
+// curriculum_items.content/practice_words.word are actually stored (e.g.
+// "ba-da"). Used only for the DB lookup in assertKnownPracticeTarget --
+// normalizePracticeText's hyphen-stripping is for comparing two client-
+// supplied strings to each other, not for matching against stored content.
+const normalizeStoredPracticeText = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]+/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 const getUtc8DateString = (date = new Date()) =>
@@ -141,10 +152,13 @@ const assertKnownPracticeTarget = async (expectedText, wordTarget) => {
     return { allowed: false, message: 'Practice target does not match the expected text.' };
   }
 
+  const storedTarget = normalizeStoredPracticeText(wordTarget || expectedText);
+
   const { data: practiceWord, error: practiceWordError } = await supabase
     .from('practice_words')
     .select('id,word')
-    .eq('word', target)
+    .eq('word', storedTarget)
+    .limit(1)
     .maybeSingle();
 
   if (practiceWordError && practiceWordError.code !== 'PGRST116') {
@@ -158,8 +172,9 @@ const assertKnownPracticeTarget = async (expectedText, wordTarget) => {
   const { data: curriculumItem, error: curriculumError } = await supabase
     .from('curriculum_items')
     .select('id,content')
-    .eq('content', target)
+    .eq('content', storedTarget)
     .eq('is_active', true)
+    .limit(1)
     .maybeSingle();
 
   if (curriculumError && curriculumError.code !== 'PGRST116') {
@@ -182,18 +197,18 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
 
   const isCorrect = score >= 80;
   const isPerfect = score === 100;
+  const normalizedTarget = normalizePracticeText(target);
   const currentCompletedWords = Array.isArray(student.completed_words) ? student.completed_words : [];
-  const alreadyCompleted = currentCompletedWords.some((word) => normalizePracticeText(word) === target);
+  const alreadyCompleted = currentCompletedWords.some((word) => normalizePracticeText(word) === normalizedTarget);
   const history = Array.isArray(student.history) ? student.history : [];
   const alreadyPerfect = history.some((entry) =>
-    normalizePracticeText(entry?.word || '') === target && Number(entry?.score || 0) === 100
+    normalizePracticeText(entry?.word || '') === normalizedTarget && Number(entry?.score || 0) === 100
   );
   const earnsCompletionXp = isCorrect && !alreadyCompleted;
   const earnsPerfectBonus = isPerfect && !alreadyPerfect;
   const earnedXp = (earnsCompletionXp ? XP_PER_CORRECT_WORD : 0) + (earnsPerfectBonus ? XP_BONUS_PERFECT_WORD : 0);
   const currentLevel = student.current_phonetic_level || 'Easy';
   const threshold = PHONETIC_LEVEL_THRESHOLDS[currentLevel] || PHONETIC_LEVEL_THRESHOLDS.Easy;
-  const previousCompleted = Number(student.completed || 0);
   const previousAccuracy = Number(student.accuracy || 0);
   const attemptRecord = {
     word: target,
@@ -208,7 +223,6 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
   };
 
   const nextHistory = [...history, attemptRecord].slice(-200);
-  const nextCompletedCount = previousCompleted + 1;
   const previousTotalAttempts = Number(student.total_attempts || history.length || 0);
   const previousAccuracySum = Number(
     student.accuracy_sum ||
@@ -216,13 +230,11 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
   );
   const updateData = {
     history: nextHistory,
-    completed: nextCompletedCount,
-    activities_completed: nextCompletedCount,
     total_attempts: previousTotalAttempts + 1,
     accuracy_sum: previousAccuracySum + score,
     baseline_accuracy: student.baseline_accuracy ?? (previousTotalAttempts === 0 ? score : null),
     last_practice_date: new Date().toISOString(),
-    accuracy: Math.round(((previousAccuracy * previousCompleted) + score) / nextCompletedCount),
+    accuracy: Math.round((previousAccuracySum + score) / (previousTotalAttempts + 1)),
     updated_at: new Date().toISOString(),
   };
 
@@ -238,6 +250,7 @@ const updateStudentPronunciationProgress = async (student, payload, result) => {
       updateData.words_completed = nextWordsCompleted;
       updateData.completed_words = [...currentCompletedWords, target];
       updateData.progress_in_level = nextProgressInLevel;
+      updateData.activities_completed = Number(student.activities_completed || 0) + 1;
       if (nextWordsCompleted % 5 === 0) {
         updateData.achievements = Number(student.achievements || 0) + 1;
       }
@@ -553,11 +566,33 @@ router.get('/analytics', authMiddleware, roleMiddleware('teacher', 'admin', 'par
       if (req.user.role === 'admin') return true;
       return visibleStudentIds.includes(attempt.student_id);
     });
+    const studentIds = [...new Set(visible.map((attempt) => attempt.student_id).filter(Boolean))];
+    const { data: studentRows, error: studentRowsError } = studentIds.length
+      ? await supabase.from('students').select('id,name,user_id,reading_level,practice_level').in('id', studentIds)
+      : { data: [], error: null };
+    if (studentRowsError) throw studentRowsError;
+    const usersById = new Map();
+    const userIds = [...new Set((studentRows || []).map((student) => student.user_id).filter(Boolean))];
+    if (userIds.length) {
+      const { data: userRows, error: userRowsError } = await supabase.from('users').select('id,name,email,metadata').in('id', userIds);
+      if (userRowsError) throw userRowsError;
+      (userRows || []).forEach((user) => usersById.set(user.id, user));
+    }
+    const studentsById = new Map((studentRows || []).map((student) => [student.id, student]));
+    const visibleWithStudents = visible.map((attempt) => {
+      const student = studentsById.get(attempt.student_id) || {};
+      const user = usersById.get(student.user_id) || {};
+      return {
+        ...attempt,
+        student_name: student.name || user.name || user.metadata?.displayName || user.email || attempt.student_id,
+        reading_level: student.reading_level || student.practice_level || null,
+      };
+    });
 
-    const averageAccuracy = visible.length
-      ? Math.round(visible.reduce((sum, item) => sum + Number(item.accuracy_score || 0), 0) / visible.length)
+    const averageAccuracy = visibleWithStudents.length
+      ? Math.round(visibleWithStudents.reduce((sum, item) => sum + Number(item.accuracy_score || 0), 0) / visibleWithStudents.length)
       : 0;
-    const difficultWords = visible
+    const difficultWords = visibleWithStudents
       .flatMap((item) => item.pronunciation_issues?.missingWords || [])
       .reduce((acc, word) => {
         acc[word] = (acc[word] || 0) + 1;
@@ -566,12 +601,12 @@ router.get('/analytics', authMiddleware, roleMiddleware('teacher', 'admin', 'par
 
     return res.json({
       averageAccuracy,
-      completedAttempts: visible.length,
+      completedAttempts: visibleWithStudents.length,
       difficultWords: Object.entries(difficultWords)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
         .map(([word, count]) => ({ word, count })),
-      attempts: visible,
+      attempts: visibleWithStudents,
     });
   } catch (error) {
     return next(error);

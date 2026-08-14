@@ -61,7 +61,7 @@ const normalizeChild = (child = {}) => {
     progressPercentage: child.progressPercentage ?? child.progress_percentage ?? metadata.progressPercentage ?? child.progress ?? 0,
     wordsCompleted: child.wordsCompleted ?? child.words_completed ?? metadata.wordsCompleted ?? metadata.completedWords?.length ?? 0,
     completedWords: child.completedWords ?? child.completed_words ?? metadata.completedWords ?? [],
-    completedLessons: child.completedLessons ?? child.completed_lessons ?? metadata.completedLessons ?? metadata.wordsCompleted ?? child.completed ?? 0,
+    completedLessons: child.completedLessons ?? child.completed_lessons ?? child.lessonCompletions ?? child.lesson_completions ?? metadata.completedLessons ?? 0,
     accuracy: child.accuracy ?? child.progress_accuracy ?? metadata.accuracy ?? null,
     xp: child.xp ?? user.xp ?? metadata.xp ?? 0,
     streak: child.streak ?? metadata.streak ?? 0,
@@ -164,8 +164,9 @@ export const parentDashboardApi = {
 
   getActivitiesByChildId: async (childId) => {
     try {
-      const res = await progressService.getProgressByStudent(childId);
-      return Array.isArray(res?.data) ? res.data : [];
+      const res = await progressService.getCanonicalStats(childId);
+      const stats = res?.data?.data ?? res?.data ?? {};
+      return stats.recentActivities || stats.recentActivity || [];
     } catch (e) {
       return [];
     }

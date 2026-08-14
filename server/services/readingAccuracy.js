@@ -10,6 +10,35 @@ const normalizeReadingText = (text = '') =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const SHORT_TAGALOG_SOUND_ALIASES = {
+  a: new Set(['a', 'ah']),
+  e: new Set(['e', 'eh']),
+  i: new Set(['i', 'ee']),
+  o: new Set(['o', 'oh']),
+  u: new Set(['u', 'oo']),
+};
+const TAGALOG_CONSONANTS = new Set('bcdfghjklmnpqrstvwxyz'.split(''));
+
+// Browsers' SpeechRecognition commonly transcribes short Tagalog vowel/CV-syllable
+// sounds using English long-vowel spelling ("bi" -> "bee", "ku" -> "koo"). Accept
+// those specific spellings as matches for the vowel they stand in for, but only
+// when every consonant in the syllable still matches exactly -- a genuinely wrong
+// consonant (e.g. "ka" spoken as "ta") must still fail, not get silently upgraded.
+const normalizeShortSoundAlias = (expectedWord, spokenWord) => {
+  const expected = normalizeReadingText(expectedWord);
+  const spoken = normalizeReadingText(spokenWord);
+  if (expected.length === 1) {
+    return SHORT_TAGALOG_SOUND_ALIASES[expected]?.has(spoken) ? expected : spoken;
+  }
+  if (expected.length === 2 && TAGALOG_CONSONANTS.has(expected[0]) && SHORT_TAGALOG_SOUND_ALIASES[expected[1]]) {
+    const [consonant, vowel] = expected;
+    if (spoken[0] === consonant && SHORT_TAGALOG_SOUND_ALIASES[vowel].has(spoken.slice(1))) {
+      return expected;
+    }
+  }
+  return spoken;
+};
+
 const levenshteinDistance = (a = '', b = '') => {
   const first = normalizeReadingText(a);
   const second = normalizeReadingText(b);
@@ -35,7 +64,7 @@ const levenshteinDistance = (a = '', b = '') => {
 
 const wordSimilarity = (expectedWord, spokenWord) => {
   const expected = normalizeReadingText(expectedWord);
-  const spoken = normalizeReadingText(spokenWord);
+  const spoken = normalizeShortSoundAlias(expectedWord, spokenWord);
   if (!expected && !spoken) return 1;
   if (!expected || !spoken) return 0;
   const maxLength = Math.max(expected.length, spoken.length);

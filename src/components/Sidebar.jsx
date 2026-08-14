@@ -26,7 +26,7 @@ const adminNavItems = [
 ];
 
 export default function Sidebar() {
-  const { user, logout, loading } = useContext(AuthContext);
+  const { user, logout, loading, isLoggingOut } = useContext(AuthContext);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -57,6 +57,7 @@ export default function Sidebar() {
   }, [user?.role]);
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
     try {
       await logout();
     } catch (error) {
@@ -116,9 +117,9 @@ export default function Sidebar() {
         </nav>
 
         <div className="sidebar-footer">
-          <button type="button" className="sidebar-logout" onClick={handleLogout}>
+          <button type="button" className="sidebar-logout" onClick={handleLogout} disabled={isLoggingOut}>
             <FiLogOut className="sidebar-logout-icon" />
-            Logout
+            {isLoggingOut ? 'Logging out...' : 'Logout'}
           </button>
         </div>
       </div>

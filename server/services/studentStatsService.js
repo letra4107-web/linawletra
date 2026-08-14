@@ -192,7 +192,11 @@ export const getStudentStats = async (studentIdOrUserId) => {
     ...arrayOrEmpty(childProgress?.completed_words),
   ].filter((word, index, list) => word && list.indexOf(word) === index);
   const completedLessons = lessons.filter((row) => String(row.status || '').toLowerCase() === 'completed').length;
-  const completedCurriculum = curriculum.filter((row) => row.completed_at || row.is_completed || row.status === 'completed').length;
+  const completedCurriculum = curriculum.filter((row) =>
+    row.completed_at ||
+    row.is_completed ||
+    ['completed', 'passed', 'passed_80', 'mastered', 'mastered_100'].includes(String(row.status || '').toLowerCase())
+  ).length;
   const pronunciationScores = pronunciationSessions.map((session) => numberOr(session.accuracy_percentage, null)).filter((score) => score != null);
   const contentScores = contentAttempts.map((attempt) => numberOr(attempt.accuracy, null)).filter((score) => score != null);
   const attemptScores = attempts.map((attempt) => numberOr(attempt.accuracy_score, null)).filter((score) => score != null);
@@ -207,11 +211,7 @@ export const getStudentStats = async (studentIdOrUserId) => {
     ? attempts.filter((attempt) => numberOr(attempt.accuracy_score, 0) >= 80).length
     : history.filter((entry) => Boolean(entry.correct) || numberOr(entry.score ?? entry.accuracy, 0) >= 80).length;
   const accuracy = totalAttempts > 0 ? Math.round(accuracySum / totalAttempts) : numberOr(student.accuracy, 0);
-  const activitiesCompleted = Math.max(
-    numberOr(childProgress?.activities_completed ?? student.activities_completed, 0),
-    numberOr(student.completed, 0),
-    completedLessons + completedCurriculum
-  );
+  const storedActivitiesCompleted = numberOr(childProgress?.activities_completed ?? student.activities_completed, 0);
   const currentLevel = student.current_phonetic_level || childProgress?.current_level || 'Easy';
   const required = PHONETIC_LEVEL_REQUIREMENTS[currentLevel] || DAILY_GOAL;
   const completed = Math.min(numberOr(student.progress_in_level ?? childProgress?.progress_in_level, 0), required);
@@ -220,6 +220,12 @@ export const getStudentStats = async (studentIdOrUserId) => {
     numberOr(childProgress?.word_count, 0),
     completedWords.length,
     mastery.filter((row) => row.mastery_status === 'mastered').length
+  );
+  const practiceWordsCompleted = wordsCompleted;
+  const moduleItemsCompleted = completedCurriculum;
+  const activitiesCompleted = Math.max(
+    storedActivitiesCompleted,
+    completedLessons + practiceWordsCompleted + moduleItemsCompleted
   );
   const recentActivity = buildRecentActivity({ history, attempts, lessons, curriculum });
   const wordOfTheDayDate = student.word_of_day_completed_date || childProgress?.word_of_day_completed_date || null;
@@ -290,7 +296,11 @@ export const getStudentStats = async (studentIdOrUserId) => {
     learningTimeAvailable: trackedPracticeSeconds > 0,
     learning_time_available: trackedPracticeSeconds > 0,
     learningTimeMessage: trackedPracticeSeconds > 0 ? null : 'Learning time tracking is not available yet.',
-    completed: activitiesCompleted,
+    completed: completedLessons,
+    lessonCompletions: completedLessons,
+    lesson_completions: completedLessons,
+    practiceWordsCompleted,
+    practice_words_completed: practiceWordsCompleted,
     wordsCompleted,
     words_completed: wordsCompleted,
     completedWords,
@@ -336,9 +346,12 @@ export const getStudentStats = async (studentIdOrUserId) => {
     modules: {
       current: moduleProgress[0] || null,
       completed: completedModules,
+      itemsCompleted: moduleItemsCompleted,
       totalRecords: moduleProgress.length,
       records: moduleProgress,
     },
+    moduleItemsCompleted,
+    module_items_completed: moduleItemsCompleted,
     currentModule: moduleProgress[0]?.curriculum_modules?.title || moduleProgress[0]?.module_id || null,
     current_module: moduleProgress[0]?.curriculum_modules?.title || moduleProgress[0]?.module_id || null,
     modulesCompleted: completedModules,
