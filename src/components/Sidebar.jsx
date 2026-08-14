@@ -9,7 +9,6 @@ import {
   FiMenu,
   FiMessageSquare,
   FiSettings,
-  FiShield,
   FiUsers,
   FiUserCheck,
 } from 'react-icons/fi';
@@ -23,7 +22,6 @@ const adminNavItems = [
   { id: 'analytics', label: 'Analytics', path: '/admin-dashboard/analytics', icon: <FiBarChart2 /> },
   { id: 'reports', label: 'Reports', path: '/admin-dashboard/reports', icon: <FiFileText /> },
   { id: 'communication', label: 'Communication', path: '/admin-dashboard/communication', icon: <FiMessageSquare /> },
-  { id: 'ai-settings', label: 'AI Settings', path: '/admin-dashboard/ai-settings', icon: <FiShield /> },
   { id: 'system-settings', label: 'System Settings', path: '/admin-dashboard/system-settings', icon: <FiSettings /> },
 ];
 

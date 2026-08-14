@@ -29,6 +29,7 @@ const normalizeUser = (user = {}) => {
       'Unnamed user',
     role: user.role || 'parent',
     status,
+    platform: user.platform || 'Unknown',
     emailVerified: Boolean(user.emailVerified ?? user.email_verified),
     registeredAt: user.registeredAt || user.created_at || user.createdAt,
     lastActivityAt: user.lastActivityAt || user.lastSignInAt || user.lastLoginAt || user.updated_at,
@@ -37,6 +38,50 @@ const normalizeUser = (user = {}) => {
     previousStatus: user.previousStatus || metadata.previousStatus || 'active',
     metadata,
   };
+};
+
+const platformBadgeStyle = (platform) => {
+  switch (platform) {
+    case 'Web + Mobile':
+      return { background: '#EDE9FE', color: '#5B21B6' };
+    case 'Mobile':
+      return { background: '#DBEAFE', color: '#1D4ED8' };
+    case 'Web':
+      return { background: '#DCFCE7', color: '#166534' };
+    default:
+      return { background: '#F1F5F9', color: '#475569' };
+  }
+};
+
+const PlatformBadge = ({ platform }) => (
+  <span className="pill small" style={platformBadgeStyle(platform)}>{platform}</span>
+);
+
+const ConfirmDialog = ({ open, title, message, confirmLabel, onCancel, onConfirm, busy }) => {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      }}
+    >
+      <div className="card-panel" style={{ maxWidth: '420px', width: '90%' }}>
+        <h3 style={{ marginTop: 0 }}>{title}</h3>
+        <p>{message}</p>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Please wait...' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function Users() {
@@ -49,6 +94,10 @@ export default function Users() {
   const [statusFilter, setStatusFilter] = useState('active');
   const [viewMode, setViewMode] = useState('active');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [pendingAction, setPendingAction] = useState(null); // { type: 'disable' | 'restore', user }
+  const [actionBusy, setActionBusy] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     if (viewMode !== 'active') return undefined;
@@ -81,7 +130,7 @@ export default function Users() {
 
     const timer = setTimeout(loadUsers, 250);
     return () => clearTimeout(timer);
-  }, [search, roleFilter, statusFilter, viewMode]);
+  }, [search, roleFilter, statusFilter, viewMode, refreshToken]);
 
   useEffect(() => {
     if (viewMode !== 'archive') return undefined;
@@ -104,29 +153,49 @@ export default function Users() {
 
     loadArchive();
     return undefined;
-  }, [viewMode]);
+  }, [viewMode, refreshToken]);
 
-  const handleArchive = async (id) => {
-    if (!window.confirm("Archiving this account will remove it from active users but preserve the account's learning history and data. You can restore it later from the Archive.")) return;
-
-    try {
-      setError('');
-      await adminService.deleteUser(id);
-      setUsers((prev) => prev.filter((user) => user.id !== id));
-    } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'Could not archive user.');
-    }
+  const requestDisable = (user) => {
+    setSuccessMessage('');
+    setPendingAction({ type: 'disable', user });
   };
 
-  const handleRestore = async (id) => {
-    if (!window.confirm('Restore this account to active users? Historical learning data will remain unchanged.')) return;
+  const requestRestore = (user) => {
+    setSuccessMessage('');
+    setPendingAction({ type: 'restore', user });
+  };
 
+  const closeDialog = () => {
+    if (actionBusy) return;
+    setPendingAction(null);
+  };
+
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return;
+    const { type, user } = pendingAction;
+    setActionBusy(true);
+    setError('');
     try {
-      setError('');
-      await adminService.restoreUser(id);
-      setArchivedUsers((prev) => prev.filter((user) => user.id !== id));
+      if (type === 'disable') {
+        await adminService.deleteUser(user.id);
+        setUsers((prev) => prev.filter((u) => u.id !== user.id));
+        setSuccessMessage('Account disabled and moved to Archive.');
+        setPendingAction(null);
+        setViewMode('archive');
+        setRefreshToken((n) => n + 1);
+      } else if (type === 'restore') {
+        await adminService.restoreUser(user.id);
+        setArchivedUsers((prev) => prev.filter((u) => u.id !== user.id));
+        setSuccessMessage('Account restored to Active Users.');
+        setPendingAction(null);
+        setViewMode('active');
+        setRefreshToken((n) => n + 1);
+      }
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'Could not restore user.');
+      setError(err?.response?.data?.message || err?.message || `Could not ${type === 'disable' ? 'disable' : 'restore'} account.`);
+      setPendingAction(null);
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -153,6 +222,7 @@ export default function Users() {
       </div>
 
       {error && <div className="dashboard-banner dashboard-banner-error">{error}</div>}
+      {successMessage && <div className="dashboard-banner">{successMessage}</div>}
 
       <div className="tab-row">
         <button type="button" className={`btn-secondary ${viewMode === 'active' ? 'is-active' : ''}`} onClick={() => setViewMode('active')}>
@@ -204,7 +274,7 @@ export default function Users() {
             <div className="section-heading">
               <div>
                 <h3>Users table</h3>
-                <p>Review roles, verification, activity, and account status.</p>
+                <p>Review roles, platform usage, verification, activity, and account status.</p>
               </div>
               <span className="pill small">{formatNumber(users.length)} users</span>
             </div>
@@ -218,6 +288,7 @@ export default function Users() {
                       <th>Name</th>
                       <th>Email</th>
                       <th>Role</th>
+                      <th>Platform</th>
                       <th>Status</th>
                       <th>Email verified</th>
                       <th>Registered</th>
@@ -228,13 +299,14 @@ export default function Users() {
                   <tbody>
                     {users.length === 0 ? (
                       <tr>
-                        <td colSpan="8">No users found.</td>
+                        <td colSpan="9">No users found.</td>
                       </tr>
                     ) : users.map((user) => (
                       <tr key={user.id}>
                         <td>{user.name}</td>
                         <td>{user.email}</td>
                         <td>{user.role}</td>
+                        <td><PlatformBadge platform={user.platform} /></td>
                         <td>{user.status}</td>
                         <td>{user.emailVerified ? 'Verified' : 'Not verified'}</td>
                         <td>{formatDate(user.registeredAt)}</td>
@@ -243,7 +315,7 @@ export default function Users() {
                           <button type="button" className="btn-secondary" onClick={() => handleStatusChange(user.id, user.status)}>
                             {user.status === 'active' ? 'Disable' : 'Activate'}
                           </button>
-                          <button type="button" className="btn-secondary" onClick={() => handleArchive(user.id)}>
+                          <button type="button" className="btn-secondary" onClick={() => requestDisable(user)}>
                             Archive
                           </button>
                         </td>
@@ -276,6 +348,7 @@ export default function Users() {
                     <th>Name</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Platform</th>
                     <th>Archived Date</th>
                     <th>Archived By</th>
                     <th>Previous Status</th>
@@ -285,18 +358,19 @@ export default function Users() {
                 <tbody>
                   {archivedUsers.length === 0 ? (
                     <tr>
-                      <td colSpan="7">No archived users.</td>
+                      <td colSpan="8">No archived users.</td>
                     </tr>
                   ) : archivedUsers.map((user) => (
                     <tr key={user.id}>
                       <td>{user.name}</td>
                       <td>{user.email}</td>
                       <td>{user.role}</td>
+                      <td><PlatformBadge platform={user.platform} /></td>
                       <td>{formatDate(user.archivedDate)}</td>
                       <td>{user.archivedBy || 'No data'}</td>
                       <td>{user.previousStatus || 'active'}</td>
                       <td>
-                        <button type="button" className="btn-secondary" onClick={() => handleRestore(user.id)}>
+                        <button type="button" className="btn-secondary" onClick={() => requestRestore(user)}>
                           Restore
                         </button>
                         <button type="button" className="btn-secondary" onClick={() => window.alert(`Profile and learning history for ${user.name} remain preserved in Supabase.`)}>
@@ -311,6 +385,20 @@ export default function Users() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingAction)}
+        busy={actionBusy}
+        title={pendingAction?.type === 'restore' ? 'Restore account' : 'Disable account'}
+        message={
+          pendingAction?.type === 'restore'
+            ? 'Are you sure you want to restore this account?'
+            : 'Are you sure you want to disable this account?'
+        }
+        confirmLabel={pendingAction?.type === 'restore' ? 'Yes, Restore Account' : 'Yes, Disable Account'}
+        onCancel={closeDialog}
+        onConfirm={confirmPendingAction}
+      />
     </section>
   );
 }

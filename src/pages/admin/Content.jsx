@@ -1,136 +1,127 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { adminService } from '../../services/api';
 
-const initialContent = [
-  { id: 1, title: 'Reading Comprehension: Stories', category: 'Reading', published: true },
-  { id: 2, title: 'Grammar Builder: Sentences', category: 'Grammar', published: false },
-  { id: 3, title: 'Vocabulary Drill: Filipino Words', category: 'Vocabulary', published: true },
-];
+const formatNumber = (value) => {
+  if (value === undefined || value === null || Number.isNaN(Number(value))) return '0';
+  return Number(value).toLocaleString();
+};
 
 export default function Content() {
-  const [contentItems, setContentItems] = useState(initialContent);
-  const [draft, setDraft] = useState({ title: '', category: 'Reading', published: false });
+  const [modules, setModules] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleCreateItem = (event) => {
-    event.preventDefault();
-    setContentItems((prev) => [
-      { ...draft, id: Date.now(), title: draft.title || 'Untitled content' },
-      ...prev,
-    ]);
-    setDraft({ title: '', category: 'Reading', published: false });
-  };
+  useEffect(() => {
+    const loadContent = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await adminService.getContent();
+        const payload = response.data || response;
+        setModules(Array.isArray(payload?.modules) ? payload.modules : []);
+        setSummary(payload?.summary || null);
+      } catch (err) {
+        setModules([]);
+        setSummary(null);
+        setError(err?.response?.data?.message || err?.message || 'Could not load curriculum content.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleTogglePublished = (id) => {
-    setContentItems((prev) => prev.map((item) => (item.id === id ? { ...item, published: !item.published } : item)));
-  };
-
-  const handleDelete = (id) => {
-    setContentItems((prev) => prev.filter((item) => item.id !== id));
-  };
+    loadContent();
+  }, []);
 
   return (
     <section className="dashboard-section">
       <div className="section-heading">
         <div>
           <h2>Content</h2>
-          <p>Manage lessons, reading materials, categories, and published content.</p>
+          <p>Read-only view of the real curriculum library (modules and items) stored in Supabase.</p>
         </div>
-        <span className="pill">Content Library</span>
+        <span className="pill">Curriculum Library</span>
       </div>
 
-      <div className="dashboard-grid-two">
-        <div className="card-panel">
-          <div className="section-heading">
-            <div>
-              <h3>Upload new lesson</h3>
-              <p>Add reading materials or exercises and organize them by category.</p>
-            </div>
-          </div>
-          <form className="teacher-form" onSubmit={handleCreateItem}>
-            <div className="field-grid">
-              <label>
-                Content title
-                <input value={draft.title} onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))} required />
-              </label>
-              <label>
-                Category
-                <select value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>
-                  <option value="Reading">Reading</option>
-                  <option value="Grammar">Grammar</option>
-                  <option value="Vocabulary">Vocabulary</option>
-                </select>
-              </label>
-            </div>
-            <label>
-              Publish now
-              <input type="checkbox" checked={draft.published} onChange={(e) => setDraft((prev) => ({ ...prev, published: e.target.checked }))} />
-            </label>
-            <button type="submit" className="btn-primary">Add content</button>
-          </form>
-        </div>
+      {error && <div className="dashboard-banner dashboard-banner-error">{error}</div>}
 
+      <div className="status-grid dashboard-status-grid">
+        <div>
+          <span>Total modules</span>
+          <strong>{formatNumber(summary?.totalModules)}</strong>
+        </div>
+        <div>
+          <span>Active modules</span>
+          <strong>{formatNumber(summary?.activeModules)}</strong>
+        </div>
+        <div>
+          <span>Total items</span>
+          <strong>{formatNumber(summary?.totalItems)}</strong>
+        </div>
+        <div>
+          <span>Active items</span>
+          <strong>{formatNumber(summary?.activeItems)}</strong>
+        </div>
+      </div>
+
+      {summary?.itemsByLevel && Object.keys(summary.itemsByLevel).length > 0 && (
         <div className="card-panel">
           <div className="section-heading">
             <div>
-              <h3>Content categories</h3>
-              <p>Track the material mix and update items across learning paths.</p>
+              <h3>Items by reading level</h3>
+              <p>Distribution of curriculum items across reading levels.</p>
             </div>
           </div>
           <div className="status-grid dashboard-status-grid">
-            <div>
-              <span>Reading</span>
-              <strong>{contentItems.filter((item) => item.category === 'Reading').length}</strong>
-            </div>
-            <div>
-              <span>Grammar</span>
-              <strong>{contentItems.filter((item) => item.category === 'Grammar').length}</strong>
-            </div>
-            <div>
-              <span>Vocabulary</span>
-              <strong>{contentItems.filter((item) => item.category === 'Vocabulary').length}</strong>
-            </div>
-            <div>
-              <span>Published</span>
-              <strong>{contentItems.filter((item) => item.published).length}</strong>
-            </div>
+            {Object.entries(summary.itemsByLevel).map(([level, count]) => (
+              <div key={level}>
+                <span>{level}</span>
+                <strong>{formatNumber(count)}</strong>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
 
       <div className="card-panel">
         <div className="section-heading">
           <div>
-            <h3>Lesson content list</h3>
-            <p>Edit or remove content from the active library.</p>
+            <h3>Curriculum modules</h3>
+            <p>Modules currently defined in the curriculum, ordered by sequence.</p>
           </div>
+          <span className="pill small">{formatNumber(modules.length)} modules</span>
         </div>
         <div className="table-scroll">
-          <table className="simple-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contentItems.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.title}</td>
-                  <td>{item.category}</td>
-                  <td>{item.published ? 'Published' : 'Draft'}</td>
-                  <td>
-                    <button type="button" className="btn-secondary" onClick={() => handleTogglePublished(item.id)}>
-                      {item.published ? 'Unpublish' : 'Publish'}
-                    </button>
-                    <button type="button" className="btn-secondary" onClick={() => handleDelete(item.id)}>
-                      Delete
-                    </button>
-                  </td>
+          {loading ? (
+            <div className="list-skeleton">Loading content...</div>
+          ) : (
+            <table className="simple-table">
+              <thead>
+                <tr>
+                  <th>Module #</th>
+                  <th>Title</th>
+                  <th>Reading level</th>
+                  <th>Status</th>
+                  <th>Items at this level</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {modules.length === 0 ? (
+                  <tr>
+                    <td colSpan="5">No curriculum modules found.</td>
+                  </tr>
+                ) : modules.map((module) => (
+                  <tr key={module.id}>
+                    <td>{module.module_number ?? 'No data'}</td>
+                    <td>{module.title || 'Untitled module'}</td>
+                    <td>{module.reading_level || 'No data'}</td>
+                    <td>{module.is_active === false ? 'Inactive' : 'Active'}</td>
+                    <td>{formatNumber(module.itemCount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </section>

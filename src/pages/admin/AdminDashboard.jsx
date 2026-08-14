@@ -13,7 +13,6 @@ const sectionMeta = {
   analytics: { title: 'Analytics', description: 'Platform trends, usage metrics, and progress charts.' },
   reports: { title: 'Reports', description: 'Exportable performance summaries and progress reports.' },
   communication: { title: 'Communication', description: 'Announcements, notifications, and messages.' },
-  'ai-settings': { title: 'AI Settings', description: 'Reading assistance, recommendations, and AI controls.' },
   'system-settings': { title: 'System Settings', description: 'Security, profile, email, and platform preferences.' },
 };
 

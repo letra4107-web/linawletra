@@ -126,7 +126,7 @@ class User {
     if (!existing) return null;
 
     const updateData = User._normalizeFields(updates);
-    const allowedColumns = new Set(['email', 'name', 'role', 'parent_id', 'email_verified', 'metadata']);
+    const allowedColumns = new Set(['email', 'name', 'role', 'parent_id', 'email_verified', 'metadata', 'account_status', 'is_active']);
     Object.keys(updateData).forEach((key) => {
       if (!allowedColumns.has(key)) delete updateData[key];
     });
@@ -183,7 +183,7 @@ class User {
 
   async save() {
     const data = User._normalizeFields(this.toObject());
-    const allowedColumns = new Set(['id', 'email', 'name', 'role', 'parent_id', 'email_verified', 'metadata']);
+    const allowedColumns = new Set(['id', 'email', 'name', 'role', 'parent_id', 'email_verified', 'metadata', 'account_status', 'is_active']);
     Object.keys(data).forEach((key) => {
       if (!allowedColumns.has(key)) delete data[key];
     });

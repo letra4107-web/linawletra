@@ -47,6 +47,35 @@ const isDisabledProfile = (profile = {}) => {
     ['disabled', 'inactive', 'blocked', 'banned', 'deleted', 'archived'].includes(status);
 };
 
+// Browsers always attach an Origin header on cross-origin fetch/XHR requests (this is a
+// browser-enforced CORS mechanism, not something native HTTP clients add); this backend's
+// own CORS handler already relies on that distinction (server.js allows no-Origin requests
+// through unconditionally). Native apps (React Native/Expo fetch, axios, OkHttp) never send
+// Origin. That makes Origin presence a reliable, already-established signal for "browser vs.
+// native app" rather than a guess based on user identity.
+const detectPlatform = (req) => (req?.headers?.origin ? 'web' : 'mobile');
+
+// Records which platform(s) a real authenticated request came from, using the existing
+// `metadata` JSONB column (no schema change, no new table). Only writes when a platform is
+// seen for the first time for that user, so this adds negligible load. Never blocks the
+// request and never throws.
+const recordPlatformUsage = (dbUser, platform) => {
+  if (!dbUser?.id || !platform) return;
+  const existingPlatforms = dbUser.metadata?.platforms || {};
+  if (existingPlatforms[platform]) return;
+
+  User.findByIdAndUpdate(dbUser.id, {
+    metadata: {
+      ...(dbUser.metadata || {}),
+      platforms: { ...existingPlatforms, [platform]: true },
+      lastPlatform: platform,
+      lastPlatformAt: new Date().toISOString(),
+    },
+  }).catch((error) => {
+    console.warn('[Auth] Could not record platform usage:', error.message);
+  });
+};
+
 const authMiddleware = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -67,6 +96,10 @@ const authMiddleware = async (req, res, next) => {
 
     if (dbUser && isDisabledProfile(dbUser)) {
       return res.status(403).json({ status: 403, code: 'USER_DISABLED', message: 'This account has been disabled.' });
+    }
+
+    if (dbUser) {
+      recordPlatformUsage(dbUser, detectPlatform(req));
     }
 
     req.user = {

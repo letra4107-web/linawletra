@@ -65,11 +65,15 @@ const normalizeRole = (role = '') => String(role || 'unassigned').trim().toLower
 const isDisabledStatus = (status = '') =>
   ['disabled', 'inactive', 'blocked', 'banned', 'deleted', 'archived'].includes(String(status || '').toLowerCase());
 
+// Accepts both raw Supabase rows (snake_case) and normalized User model
+// instances (camelCase) so status is computed consistently regardless of source.
 const getUserStatus = (user = {}, authUser = null) => {
-  const explicitStatus = String(user.account_status || '').toLowerCase();
+  const rawStatus = user.account_status ?? user.accountStatus;
+  const rawIsActive = user.is_active ?? user.isActive;
+  const explicitStatus = String(rawStatus || '').toLowerCase();
   if (explicitStatus === 'deleted' || authUser?.deleted_at) return 'deleted';
   if (explicitStatus === 'archived') return 'archived';
-  if (user.is_active === false || user.metadata?.isActive === false || isDisabledStatus(explicitStatus) || authUser?.banned_until) {
+  if (rawIsActive === false || user.metadata?.isActive === false || isDisabledStatus(explicitStatus) || authUser?.banned_until) {
     return 'disabled';
   }
   return 'active';
@@ -82,6 +86,20 @@ const getUserDisplayName = (user = {}) => {
     [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
     user.email ||
     'Unnamed user';
+};
+
+// Derived from `metadata.platforms`, populated by the shared authMiddleware the moment a
+// user makes a real authenticated request from web or mobile (see server/middleware/auth.js).
+// Accounts that registered but have not yet made an authenticated request since this was
+// added will read as 'unknown' rather than a fabricated default.
+const getUserPlatform = (user = {}) => {
+  const platforms = user.metadata?.platforms || {};
+  const hasWeb = Boolean(platforms.web);
+  const hasMobile = Boolean(platforms.mobile);
+  if (hasWeb && hasMobile) return 'Web + Mobile';
+  if (hasMobile) return 'Mobile';
+  if (hasWeb) return 'Web';
+  return 'Unknown';
 };
 
 const listAuthUsersById = async () => {
@@ -101,8 +119,16 @@ const listAuthUsersById = async () => {
   return byId;
 };
 
+// Auth admin lookups require a valid SUPABASE_SERVICE_ROLE_KEY. If that call fails
+// (misconfigured env, transient outage) the users list must still render from the
+// `users` table alone rather than taking the whole page down with it.
 const enrichUsersWithAuth = async (users = []) => {
-  const authById = await listAuthUsersById();
+  let authById = new Map();
+  try {
+    authById = await listAuthUsersById();
+  } catch (error) {
+    console.warn('[Admin] Could not load Supabase Auth users; falling back to database-only user data:', error.message);
+  }
   return (users || []).map((user) => {
     const authUser = authById.get(user.id);
     const status = getUserStatus(user, authUser);
@@ -113,6 +139,7 @@ const enrichUsersWithAuth = async (users = []) => {
       status,
       accountStatus: user.account_status || status,
       isActive: status === 'active',
+      platform: getUserPlatform(user),
       email: user.email || authUser?.email || null,
       emailVerified: Boolean(user.email_verified || authUser?.email_confirmed_at),
       emailConfirmedAt: authUser?.email_confirmed_at || user.verified_at || null,
@@ -410,15 +437,27 @@ const logAdminAction = async (req, action, targetType = '', targetId = null, det
 };
 
 router.get('/health', async (req, res) => {
+  const startedAt = Date.now();
   try {
+    const { error: dbError } = await supabase.from('users').select('id', { count: 'exact', head: true });
     return res.json({
-      status: 'ok',
-      backend: 'Supabase',
+      status: dbError ? 'degraded' : 'ok',
+      api: 'ok',
+      database: dbError ? 'unreachable' : 'ok',
+      databaseError: dbError ? dbError.message : null,
+      responseTimeMs: Date.now() - startedAt,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
     console.error('Admin health error:', error);
-    return sendError(res, 500, 'Failed to verify admin health', error.message);
+    return res.status(200).json({
+      status: 'degraded',
+      api: 'ok',
+      database: 'unreachable',
+      databaseError: error.message,
+      responseTimeMs: Date.now() - startedAt,
+      timestamp: new Date().toISOString(),
+    });
   }
 });
 
@@ -578,7 +617,7 @@ router.get('/users', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(Math.max(10, parseInt(req.query.limit, 10) || 100), 500);
-    const roleFilter = normalizeRole(req.query.role || '');
+    const roleFilter = req.query.role ? normalizeRole(req.query.role) : '';
     const statusFilter = String(req.query.status || '').trim().toLowerCase();
     const search = req.query.search?.trim();
 
@@ -1459,7 +1498,7 @@ router.get('/analytics', async (req, res) => {
       totalBadgeUnlocks,
       badgeCounts,
       badgeStats: {
-        studentCount: studentStats.length,
+        studentCount: students.length,
         totalUnlocked: totalBadgeUnlocks,
         counts: badgeCounts,
       },
@@ -1486,6 +1525,9 @@ router.get('/reports', async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(Math.max(10, parseInt(req.query.limit, 10) || 25), 100);
     const reportType = String(req.query.type || 'all').toLowerCase();
+    const search = String(req.query.search || '').trim().toLowerCase();
+    const sortBy = String(req.query.sortBy || 'lastUpdated');
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
     const offset = (page - 1) * limit;
 
     const [
@@ -1672,10 +1714,29 @@ router.get('/reports', async (req, res) => {
       });
     });
 
-    const filteredRows = reportType === 'all'
+    let filteredRows = reportType === 'all'
       ? reportRows
       : reportRows.filter((row) => row.type.toLowerCase().includes(reportType));
-    const sortedRows = filteredRows.sort((a, b) => new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0));
+
+    if (search) {
+      filteredRows = filteredRows.filter((row) =>
+        [row.student, row.subject, row.detail, row.status]
+          .filter(Boolean)
+          .some((field) => String(field).toLowerCase().includes(search))
+      );
+    }
+
+    const sortableFields = new Set(['lastUpdated', 'student', 'subject', 'status', 'score', 'percentageComplete', 'type']);
+    const sortField = sortableFields.has(sortBy) ? sortBy : 'lastUpdated';
+    const sortedRows = [...filteredRows].sort((a, b) => {
+      if (sortField === 'lastUpdated') {
+        return sortDir * (new Date(a.lastUpdated || 0) - new Date(b.lastUpdated || 0));
+      }
+      if (sortField === 'score' || sortField === 'percentageComplete') {
+        return sortDir * ((Number(a[sortField]) || 0) - (Number(b[sortField]) || 0));
+      }
+      return sortDir * String(a[sortField] || '').localeCompare(String(b[sortField] || ''));
+    });
     const reportData = sortedRows.slice(offset, offset + limit);
 
     return res.json({
@@ -1784,6 +1845,132 @@ router.get('/logs', async (req, res) => {
   } catch (error) {
     console.error('Logs fetch error:', error);
     return sendError(res, 500, 'Failed to fetch logs', error.message);
+  }
+});
+
+// Admin-only view of the real user-facing notifications table (lesson completions,
+// practice results, badge unlocks, etc). This is intentionally read-only and scoped
+// behind verifyAdmin — it must never be reachable with a browser-supplied userId.
+router.get('/notifications', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(Math.max(10, parseInt(req.query.limit, 10) || 50), 200);
+    const typeFilter = String(req.query.type || 'all').toLowerCase();
+    const offset = (page - 1) * limit;
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+    if (error) {
+      if (error.code === 'PGRST205') {
+        return res.json({ notifications: [], page, limit, pagination: { page, limit, total: 0, pages: 1 } });
+      }
+      throw error;
+    }
+
+    const rows = data || [];
+    const userIds = [...new Set(rows.flatMap((row) => [row.user_id, row.parent_id]).filter(Boolean))];
+    const { data: userRows } = userIds.length
+      ? await supabase.from('users').select('id,name,email,role').in('id', userIds)
+      : { data: [] };
+    const usersById = new Map((userRows || []).map((user) => [user.id, user]));
+
+    let notifications = rows.map((row) => {
+      const user = usersById.get(row.user_id) || usersById.get(row.parent_id);
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userName: getUserDisplayName(user || {}),
+        userEmail: user?.email || null,
+        userRole: user?.role || null,
+        studentId: row.student_id || null,
+        title: row.title || null,
+        message: row.message || row.body || '',
+        type: row.type || 'general',
+        isRead: Boolean(row.is_read ?? row.read),
+        createdAt: row.created_at,
+      };
+    });
+
+    if (typeFilter !== 'all') {
+      notifications = notifications.filter((row) => String(row.type).toLowerCase() === typeFilter);
+    }
+
+    const total = notifications.length;
+    const pagedNotifications = notifications.slice(offset, offset + limit);
+
+    return res.json({
+      notifications: pagedNotifications,
+      page,
+      limit,
+      pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
+    });
+  } catch (error) {
+    console.error('Admin notifications fetch error:', error);
+    return sendError(res, 500, 'Failed to fetch notifications', error.message);
+  }
+});
+
+// Read-only aggregate of the real curriculum library (modules + items). There is no
+// generic CMS backend in this product yet, so this intentionally does not expose
+// create/edit/delete actions that would not persist anywhere.
+router.get('/content', async (req, res) => {
+  try {
+    const [modulesResult, itemsResult] = await Promise.all([
+      supabase.from('curriculum_modules').select('id,title,module_number,reading_level,is_active').order('module_number', { ascending: true }),
+      supabase.from('curriculum_items').select('id,item_type,reading_level,is_active'),
+    ]);
+
+    if (modulesResult.error) throw modulesResult.error;
+    if (itemsResult.error) throw itemsResult.error;
+
+    const modules = modulesResult.data || [];
+    const items = itemsResult.data || [];
+    // curriculum_items has no module_id foreign key in the live schema; items are
+    // organized by reading_level rather than a direct module relationship, so we
+    // approximate each module's item pool by matching reading_level instead of
+    // inventing a link that doesn't exist in the database.
+    const itemCountByLevel = items.reduce((acc, item) => {
+      const level = String(item.reading_level || '').toLowerCase();
+      if (!level) return acc;
+      acc[level] = (acc[level] || 0) + 1;
+      return acc;
+    }, {});
+
+    const modulesWithCounts = modules.map((module) => ({
+      ...module,
+      itemCount: itemCountByLevel[String(module.reading_level || '').toLowerCase()] || 0,
+    }));
+
+    const itemsByType = items.reduce((acc, item) => {
+      const type = String(item.item_type || 'unknown').toLowerCase();
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+
+    const itemsByLevel = items.reduce((acc, item) => {
+      const level = String(item.reading_level || 'unspecified').toLowerCase();
+      acc[level] = (acc[level] || 0) + 1;
+      return acc;
+    }, {});
+
+    return res.json({
+      modules: modulesWithCounts,
+      summary: {
+        totalModules: modules.length,
+        activeModules: modules.filter((module) => module.is_active !== false).length,
+        totalItems: items.length,
+        activeItems: items.filter((item) => item.is_active !== false).length,
+        itemsByType,
+        itemsByLevel,
+      },
+    });
+  } catch (error) {
+    console.error('Admin content fetch error:', error);
+    return sendError(res, 500, 'Failed to fetch content', error.message);
   }
 });
 

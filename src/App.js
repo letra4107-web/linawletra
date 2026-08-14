@@ -18,7 +18,6 @@ import Content from './pages/admin/Content';
 import Analytics from './pages/admin/Analytics';
 import Reports from './pages/admin/Reports';
 import Communication from './pages/admin/Communication';
-import AISettings from './pages/admin/AISettings';
 import SystemSettings from './pages/admin/SystemSettings';
 import TeacherDashboard from './pages/TeacherDashboard';
 import TeacherLayout from './components/layout/TeacherLayout';
@@ -181,7 +180,6 @@ function AppRoutes() {
           <Route path="analytics" element={<Analytics />} />
           <Route path="reports" element={<Reports />} />
           <Route path="communication" element={<Communication />} />
-          <Route path="ai-settings" element={<AISettings />} />
           <Route path="system-settings" element={<SystemSettings />} />
         </Route>
         <Route path="/admin" element={<PrivateRoute allowedRoles={['admin']}><Navigate to="/admin-dashboard/overview" replace /></PrivateRoute>} />
