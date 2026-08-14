@@ -2016,6 +2016,7 @@ const StudentDashboard = () => {
               { key: 'home', label: 'Home', icon: <FiHome aria-hidden="true" /> },
               { key: 'content', label: 'Learn', icon: <FiBookOpen aria-hidden="true" /> },
               { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
+              { key: 'progress', label: 'Progress', icon: <FiTrendingUp aria-hidden="true" /> },
               { key: 'activities', label: 'Activities', icon: <FiTarget aria-hidden="true" /> },
               { key: 'profile', label: 'Profile', icon: <FiUser aria-hidden="true" /> },
             ].map((item) => (

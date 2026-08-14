@@ -1798,11 +1798,22 @@ a {
    out again in a later one) -- that's what caused the sidebar to overlap and
    crop the main content. Do not add another override block elsewhere; edit
    this one.
+
+   The sidebar is a genuine `position: fixed` element pinned to the viewport,
+   not `position: sticky` inside a grid track -- sticky only stays put while
+   its own containing block is on screen, and is still ultimately part of the
+   document's normal scrolling flow, so it does not give the "sidebar never
+   moves, ever" guarantee this page needs. `.student-main` reserves the same
+   width with `margin-left` so it never sits underneath the fixed sidebar.
+   None of `.student-shell`/`.student-sidebar`/`.student-main` or their
+   ancestors (see `.dashboard-page` above, and body/html in src/index.css) set
+   `transform`/`filter`/`will-change`/`contain`, any of which would create a
+   new containing block and make `position: fixed` here relative to that
+   ancestor instead of the viewport -- keep it that way.
    ============================================================================ */
 .student-shell {
   --student-nav-width: 264px;
-  display: grid;
-  grid-template-columns: var(--student-nav-width) minmax(0, 1fr);
+  position: relative;
   min-height: 100vh;
   background: #f4f6f9;
 }
@@ -1820,9 +1831,12 @@ a {
 }
 
 .student-sidebar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  width: var(--student-nav-width);
   height: 100vh;
+  z-index: 1000;
   overflow-y: auto;
   overflow-x: hidden;
   background: rgba(255, 255, 255, 0.92);
@@ -1833,7 +1847,7 @@ a {
   justify-content: space-between;
   gap: 18px;
   backdrop-filter: blur(16px);
-  transition: padding 0.18s ease;
+  transition: width 0.18s ease;
 }
 
 .student-sidebar-top {
@@ -2094,7 +2108,9 @@ a {
 
 .student-main {
   min-width: 0;
+  margin-left: var(--student-nav-width);
   padding: 24px 32px 56px;
+  transition: margin-left 0.18s ease;
 }
 
 @media (max-width: 1024px) {
@@ -2104,9 +2120,6 @@ a {
 }
 
 @media (max-width: 760px) {
-  .student-shell {
-    display: block;
-  }
   .student-mobile-menu-toggle {
     display: inline-flex;
     align-items: center;
@@ -2129,12 +2142,6 @@ a {
   }
   .student-sidebar {
     --student-nav-width: 280px;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: var(--student-nav-width);
-    height: 100vh;
-    z-index: 90;
     transform: translateX(-100%);
     transition: transform 0.22s ease;
     box-shadow: 18px 0 42px rgba(15, 23, 42, 0.18);
@@ -2163,6 +2170,9 @@ a {
     display: flex;
   }
   .student-main {
+    /* Sidebar is off-canvas by default below this width (see .student-sidebar
+       transform above), so main content no longer reserves space for it. */
+    margin-left: 0;
     padding: 16px 16px 48px;
   }
 }
