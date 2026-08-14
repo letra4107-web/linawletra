@@ -17,12 +17,15 @@ export default function MyStudentsPage() {
 
   const normalizeStudent = (student = {}) => {
     const user = student.user || student.users || {};
+    const stats = student.stats || {};
     const metadata = user.metadata || student.metadata || {};
+    const badges = student.unlockedAchievementIds || student.unlocked_achievement_ids || stats.unlockedAchievementIds || stats.unlocked_achievement_ids || [];
     return {
       ...student,
       id: student.id || student.student_id || student._id,
       name:
         student.name ||
+        stats.name ||
         user.name ||
         metadata.displayName ||
         [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
@@ -30,9 +33,9 @@ export default function MyStudentsPage() {
         'Unknown student',
       grade: student.grade || student.gradeLevel || student.grade_level || '',
       status: student.status || 'active',
-      score: student.score ?? student.accuracy ?? metadata.accuracy ?? null,
-      tier: student.tier || student.reading_level || student.readingLevel || metadata.readingLevel || 'Tier 1',
-      badgeCount: (metadata.unlockedAchievementIds || []).length,
+      score: student.score ?? stats.progress?.percentage ?? student.progress_in_level ?? student.accuracy ?? stats.accuracy ?? metadata.accuracy ?? null,
+      tier: student.tier || student.readingLevel || student.reading_level || stats.level || metadata.readingLevel || 'beginner',
+      badgeCount: student.badgeCount ?? (Array.isArray(badges) ? badges.length : 0),
     };
   };
 

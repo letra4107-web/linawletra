@@ -39,6 +39,136 @@ const attachUserProfiles = async (supabase, students = []) => {
   }));
 };
 
+const safeSelectRows = async (table, buildQuery) => {
+  const result = await buildQuery(supabase.from(table));
+  if (result.error) {
+    if (['PGRST205', 'PGRST204', '42P01', '42703'].includes(result.error.code)) return [];
+    throw result.error;
+  }
+  return result.data || [];
+};
+
+const attachChildProfiles = async (students = []) => {
+  const safeStudents = Array.isArray(students) ? students : [];
+  if (!safeStudents.length) return safeStudents;
+
+  const studentIds = [...new Set(safeStudents.map((student) => student.id).filter(Boolean))];
+  const userIds = [...new Set(safeStudents.map((student) => student.user_id).filter(Boolean))];
+  const directChildIds = [...new Set(safeStudents.map((student) => student.child_id).filter(Boolean))];
+
+  const mapRows = studentIds.length
+    ? await safeSelectRows('students_children_map', (query) =>
+      query.select('student_id,child_id').in('student_id', studentIds)
+    )
+    : [];
+
+  const mappedChildIds = mapRows.map((row) => row.child_id).filter(Boolean);
+  const childIds = [...new Set([...directChildIds, ...mappedChildIds])];
+  const childRows = [];
+
+  if (childIds.length) {
+    childRows.push(...await safeSelectRows('children', (query) =>
+      query.select('*').in('id', childIds)
+    ));
+  }
+
+  if (studentIds.length) {
+    childRows.push(...await safeSelectRows('children', (query) =>
+      query.select('*').in('student_id', studentIds)
+    ));
+  }
+
+  if (userIds.length) {
+    childRows.push(...await safeSelectRows('children', (query) =>
+      query.select('*').in('auth_uid', userIds)
+    ));
+  }
+
+  const childrenById = new Map();
+  const childrenByStudentId = new Map();
+  const childrenByAuthUid = new Map();
+  childRows.forEach((child) => {
+    if (child.id) childrenById.set(child.id, child);
+    if (child.student_id) childrenByStudentId.set(child.student_id, child);
+    if (child.auth_uid) childrenByAuthUid.set(child.auth_uid, child);
+  });
+
+  const childIdByStudentId = new Map(mapRows.map((row) => [row.student_id, row.child_id]));
+
+  return safeStudents.map((student) => {
+    const childId = student.child_id || childIdByStudentId.get(student.id);
+    const child =
+      (childId ? childrenById.get(childId) : null) ||
+      childrenByStudentId.get(student.id) ||
+      childrenByAuthUid.get(student.user_id) ||
+      null;
+
+    return {
+      ...student,
+      child_id: student.child_id || child?.id || null,
+      child,
+    };
+  });
+};
+
+const getDisplayName = (profile = {}, student = {}) => {
+  const metadata = profile?.metadata || student?.metadata || {};
+  const child = student?.child || {};
+  return (
+    profile?.name ||
+    student?.name ||
+    child.name ||
+    child.display_name ||
+    child.full_name ||
+    child.metadata?.displayName ||
+    metadata.displayName ||
+    [metadata.firstName, metadata.lastName].filter(Boolean).join(' ') ||
+    profile?.email ||
+    'Unknown student'
+  );
+};
+
+const getStudentStatus = (profile = {}, student = {}) => {
+  const accountStatus = String(profile?.account_status || profile?.status || student?.status || '').toLowerCase();
+  if (['disabled', 'inactive', 'blocked', 'archived', 'deleted'].includes(accountStatus)) return accountStatus;
+  if (profile?.is_active === false) return 'disabled';
+  return accountStatus || 'active';
+};
+
+const normalizeStudentForTeacher = (student = {}, stats = null) => {
+  const profile = student.user || {};
+  const metadata = profile.metadata || {};
+  const badges = stats?.unlockedAchievementIds || stats?.unlocked_achievement_ids || student.unlocked_achievement_ids || student.badges || [];
+  const badgeIds = Array.isArray(badges)
+    ? badges.map((badge) => (typeof badge === 'string' ? badge : badge?.id)).filter(Boolean)
+    : [];
+  const profileName = getDisplayName(profile, student);
+  const statsName = stats?.name && stats.name !== 'Student' ? stats.name : null;
+
+  return {
+    ...student,
+    id: student.id,
+    studentId: student.id,
+    userId: student.user_id || null,
+    childId: stats?.childId || student.child_id || student.child?.id || null,
+    parentId: student.parent_id || null,
+    teacherId: student.teacher_id || null,
+    name: profileName !== 'Unknown student' ? profileName : statsName || profileName,
+    email: profile.email || stats?.email || student.child?.username || null,
+    grade: student.grade_level || student.child?.grade_level || metadata.gradeLevel || metadata.grade_level || '',
+    gradeLevel: student.grade_level || student.child?.grade_level || metadata.gradeLevel || metadata.grade_level || '',
+    status: getStudentStatus(profile, student),
+    score: stats?.progress?.percentage ?? student.progress_in_level ?? student.accuracy ?? 0,
+    accuracy: stats?.accuracy ?? student.accuracy ?? 0,
+    tier: stats?.level || student.reading_level || student.practice_level || metadata.readingLevel || 'beginner',
+    readingLevel: stats?.level || student.reading_level || student.practice_level || metadata.readingLevel || 'beginner',
+    badgeCount: badgeIds.length,
+    unlockedAchievementIds: badgeIds,
+    lastActivityAt: stats?.lastActivityAt || student.last_practice_date || student.updated_at || null,
+    stats,
+  };
+};
+
 // Create student (Enroll child)
 // Note: endpoint kept as POST /api/students to match existing frontend axios service.
 router.post('/', authMiddleware, roleMiddleware('parent'), createStudent);
@@ -68,13 +198,15 @@ router.get('/all', authMiddleware, roleMiddleware('teacher', 'admin'), async (re
       throw error;
     }
 
-    const studentsWithProfiles = await attachUserProfiles(supabase, students || []);
+    const studentsWithProfiles = await attachChildProfiles(await attachUserProfiles(supabase, students || []));
     const statsRows = await getManyStudentStats(studentsWithProfiles.map((student) => student.id));
     const statsById = new Map(statsRows.map((stats) => [stats.studentId, stats]));
-    res.json(studentsWithProfiles.map((student) => ({
-      ...student,
-      stats: statsById.get(student.id) || null,
-    })));
+    const normalizedStudents = studentsWithProfiles.map((student) =>
+      normalizeStudentForTeacher(student, statsById.get(student.id) || null)
+    );
+    res.json(req.user.role === 'teacher'
+      ? normalizedStudents.filter((student) => student.name && student.name !== 'Unknown student')
+      : normalizedStudents);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

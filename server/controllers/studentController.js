@@ -3,6 +3,7 @@ import { sendStudentEnrollmentEmail } from '../services/emailService.js';
 import { generateStudentCredentials } from '../services/credentialGenerator.js';
 import { VALID_READING_LEVELS, normalizeReadingLevel } from '../services/readingLevels.js';
 import { canAccessStudentResolved, getVisibleStudentIds } from '../utils/studentAccess.js';
+import { assignStudentToMatchingTeacher } from '../services/teacherAssignment.js';
 
 const VALID_GRADE_LEVELS = ['1', '2', '3', '4', '5', '6'];
 
@@ -196,6 +197,16 @@ export const ensureStudentRecordForAuthenticatedUser = async (req, requestedId) 
     return { student: null, error: createError };
   }
 
+  try {
+    const assignment = await assignStudentToMatchingTeacher(createdStudent.id);
+    if (assignment.student) {
+      return { student: assignment.student, error: null };
+    }
+  } catch (assignmentError) {
+    console.error('[Get Student] Teacher auto-assignment failed for created student record:', assignmentError);
+    return { student: null, error: assignmentError };
+  }
+
   console.log('[Get Student] Created missing student record for auth user:', authUserId);
   return { student: createdStudent, error: null };
 };
@@ -362,6 +373,16 @@ export const createStudent =async (req, res) => {
       throw studentError;
     }
 
+    await supabase
+      .from('students')
+      .update({ display_name: childName })
+      .eq('id', studentRecord.id)
+      .then(({ error }) => {
+        if (error && !['PGRST204', '42703'].includes(error.code)) {
+          console.warn('[Create Student] Could not persist students.display_name:', error.message);
+        }
+      });
+
     let childProfile = null;
     try {
       childProfile = await ensureScheduleChildLink({
@@ -377,6 +398,23 @@ export const createStudent =async (req, res) => {
       await supabase.from('users').delete().eq('id', userProfile.id);
       await supabase.auth.admin.deleteUser(authUser.id);
       throw linkError;
+    }
+
+    let teacherAssignment = null;
+    try {
+      teacherAssignment = await assignStudentToMatchingTeacher(studentRecord.id);
+      if (teacherAssignment?.changed) {
+        console.log('[Create Student] Assigned student to teacher:', teacherAssignment.assignedTeacherId || 'none');
+      }
+    } catch (assignmentError) {
+      console.error('[Create Student] Teacher auto-assignment failed:', assignmentError);
+      await supabase.from('students').delete().eq('id', studentRecord.id);
+      await supabase.from('users').delete().eq('id', userProfile.id);
+      await supabase.auth.admin.deleteUser(authUser.id);
+      return res.status(500).json({
+        success: false,
+        message: 'Student account could not be created because teacher auto-assignment failed.',
+      });
     }
 
     console.log('[Create Student] Sending enrollment email to parent');
@@ -421,6 +459,7 @@ export const createStudent =async (req, res) => {
           gradeLevel,
           readingLevel: normalizedReadingLevel,
           parentId,
+          teacherId: teacherAssignment?.assignedTeacherId || null,
         },
         credentials: {
           email: studentUsername,
@@ -681,6 +720,21 @@ export const updateStudent =async (req, res) => {
         });
       }
       updatedStudent = data;
+    }
+
+    if (gradeLevel !== undefined) {
+      try {
+        const assignment = await assignStudentToMatchingTeacher(updatedStudent.id);
+        if (assignment.student) {
+          updatedStudent = assignment.student;
+        }
+      } catch (assignmentError) {
+        console.error('[Update Student] Teacher auto-assignment failed:', assignmentError);
+        return res.status(500).json({
+          success: false,
+          message: 'Student was updated, but teacher auto-assignment failed. Please retry or contact support.',
+        });
+      }
     }
 
     console.log('[Update Student] ✓ Student updated successfully');

@@ -36,49 +36,10 @@ export function canAccessStudent(req, student, options = {}) {
   return false;
 }
 
-// Mirrors the indirect-assignment lookup getVisibleStudentIds already uses for
-// teacher list views (reading_materials.assigned_students, scheduled_activities.teacher_id) —
-// students.teacher_id is never actually written anywhere in this codebase, so a teacher's
-// only real assignment signal is these two tables. Scoped here to a single student.
-async function canTeacherAccessStudent(req, student) {
-  const studentRefs = new Set(
-    [student.id, student.user_id || student.userId, student.child_id || student.childId].filter(Boolean)
-  );
-  if (!studentRefs.size) return false;
-
-  const { data: materials, error: materialsError } = await supabase
-    .from('reading_materials')
-    .select('assigned_students')
-    .eq('uploaded_by', req.user.id);
-  if (!materialsError) {
-    for (const material of materials || []) {
-      const assigned = Array.isArray(material.assigned_students) ? material.assigned_students : [];
-      if (assigned.some((id) => studentRefs.has(id))) return true;
-    }
-  }
-
-  const { data: schedules, error: schedulesError } = await supabase
-    .from('scheduled_activities')
-    .select('student_id,child_id')
-    .eq('teacher_id', req.user.id);
-  if (!schedulesError) {
-    for (const schedule of schedules || []) {
-      if ((schedule.student_id && studentRefs.has(schedule.student_id)) || (schedule.child_id && studentRefs.has(schedule.child_id))) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 export async function canAccessStudentResolved(req, student, options = {}) {
   if (canAccessStudent(req, student, options)) return true;
   if (!req?.user || !student) return false;
-
-  if (req.user.role === 'teacher') {
-    return canTeacherAccessStudent(req, student);
-  }
+  if (req.user.role === 'teacher') return false;
 
   if (req.user.role !== 'parent') return false;
 
@@ -136,45 +97,10 @@ export async function getVisibleStudentIds(req) {
   if (req.user.role === 'teacher') {
     const { data, error } = await supabase
       .from('students')
-      .select('id,user_id,child_id')
+      .select('id')
       .eq('teacher_id', req.user.id);
     if (error) throw error;
-    const ids = new Set((data || []).map((student) => student.id).filter(Boolean));
-    const refs = new Set((data || []).flatMap((student) => [student.id, student.user_id, student.child_id]).filter(Boolean));
-
-    const { data: materials, error: materialsError } = await supabase
-      .from('reading_materials')
-      .select('assigned_students')
-      .eq('uploaded_by', req.user.id);
-    if (!materialsError) {
-      (materials || []).forEach((material) => {
-        (Array.isArray(material.assigned_students) ? material.assigned_students : [])
-          .filter(Boolean)
-          .forEach((id) => refs.add(id));
-      });
-    }
-
-    const { data: schedules, error: schedulesError } = await supabase
-      .from('scheduled_activities')
-      .select('student_id,child_id')
-      .eq('teacher_id', req.user.id);
-    if (!schedulesError) {
-      (schedules || []).forEach((schedule) => {
-        [schedule.student_id, schedule.child_id].filter(Boolean).forEach((id) => refs.add(id));
-      });
-    }
-
-    if (refs.size) {
-      const refList = [...refs];
-      const { data: resolvedRows, error: resolvedError } = await supabase
-        .from('students')
-        .select('id')
-        .or(`id.in.(${refList.join(',')}),user_id.in.(${refList.join(',')}),child_id.in.(${refList.join(',')})`);
-      if (resolvedError) throw resolvedError;
-      (resolvedRows || []).forEach((student) => student.id && ids.add(student.id));
-    }
-
-    return [...ids];
+    return (data || []).map((student) => student.id).filter(Boolean);
   }
 
   if (req.user.role === 'parent') {

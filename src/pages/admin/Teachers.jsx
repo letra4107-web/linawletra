@@ -6,7 +6,7 @@ const gradeOptions = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Gr
 export default function Teachers() {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', gradeLevel: 'Grade 1' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', gradeLevels: ['Grade 1'] });
   const [error, setError] = useState('');
   const [createdCredentials, setCreatedCredentials] = useState(null);
 
@@ -34,17 +34,23 @@ export default function Teachers() {
 
   const handleCreateTeacher = async (event) => {
     event.preventDefault();
+    const selectedGrades = form.gradeLevels;
     const newTeacher = {
       firstName: form.firstName,
       lastName: form.lastName,
       name: `${form.firstName} ${form.lastName}`.trim(),
       email: form.email,
-      gradeLevel: form.gradeLevel,
+      gradeLevel: selectedGrades[0],
+      gradeLevels: selectedGrades,
     };
 
     try {
       setError('');
       setCreatedCredentials(null);
+      if (!selectedGrades.length) {
+        setError('Select at least one handled grade.');
+        return;
+      }
       const response = await adminService.createTeacher(newTeacher);
       const createdTeacher = response?.data?.teacher || {
         ...newTeacher,
@@ -53,14 +59,26 @@ export default function Teachers() {
       };
       setTeachers((prev) => [createdTeacher, ...prev]);
       setCreatedCredentials(response?.data?.credentials || null);
-      setForm({ firstName: '', lastName: '', email: '', gradeLevel: 'Grade 1' });
+      setForm({ firstName: '', lastName: '', email: '', gradeLevels: ['Grade 1'] });
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Could not create teacher. Please try again.');
     }
   };
 
-  const assignStudents = (teacherId) => {
-    setTeachers((prev) => prev.map((teacher) => (teacher.id === teacherId ? { ...teacher, assigned: (teacher.assigned || 0) + 1 } : teacher)));
+  const toggleGrade = (grade) => {
+    setForm((prev) => {
+      const hasGrade = prev.gradeLevels.includes(grade);
+      const gradeLevels = hasGrade
+        ? prev.gradeLevels.filter((item) => item !== grade)
+        : [...prev.gradeLevels, grade];
+      return { ...prev, gradeLevels };
+    });
+  };
+
+  const formatTeacherGrades = (teacher) => {
+    const grades = teacher.gradeLevels || teacher.handledGradeLevels || teacher.metadata?.gradeLevels || teacher.metadata?.handledGradeLevels;
+    if (Array.isArray(grades) && grades.length) return grades.join(', ');
+    return teacher.gradeLevel || teacher.metadata?.gradeLevel || 'No grade assigned';
   };
 
   return (
@@ -86,7 +104,7 @@ export default function Teachers() {
           <div className="section-heading">
             <div>
               <h3>Create teacher account</h3>
-              <p>Generate a teacher profile and assign a primary grade level.</p>
+              <p>Generate a teacher profile and assign handled grade levels.</p>
             </div>
           </div>
           <form className="teacher-form" onSubmit={handleCreateTeacher}>
@@ -105,13 +123,22 @@ export default function Teachers() {
                 Email address
                 <input type="email" value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} required />
               </label>
+            </div>
+            <div className="field-grid">
               <label>
-                Grade level
-                <select value={form.gradeLevel} onChange={(e) => setForm((prev) => ({ ...prev, gradeLevel: e.target.value }))}>
+                Handled grades
+                <div className="grade-checkbox-grid">
                   {gradeOptions.map((grade) => (
-                    <option key={grade} value={grade}>{grade}</option>
+                    <label key={grade} className="grade-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={form.gradeLevels.includes(grade)}
+                        onChange={() => toggleGrade(grade)}
+                      />
+                      <span>{grade}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </label>
             </div>
             <button type="submit" className="btn-primary">Create Teacher</button>
@@ -131,8 +158,8 @@ export default function Teachers() {
               <strong>{teachers.length}</strong>
             </div>
             <div>
-              <span>Auto assign</span>
-              <strong>{teachers.filter((teacher) => teacher.assigned > 0).length}</strong>
+              <span>Assigned students</span>
+              <strong>{teachers.reduce((sum, teacher) => sum + Number(teacher.assignedStudentCount || 0), 0)}</strong>
             </div>
             <div>
               <span>Active accounts</span>
@@ -150,10 +177,8 @@ export default function Teachers() {
                     <small>{teacher.email}</small>
                   </div>
                   <div>
-                    <span>{teacher.gradeLevel}</span>
-                    <button type="button" className="btn-secondary" onClick={() => assignStudents(teacher.id)}>
-                      Assign student
-                    </button>
+                    <span>{formatTeacherGrades(teacher)}</span>
+                    <small>{Number(teacher.assignedStudentCount || 0)} assigned students</small>
                   </div>
                 </li>
               ))}

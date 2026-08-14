@@ -9,6 +9,7 @@ import Setting from '../models/Setting.js';
 import Log from '../models/Log.js';
 import { sendTeacherAccountEmail } from '../services/emailService.js';
 import { getManyStudentStats } from '../services/studentStatsService.js';
+import { assignExistingStudentsToTeacher, normalizeGradeLevel } from '../services/teacherAssignment.js';
 
 const router = express.Router();
 const SETTINGS_DOC_ID = 'system';
@@ -50,6 +51,38 @@ const sendError = (res, status, message, error = null) => {
   return res.status(status).json(payload);
 };
 
+const isMissingTableError = (error) =>
+  ['PGRST205', 'PGRST204', '42P01'].includes(error?.code);
+
+const safeDeleteTeacherRow = async (userId) => {
+  if (!userId) return;
+  const { error } = await supabase.from('teachers').delete().eq('user_id', userId);
+  if (error && !isMissingTableError(error)) {
+    console.warn('[Admin] Could not delete teacher row during cleanup:', error.message);
+  }
+};
+
+const safeDeleteUserProfile = async (userId) => {
+  if (!userId) return;
+  const { error } = await supabase.from('users').delete().eq('id', userId);
+  if (error) {
+    console.warn('[Admin] Could not delete user profile during cleanup:', error.message);
+  }
+};
+
+const safeClearTeacherAssignments = async (teacherId, studentIds = []) => {
+  if (!teacherId || !studentIds.length) return;
+  const { error } = await supabase
+    .from('students')
+    .update({ teacher_id: null, updated_at: new Date().toISOString() })
+    .in('id', studentIds)
+    .eq('teacher_id', teacherId);
+
+  if (error) {
+    console.warn('[Admin] Could not clear teacher assignments during cleanup:', error.message);
+  }
+};
+
 const normalizeRecord = (record) => {
   if (!record) return record;
   return {
@@ -61,6 +94,16 @@ const normalizeRecord = (record) => {
 };
 
 const normalizeRole = (role = '') => String(role || 'unassigned').trim().toLowerCase();
+
+const normalizeGradeList = (value) => {
+  const values = Array.isArray(value) ? value : [value];
+  const normalized = values
+    .map(normalizeGradeLevel)
+    .filter(Boolean);
+  return [...new Set(normalized)];
+};
+
+const formatGradeLabel = (grade) => `Grade ${grade}`;
 
 const isDisabledStatus = (status = '') =>
   ['disabled', 'inactive', 'blocked', 'banned', 'deleted', 'archived'].includes(String(status || '').toLowerCase());
@@ -768,6 +811,7 @@ router.get('/teachers', async (req, res) => {
         email: teacher.email,
         role: teacher.role || 'teacher',
         gradeLevel: teacher.metadata?.gradeLevel || teacher.gradeLevel || null,
+        gradeLevels: teacher.metadata?.gradeLevels || teacher.metadata?.handledGradeLevels || [],
         assignedStudents: Array.from(assignedStudents).slice(0, 10),
         assignedStudentCount: assignedStudents.size,
       };
@@ -782,6 +826,9 @@ router.get('/teachers', async (req, res) => {
 
 router.post('/teachers/create', async (req, res) => {
   let authUserId = null;
+  let assignmentResult = null;
+  let createdAuthUser = false;
+  let adoptedAuthUser = false;
 
   try {
     const {
@@ -790,6 +837,7 @@ router.post('/teachers/create', async (req, res) => {
       name = '',
       email = '',
       gradeLevel = 'Grade 1',
+      gradeLevels,
       password,
     } = req.body || {};
 
@@ -805,6 +853,13 @@ router.post('/teachers/create', async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return sendError(res, 400, 'Please enter a valid teacher email address.');
     }
+
+    const handledGrades = normalizeGradeList(gradeLevels ?? gradeLevel);
+    if (!handledGrades.length) {
+      return sendError(res, 400, 'Teacher grade level must be between Grade 1 and Grade 6.');
+    }
+    const primaryGradeLevel = formatGradeLabel(handledGrades[0]);
+    const handledGradeLabels = handledGrades.map(formatGradeLabel);
 
     const { data: existingProfile, error: existingProfileError } = await supabase
       .from('users')
@@ -824,26 +879,44 @@ router.post('/teachers/create', async (req, res) => {
     const existingAuthUser = (authList?.users || []).find(
       (user) => normalizeEmail(user.email) === normalizedEmail
     );
-    if (existingAuthUser) {
-      return sendError(res, 409, 'This email is already registered in Supabase Auth.');
-    }
 
     const teacherPassword = password || generateTeacherPassword();
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: normalizedEmail,
-      password: teacherPassword,
-      email_confirm: true,
-      user_metadata: {
-        role: 'teacher',
-        approved: true,
-      },
-    });
 
-    if (authError || !authData?.user) {
-      throw authError || new Error('Failed to create teacher auth account.');
+    if (existingAuthUser) {
+      authUserId = existingAuthUser.id;
+      adoptedAuthUser = true;
+      const { error: updateAuthError } = await supabase.auth.admin.updateUserById(authUserId, {
+        email: normalizedEmail,
+        password: teacherPassword,
+        email_confirm: true,
+        user_metadata: {
+          ...(existingAuthUser.user_metadata || {}),
+          role: 'teacher',
+          approved: true,
+        },
+      });
+
+      if (updateAuthError) {
+        throw updateAuthError;
+      }
+    } else {
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: normalizedEmail,
+        password: teacherPassword,
+        email_confirm: true,
+        user_metadata: {
+          role: 'teacher',
+          approved: true,
+        },
+      });
+
+      if (authError || !authData?.user) {
+        throw authError || new Error('Failed to create teacher auth account.');
+      }
+
+      authUserId = authData.user.id;
+      createdAuthUser = true;
     }
-
-    authUserId = authData.user.id;
 
     try {
       await verifyTeacherPasswordSignIn(normalizedEmail, teacherPassword);
@@ -862,7 +935,10 @@ router.post('/teachers/create', async (req, res) => {
       displayName,
       firstName: cleanFirstName || displayName.split(' ')[0] || 'Teacher',
       lastName: cleanLastName || displayName.split(' ').slice(1).join(' ') || '',
-      gradeLevel,
+      gradeLevel: primaryGradeLevel,
+      gradeLevels: handledGradeLabels,
+      handledGradeLevels: handledGradeLabels,
+      handledGradeKeys: handledGrades,
       approved: true,
       firstLoginOtpCompleted: true,
       createdByAdmin: req.user.id,
@@ -884,13 +960,43 @@ router.post('/teachers/create', async (req, res) => {
       .single();
 
     if (profileError) {
-      await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      if (createdAuthUser) await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
       throw profileError;
+    }
+
+    const { error: teacherRowError } = await supabase
+      .from('teachers')
+      .upsert({
+        user_id: authUserId,
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+
+    if (teacherRowError) {
+      if (isMissingTableError(teacherRowError)) {
+        console.warn('[Admin] public.teachers table is not available; continuing with users.role=teacher profile only.');
+      } else {
+        if (createdAuthUser) await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+        await safeDeleteUserProfile(authUserId);
+        throw teacherRowError;
+      }
+    }
+
+    try {
+      assignmentResult = await assignExistingStudentsToTeacher(authUserId);
+    } catch (assignmentError) {
+      console.error('Teacher auto-assignment failed:', assignmentError);
+      if (createdAuthUser) await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      await safeDeleteTeacherRow(authUserId);
+      await safeDeleteUserProfile(authUserId);
+      return sendError(res, 500, 'Teacher account could not be created because student auto-assignment failed.', assignmentError.message);
     }
 
     await logAdminAction(req, 'Created teacher account', 'teacher', authUserId, {
       email: normalizedEmail,
-      gradeLevel,
+      gradeLevel: primaryGradeLevel,
+      gradeLevels: handledGradeLabels,
+      assignedStudentCount: assignmentResult.assignedCount,
     });
 
     // Send credentials email to teacher
@@ -902,28 +1008,41 @@ router.post('/teachers/create', async (req, res) => {
 
     if (!emailSent) {
       // Roll back user if email fails
-      await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
-      await supabase.from('users').delete().eq('id', authUserId);
-      return sendError(res, 500, 'Teacher account was created but email delivery failed. The account has been rolled back. Please check your email configuration.');
+      if (assignmentResult?.updatedStudentIds?.length) {
+        await safeClearTeacherAssignments(authUserId, assignmentResult.updatedStudentIds);
+      }
+      if (createdAuthUser) await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      await safeDeleteTeacherRow(authUserId);
+      await safeDeleteUserProfile(authUserId);
+      return sendError(res, 500, adoptedAuthUser
+        ? 'Teacher profile was prepared, but email delivery failed. The profile was rolled back; the existing Supabase Auth account was left in place.'
+        : 'Teacher account was created but email delivery failed. The account has been rolled back. Please check your email configuration.');
     }
 
     return res.status(201).json({
       teacher: {
         ...normalizeRecord(teacherProfile),
-        gradeLevel,
+        gradeLevel: primaryGradeLevel,
+        gradeLevels: handledGradeLabels,
         status: 'active',
-        assignedStudentCount: 0,
+        assignedStudentCount: assignmentResult.assignedCount,
       },
       credentials: {
         email: normalizedEmail,
         password: teacherPassword,
       },
-      message: 'Teacher account created and email sent successfully.',
+      message: 'Teacher account created, assigned to matching students, and email sent successfully.',
+      adoptedExistingAuthUser: adoptedAuthUser,
     });
   } catch (error) {
     console.error('Create teacher error:', error);
+    if (assignmentResult?.updatedStudentIds?.length && authUserId) {
+      await safeClearTeacherAssignments(authUserId, assignmentResult.updatedStudentIds);
+    }
     if (authUserId) {
-      await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      if (createdAuthUser) await supabase.auth.admin.deleteUser(authUserId).catch(() => null);
+      await safeDeleteTeacherRow(authUserId);
+      await safeDeleteUserProfile(authUserId);
     }
     return sendError(res, 500, 'Could not create teacher account. Please try again.', error.message);
   }
