@@ -191,9 +191,9 @@ function AppRoutes() {
         <Route path="/student" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/modules" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/practice" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
-        <Route path="/student/word-of-the-day" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/word-of-the-day" element={<Navigate to="/student" replace />} />
         <Route path="/student/activities" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
-        <Route path="/student/calendar" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
+        <Route path="/student/calendar" element={<Navigate to="/student/activities" replace />} />
         <Route path="/student/notifications" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/badges" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />
         <Route path="/student/profile" element={<PrivateRoute allowedRoles={['student']}><StudentDashboard /></PrivateRoute>} />

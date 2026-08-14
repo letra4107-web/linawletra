@@ -1788,32 +1788,58 @@ a {
 }
 
 /* ============================================================================
-   Student dashboard shell: sidebar + main + right info panel
+   Student dashboard shell: sidebar + main content
+   THIS IS THE ONLY LAYOUT DEFINITION FOR .student-shell / .student-sidebar /
+   .student-main / .student-mobile-menu-toggle / .student-sidebar-overlay in
+   this file. The page previously accumulated ~15 separate, unconditional
+   redefinitions of these same selectors from iterative redesigns, several of
+   which directly contradicted each other (fixed + grid shell at once, a
+   `padding-left` clearance for a fixed sidebar added in one block and zeroed
+   out again in a later one) -- that's what caused the sidebar to overlap and
+   crop the main content. Do not add another override block elsewhere; edit
+   this one.
    ============================================================================ */
 .student-shell {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
+  --student-nav-width: 264px;
+  display: grid;
+  grid-template-columns: var(--student-nav-width) minmax(0, 1fr);
+  min-height: 100vh;
   background: #f4f6f9;
 }
 
+.student-shell--nav-collapsed {
+  --student-nav-width: 84px;
+}
+
+.student-mobile-menu-toggle {
+  display: none;
+}
+
+.student-sidebar-overlay {
+  display: none;
+}
+
 .student-sidebar {
-  width: 260px;
-  flex-shrink: 0;
+  position: sticky;
+  top: 0;
   height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #ffffff;
-  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.92);
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
   padding: 20px 16px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  gap: 18px;
+  backdrop-filter: blur(16px);
+  transition: padding 0.18s ease;
 }
 
 .student-sidebar-top {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .student-sidebar-brand {
@@ -1823,17 +1849,59 @@ a {
   padding: 0 6px;
 }
 
-.student-sidebar-brand img {
+.student-sidebar-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.student-sidebar-brand-lockup img {
   width: 36px;
   height: 36px;
   border-radius: 10px;
   object-fit: cover;
+  flex-shrink: 0;
 }
 
 .student-sidebar-brand-name {
   font-weight: 800;
   font-size: 1.05rem;
   color: var(--text);
+  white-space: nowrap;
+}
+
+.student-shell--nav-collapsed .student-sidebar-brand-name,
+.student-shell--nav-collapsed .student-sidebar-link-label,
+.student-shell--nav-collapsed .student-sidebar-tier {
+  display: none;
+}
+
+.student-sidebar-close {
+  display: none;
+}
+
+.student-sidebar-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.student-sidebar-collapse-toggle:hover {
+  background: var(--accent-soft);
 }
 
 .student-sidebar-nav {
@@ -1872,22 +1940,99 @@ a {
 .student-sidebar-link.active {
   background: var(--accent-soft);
   border-color: rgba(79, 70, 229, 0.35);
-  color: var(--accent);
+  color: var(--accent-strong);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .student-sidebar-link-icon {
   display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.student-sidebar-link-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .student-sidebar-bottom {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.student-sidebar-profile-link {
+  align-items: center;
+}
+
+.student-sidebar-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1rem;
+  position: relative;
+}
+
+.student-sidebar-avatar small {
+  position: absolute;
+  bottom: -4px;
+  right: -6px;
+  background: var(--accent-strong);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 5px;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.student-sidebar-profile-link strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.student-sidebar-profile-link small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.student-sidebar-tier {
+  color: var(--accent-strong) !important;
+}
+
+.student-notif-badge {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  margin-left: 4px;
 }
 
 .student-sidebar-logout {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   min-height: 34px;
   padding: 6px 14px;
@@ -1898,6 +2043,8 @@ a {
   font-size: 0.85rem;
   cursor: pointer;
   color: var(--danger);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .student-sidebar-logout:hover {
@@ -1936,247 +2083,78 @@ a {
 }
 
 .student-main {
-  flex: 1;
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 26px 32px;
+  min-width: 0;
+  padding: 24px 32px 56px;
 }
 
-.student-side-panel {
-  width: 320px;
-  flex-shrink: 0;
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 26px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.student-panel-card {
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 20px;
-}
-
-.student-panel-stats-row {
-  display: flex;
-  gap: 12px;
-}
-
-.student-stat-chip {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: center;
-  padding: 12px 10px;
-  border-radius: 16px;
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
-  font-weight: 800;
-  font-size: 1rem;
-  color: var(--text);
-}
-
-.student-panel-card h4 {
-  margin: 0 0 12px;
-  font-size: 1rem;
-  color: var(--text);
-}
-
-.student-side-panel .word-of-the-day-card {
-  margin: 0;
-  border: none;
-  box-shadow: var(--shadow);
-  padding: 20px;
-}
-
-.recommended-practice-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.recommended-practice-chip {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
-  color: var(--text);
-  font: inherit;
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 160ms ease, border-color 160ms ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.recommended-practice-chip small {
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 800;
-}
-
-.recommended-practice-chip:hover {
-  border-color: rgba(79, 70, 229, 0.3);
-  background: rgba(79, 70, 229, 0.08);
-}
-
-.recent-achievement-card .recent-achievement-body {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.recent-achievement-body p {
-  margin: 2px 0 0;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-/* Winding lesson path */
-@media (max-width: 1100px) {
-  .student-sidebar {
-    width: 240px;
-  }
-  .student-side-panel {
-    display: none;
+@media (max-width: 1024px) {
+  .student-main {
+    padding: 20px;
   }
 }
 
 @media (max-width: 760px) {
   .student-shell {
-    flex-direction: column;
-    height: auto;
-    overflow: visible;
+    display: block;
+  }
+  .student-mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 16px 0;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: var(--text);
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .student-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 80;
   }
   .student-sidebar {
-    width: auto;
-    height: auto;
-    overflow: visible;
+    --student-nav-width: 280px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--student-nav-width);
+    height: 100vh;
+    z-index: 90;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 18px 0 42px rgba(15, 23, 42, 0.18);
+  }
+  .student-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .student-sidebar-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .student-sidebar-collapse-toggle {
+    display: none;
+  }
+  .student-sidebar-brand-name,
+  .student-sidebar-link-label,
+  .student-sidebar-tier {
+    display: flex;
   }
   .student-main {
-    height: auto;
-    overflow: visible;
+    padding: 16px 16px 48px;
   }
-  /* Hidden entirely at <=1100px; bring it back at phone widths so streak/XP
-     and class updates are still reachable, stacked below the main content
-     instead of squeezed into a third column. */
-  .student-side-panel {
-    display: flex;
-    width: auto;
-    height: auto;
-    overflow: visible;
-  }
-}
-
-/* ============================================================================
-   Polished student dashboard experience
-   (token block that used to be here was merged into the single
-   `.dashboard-page` token block near the top of this file -- see the
-   CONSOLIDATED FROM THREE LAYERED THEMES comment there. Its --radius/--shadow
-   values are the ones that carried forward; its background gradient did not,
-   since the "Mobile palette alignment" block below used to override it.)
-   ============================================================================ */
-
-.student-shell {
-  background:
-    radial-gradient(circle at top left, rgba(49, 87, 213, 0.08), transparent 32rem),
-    linear-gradient(135deg, #f8fafc 0%, #eef3f7 45%, #f7f2ea 100%);
-}
-
-.student-sidebar {
-  width: 248px;
-  padding: 24px 14px;
-  background: rgba(255, 255, 255, 0.88);
-  border-right: 1px solid rgba(148, 163, 184, 0.28);
-  box-shadow: 12px 0 40px rgba(15, 23, 42, 0.04);
-  backdrop-filter: blur(16px);
-}
-
-.student-sidebar-brand {
-  min-height: 56px;
-  padding: 10px;
-  border-radius: 8px;
-  background: #172033;
-  color: #ffffff;
-  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.16);
-}
-
-.student-sidebar-brand img {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.student-sidebar-brand-name {
-  color: #ffffff;
-  font-size: 1rem;
-  letter-spacing: 0;
-}
-
-.student-sidebar-nav {
-  gap: 8px;
-}
-
-.student-sidebar-link {
-  position: relative;
-  min-height: 46px;
-  border-radius: 8px;
-  padding: 12px 12px;
-  color: #526276;
-  font-weight: 800;
-}
-
-.student-sidebar-link:hover {
-  background: #f1f5f9;
-  border-color: rgba(49, 87, 213, 0.18);
-}
-
-.student-sidebar-link.active {
-  background: var(--accent-soft);
-  border-color: rgba(49, 87, 213, 0.28);
-  color: var(--accent-strong);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
-.student-sidebar-link-icon {
-  width: 26px;
-  height: 26px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: rgba(96, 112, 134, 0.1);
-}
-
-.student-sidebar-link.active .student-sidebar-link-icon {
-  background: #ffffff;
-  color: var(--accent);
-}
-
-.student-sidebar-logout {
-  width: 100%;
-  justify-content: center;
-  min-height: 42px;
-  border-radius: 8px;
-  background: #fff5f5;
-}
-
-.student-main {
-  padding: 30px 34px 42px;
-}
-
-.student-side-panel {
-  width: 336px;
-  padding: 30px 22px 42px 0;
 }
 
 .home-greeting {
@@ -2522,15 +2500,6 @@ a {
   background: #f8fafc;
 }
 
-.student-side-panel .word-of-the-day-card,
-.recommended-practice-chip {
-  border-radius: 8px;
-}
-
-.recommended-practice-chip {
-  background: #f8fafc;
-}
-
 .content-card,
 .assessment-card,
 .metric-card {
@@ -2558,39 +2527,6 @@ a {
 }
 
 @media (max-width: 760px) {
-  .student-sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    padding: 12px;
-  }
-
-  .student-sidebar-top {
-    gap: 10px;
-  }
-
-  .student-sidebar-nav {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-
-  .student-sidebar-link {
-    flex: 0 0 auto;
-    width: auto;
-    min-height: 42px;
-    padding: 10px 12px;
-  }
-
-  .student-sidebar-bottom {
-    display: none;
-  }
-
-  .student-main,
-  .student-side-panel {
-    padding: 18px 14px;
-  }
 
   .home-greeting {
     align-items: flex-start;
@@ -2635,42 +2571,6 @@ a {
 body,
 .dashboard-container {
   background: var(--mobile-bg);
-}
-
-.student-shell {
-  background:
-    linear-gradient(135deg, #F4F1FB 0%, #FBF3E2 54%, #F8E7DF 100%);
-}
-
-.student-sidebar {
-  background: #EFECFB;
-  border-right-color: #D9D2F1;
-  box-shadow: 12px 0 36px rgba(95, 82, 176, 0.08);
-}
-
-.student-sidebar-brand {
-  background: linear-gradient(135deg, var(--mobile-lavender-dark), var(--mobile-coral));
-  box-shadow: 0 14px 26px rgba(95, 82, 176, 0.2);
-}
-
-.student-sidebar-link {
-  color: var(--mobile-ink-soft);
-}
-
-.student-sidebar-link:hover {
-  background: #F8F7FF;
-  border-color: #D9D2F1;
-}
-
-.student-sidebar-link.active {
-  background: #FBF3E2;
-  border-color: var(--mobile-lavender);
-  color: var(--mobile-lavender-dark);
-  box-shadow: inset 4px 0 0 var(--mobile-lavender);
-}
-
-.student-sidebar-link-icon {
-  background: rgba(124, 111, 207, 0.12);
 }
 
 .detail-block,
@@ -3050,112 +2950,6 @@ body,
   }
 }
 
-/* ============================================================================
-   Web shell shaped like the mobile dashboard
-   ============================================================================ */
-.student-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 310px;
-  height: auto;
-  min-height: 100vh;
-  overflow: visible;
-  padding: 18px 18px 104px;
-  gap: 18px;
-}
-
-.student-main {
-  height: auto;
-  overflow: visible;
-  max-width: 980px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0;
-}
-
-.student-side-panel {
-  width: auto;
-  height: fit-content;
-  max-height: calc(100vh - 36px);
-  position: sticky;
-  top: 18px;
-  overflow: auto;
-  padding: 0;
-}
-
-.student-sidebar {
-  position: fixed;
-  left: 50%;
-  bottom: 18px;
-  z-index: 70;
-  width: min(760px, calc(100vw - 28px));
-  height: auto;
-  min-height: 78px;
-  padding: 8px;
-  border: 1px solid #E9E4F2;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 18px 42px rgba(59, 50, 44, 0.14);
-  transform: translateX(-50%);
-  backdrop-filter: blur(16px);
-}
-
-.student-sidebar-top {
-  display: block;
-}
-
-.student-sidebar-brand,
-.student-sidebar-bottom {
-  display: none;
-}
-
-.student-sidebar-nav {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.student-sidebar-link {
-  min-height: 62px;
-  padding: 4px 2px;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 18px;
-  color: var(--mobile-ink-soft);
-  font-size: 0.72rem;
-  line-height: 1.1;
-  text-align: center;
-  transform: none;
-}
-
-.student-sidebar-link:hover {
-  transform: none;
-  background: #F5F3FC;
-}
-
-.student-sidebar-link.active {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  color: var(--mobile-lavender-dark);
-}
-
-.student-sidebar-link-icon {
-  width: 42px;
-  height: 34px;
-  border-radius: 14px;
-  font-size: 1.22rem;
-  margin: 0 auto;
-  background: transparent;
-}
-
-.student-sidebar-link.active .student-sidebar-link-icon {
-  background: var(--mobile-lavender-dark);
-  color: #ffffff;
-  box-shadow: 0 8px 18px rgba(95, 82, 176, 0.24);
-}
-
 .student-mobile-hero {
   position: relative;
   min-height: 214px;
@@ -3358,67 +3152,7 @@ body,
   font-size: clamp(3rem, 8vw, 5.2rem);
 }
 
-.student-side-panel .student-panel-card {
-  border-radius: 24px;
-}
-
-@media (max-width: 1180px) {
-  .student-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .student-side-panel {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: none;
-    overflow: visible;
-  }
-}
-
 @media (max-width: 760px) {
-  .student-shell {
-    display: block;
-    padding: 12px 12px 96px;
-  }
-
-  .student-main,
-  .student-side-panel {
-    padding: 0;
-  }
-
-  .student-side-panel {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-
-  .student-sidebar {
-    top: auto;
-    bottom: 10px;
-    width: calc(100vw - 20px);
-    padding: 7px;
-    border-radius: 22px;
-  }
-
-  .student-sidebar-nav {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    overflow: visible;
-    gap: 1px;
-  }
-
-  .student-sidebar-link {
-    min-height: 58px;
-    padding: 2px 0;
-    font-size: 0.62rem;
-  }
-
-  .student-sidebar-link-icon {
-    width: 36px;
-    height: 30px;
-    border-radius: 13px;
-  }
 
   .student-mobile-hero {
     min-height: 200px;
@@ -3446,70 +3180,6 @@ body,
   .home-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
-
-/* ============================================================================
-   Desktop web refinement
-   ============================================================================ */
-.student-shell {
-  display: block;
-  width: min(1220px, calc(100vw - 40px));
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 24px 0 52px;
-}
-
-.student-main {
-  max-width: none;
-  width: 100%;
-  margin: 0;
-}
-
-.student-side-panel {
-  display: none !important;
-}
-
-.student-sidebar {
-  position: sticky;
-  top: 16px;
-  left: auto;
-  bottom: auto;
-  z-index: 80;
-  width: 100%;
-  min-height: 74px;
-  margin: 0 0 22px;
-  padding: 10px 12px;
-  transform: none;
-  border-radius: 22px;
-  background: rgba(255, 250, 240, 0.94);
-  border: 1px solid rgba(95, 82, 176, 0.14);
-  box-shadow: 0 16px 36px rgba(59, 50, 44, 0.12);
-}
-
-.student-sidebar-top {
-  display: block;
-}
-
-.student-sidebar-nav {
-  grid-template-columns: repeat(7, minmax(92px, 1fr));
-  gap: 8px;
-}
-
-.student-sidebar-link {
-  min-height: 54px;
-  padding: 8px 10px;
-  border-radius: 16px;
-  font-size: 0.78rem;
-  background: rgba(255, 255, 255, 0.44);
-}
-
-.student-sidebar-link:hover {
-  background: #F2EEFF;
-}
-
-.student-sidebar-link-icon {
-  width: 38px;
-  height: 32px;
 }
 
 .student-mobile-hero {
@@ -3580,33 +3250,6 @@ body,
 }
 
 @media (max-width: 980px) {
-  .student-shell {
-    width: min(100% - 24px, 880px);
-    padding-bottom: 104px;
-  }
-
-  .student-sidebar {
-    position: fixed;
-    left: 50%;
-    top: auto;
-    bottom: 12px;
-    width: calc(100vw - 24px);
-    margin: 0;
-    padding: 8px;
-    transform: translateX(-50%);
-    border-radius: 24px;
-  }
-
-  .student-sidebar-nav {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 2px;
-  }
-
-  .student-sidebar-link {
-    min-height: 58px;
-    padding: 4px 2px;
-    font-size: 0.66rem;
-  }
 
   .home-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3614,10 +3257,6 @@ body,
 }
 
 @media (max-width: 620px) {
-  .student-shell {
-    width: calc(100% - 20px);
-    padding-top: 12px;
-  }
 
   .student-mobile-hero {
     min-height: 214px;
@@ -3642,238 +3281,6 @@ body,
   }
 }
 
-/* ============================================================================
-   Collapsible desktop side navigation
-   ============================================================================ */
-.student-shell {
-  --student-nav-width: 276px;
-  --student-page-max: 1480px;
-  display: grid;
-  grid-template-columns: var(--student-nav-width) minmax(0, 1fr);
-  align-items: start;
-  gap: 24px;
-  width: min(var(--student-page-max), calc(100vw - 40px));
-  padding: 24px 0 48px;
-  transition: grid-template-columns 180ms ease;
-}
-
-.student-shell--nav-collapsed {
-  --student-nav-width: 92px;
-}
-
-.student-sidebar {
-  position: sticky;
-  top: 20px;
-  left: auto;
-  bottom: auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: var(--student-nav-width);
-  height: calc(100vh - 40px);
-  min-height: 640px;
-  margin: 0;
-  padding: 18px;
-  transform: none;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 247, 231, 0.96), rgba(245, 243, 252, 0.96)),
-    #FFF7E7;
-  border: 1px solid rgba(95, 82, 176, 0.18);
-  box-shadow: 0 20px 46px rgba(59, 50, 44, 0.14);
-  backdrop-filter: blur(18px);
-}
-
-.student-sidebar-top {
-  min-width: 0;
-}
-
-.student-sidebar-brand,
-.student-sidebar-bottom {
-  display: flex;
-}
-
-.student-sidebar-brand {
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 4px 2px 18px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(95, 82, 176, 0.12);
-}
-
-.student-sidebar-brand-lockup {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 10px;
-}
-
-.student-sidebar-brand img {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 auto;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 10px 20px rgba(59, 50, 44, 0.12);
-}
-
-.student-sidebar-brand-name {
-  color: var(--mobile-ink);
-  font-size: 1.08rem;
-  font-weight: 900;
-  white-space: nowrap;
-  overflow: hidden;
-  transition: opacity 160ms ease, width 160ms ease;
-}
-
-.student-sidebar-toggle {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  border: 1px solid rgba(95, 82, 176, 0.16);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.74);
-  color: var(--mobile-lavender-dark);
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(59, 50, 44, 0.08);
-}
-
-.student-sidebar-toggle:hover,
-.student-sidebar-toggle:focus-visible {
-  background: #ffffff;
-  transform: translateY(-1px);
-}
-
-.student-sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.student-sidebar-link {
-  position: relative;
-  min-height: 52px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 9px 12px;
-  border: 1px solid transparent;
-  border-radius: 18px;
-  background: transparent;
-  color: var(--mobile-ink-soft);
-  font-size: 0.92rem;
-  font-weight: 850;
-  text-align: left;
-  line-height: 1;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.student-sidebar-link:hover {
-  background: rgba(255, 255, 255, 0.68);
-  color: var(--mobile-ink);
-  transform: translateX(2px);
-}
-
-.student-sidebar-link.active {
-  background: #ffffff;
-  color: var(--mobile-lavender-dark);
-  border-color: rgba(95, 82, 176, 0.18);
-  box-shadow: 0 14px 26px rgba(95, 82, 176, 0.14);
-}
-
-.student-sidebar-link.active::before {
-  content: "";
-  position: absolute;
-  left: 7px;
-  top: 14px;
-  bottom: 14px;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--mobile-lavender-dark);
-}
-
-.student-sidebar-link-icon {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  border-radius: 15px;
-  background: rgba(95, 82, 176, 0.1);
-  color: var(--mobile-lavender-dark);
-  font-size: 1.16rem;
-}
-
-.student-sidebar-link.active .student-sidebar-link-icon {
-  background: var(--mobile-lavender-dark);
-  color: #ffffff;
-  box-shadow: 0 10px 20px rgba(95, 82, 176, 0.24);
-}
-
-.student-sidebar-link-label {
-  white-space: nowrap;
-  overflow: hidden;
-  transition: opacity 150ms ease, width 150ms ease;
-}
-
-.student-sidebar-bottom {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(95, 82, 176, 0.12);
-}
-
-.student-sidebar-streak {
-  width: 100%;
-  justify-content: center;
-  margin-bottom: 4px;
-}
-
-.student-sidebar-profile-link .student-sidebar-link-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  line-height: 1.2;
-}
-
-.student-sidebar-profile-link .student-sidebar-link-label small {
-  color: var(--mobile-ink-soft);
-  font-weight: 700;
-}
-
-.student-sidebar-avatar {
-  position: relative;
-  background: var(--mobile-lavender-dark) !important;
-  color: #ffffff !important;
-  font-weight: 950;
-}
-
-.student-sidebar-avatar small {
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  min-width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  padding: 0 4px;
-  border: 2px solid #FFF7E7;
-  border-radius: 999px;
-  background: #6d35f6;
-  color: #ffffff;
-  font-size: 0.6rem;
-  line-height: 1;
-}
-
 .student-mobile-menu-toggle {
   display: none;
   position: fixed;
@@ -3891,94 +3298,6 @@ body,
   font-weight: 900;
   box-shadow: 0 10px 24px rgba(59, 50, 44, 0.14);
   cursor: pointer;
-}
-
-.student-sidebar-overlay {
-  display: none;
-}
-
-.student-sidebar-close {
-  display: none;
-}
-
-.student-sidebar-logout {
-  min-height: 48px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 10px 13px;
-  border: 0;
-  border-radius: 18px;
-  background: rgba(224, 107, 76, 0.12);
-  color: #8F3327;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.student-sidebar-logout svg {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-}
-
-.student-sidebar-logout:hover {
-  background: rgba(224, 107, 76, 0.18);
-  transform: translateY(-1px);
-}
-
-.student-shell--nav-collapsed .student-sidebar {
-  padding: 16px 13px;
-}
-
-.student-shell--nav-collapsed .student-sidebar-brand {
-  justify-content: center;
-}
-
-.student-shell--nav-collapsed .student-sidebar-brand-name,
-.student-shell--nav-collapsed .student-sidebar-link-label {
-  width: 0;
-  opacity: 0;
-}
-
-.student-shell--nav-collapsed .student-sidebar-brand-lockup {
-  gap: 0;
-}
-
-.student-shell--nav-collapsed .student-sidebar-toggle {
-  position: absolute;
-  top: 64px;
-  right: 12px;
-  width: 30px;
-  height: 30px;
-  border-radius: 11px;
-}
-
-.student-shell--nav-collapsed .student-sidebar-nav {
-  align-items: center;
-  padding-top: 34px;
-}
-
-.student-shell--nav-collapsed .student-sidebar-link {
-  width: 56px;
-  justify-content: center;
-  padding: 9px;
-  gap: 0;
-}
-
-.student-shell--nav-collapsed .student-sidebar-link.active::before {
-  left: -5px;
-}
-
-.student-shell--nav-collapsed .student-sidebar-logout {
-  width: 56px;
-  justify-content: center;
-  padding: 10px;
-}
-
-.student-main {
-  min-width: 0;
 }
 
 .student-mobile-hero {
@@ -4015,115 +3334,9 @@ body,
 }
 
 @media (max-width: 1080px) {
-  .student-shell {
-    --student-nav-width: 92px;
-    width: min(100% - 28px, 980px);
-    gap: 18px;
-  }
-
-  .student-sidebar-brand-name,
-  .student-sidebar-link-label {
-    width: 0;
-    opacity: 0;
-  }
-
-  .student-sidebar-toggle {
-    display: none;
-  }
-
-  .student-sidebar-brand {
-    justify-content: center;
-  }
-
-  .student-sidebar-nav {
-    align-items: center;
-  }
-
-  .student-sidebar-link,
-  .student-sidebar-logout {
-    width: 56px;
-    justify-content: center;
-    padding: 9px;
-    gap: 0;
-  }
 
   .home-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    display: block;
-    width: calc(100% - 20px);
-    padding: 12px 0 100px;
-  }
-
-  .student-sidebar {
-    position: fixed;
-    left: 50%;
-    top: auto;
-    bottom: 10px;
-    width: calc(100vw - 20px);
-    height: auto;
-    min-height: 72px;
-    padding: 8px;
-    transform: translateX(-50%);
-    border-radius: 24px;
-  }
-
-  .student-sidebar-brand,
-  .student-sidebar-bottom {
-    display: none;
-  }
-
-  .student-sidebar-nav {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 1px;
-    padding: 0;
-  }
-
-  .student-sidebar-link,
-  .student-shell--nav-collapsed .student-sidebar-link {
-    width: auto;
-    min-height: 58px;
-    padding: 3px 0;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.62rem;
-  }
-
-  .student-sidebar-link-label,
-  .student-shell--nav-collapsed .student-sidebar-link-label {
-    width: auto;
-    opacity: 1;
-  }
-
-  .student-sidebar-link.active::before {
-    display: none;
-  }
-
-  .student-sidebar-link-icon {
-    width: 36px;
-    height: 30px;
-    border-radius: 13px;
-  }
-}
-
-/* Keep the desktop side navigation pinned while the page scrolls. */
-@media (min-width: 761px) {
-  .student-sidebar {
-    position: fixed;
-    top: 20px;
-    left: max(20px, calc((100vw - var(--student-page-max)) / 2));
-  }
-}
-
-@media (min-width: 761px) and (max-width: 1080px) {
-  .student-sidebar {
-    left: max(14px, calc((100vw - 980px) / 2));
   }
 }
 
@@ -4869,149 +4082,10 @@ body,
   }
 }
 
-/* Fixed left sidebar page geometry. Keeps the main dashboard from being squeezed. */
-@media (min-width: 761px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    display: block;
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 20px 28px 48px calc(var(--student-nav-width) + 56px);
-  }
-
-  .student-shell--nav-collapsed {
-    padding-left: calc(var(--student-nav-width) + 40px);
-  }
-
-  .student-main {
-    width: min(1180px, 100%);
-    max-width: none;
-    margin: 0 auto;
-  }
-
-  .student-sidebar {
-    left: 20px;
-    width: var(--student-nav-width);
-  }
-}
-
-@media (min-width: 1500px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-right: calc((100vw - 1480px) / 2 + 28px);
-  }
-
-  .student-shell {
-    padding-left: calc((100vw - 1480px) / 2 + var(--student-nav-width) + 56px);
-  }
-
-  .student-shell--nav-collapsed {
-    padding-left: calc((100vw - 1480px) / 2 + var(--student-nav-width) + 40px);
-  }
-
-  .student-sidebar {
-    left: calc((100vw - 1480px) / 2 + 20px);
-  }
-}
-
-@media (min-width: 761px) and (max-width: 1080px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    --student-nav-width: 92px;
-    padding-left: 126px;
-    padding-right: 18px;
-  }
-
-  .student-sidebar {
-    left: 14px;
-    padding: 16px 13px;
-  }
-
-  .student-sidebar-brand {
-    justify-content: center;
-  }
-
-  .student-sidebar-brand-name {
-    width: 0;
-    opacity: 0;
-  }
-
-  .student-sidebar-nav {
-    align-items: center;
-  }
-
-  .student-sidebar-link {
-    width: 56px;
-    justify-content: center;
-    padding: 9px;
-    gap: 0;
-  }
-
-  .student-sidebar-link-label {
-    width: 0;
-    opacity: 0;
-  }
-
-  .student-sidebar-link.active::before {
-    left: -5px;
-  }
-
-  .student-sidebar-streak,
-  .student-sidebar-logout {
-    width: 56px;
-    justify-content: center;
-    padding: 10px;
-  }
-}
-
 @media (max-width: 760px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    display: block;
-    width: calc(100% - 20px);
-    margin: 0 auto;
-    padding: 68px 0 100px;
-  }
-
-  .student-main {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-  }
 
   .student-mobile-menu-toggle {
     display: inline-flex;
-  }
-
-  .student-sidebar-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 190;
-    background: rgba(20, 16, 50, 0.45);
-  }
-
-  .student-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 200;
-    width: min(300px, 82vw);
-    height: 100vh;
-    min-height: 0;
-    margin: 0;
-    border-radius: 0 26px 26px 0;
-    transform: translateX(-100%);
-    transition: transform 220ms ease;
-  }
-
-  .student-sidebar.is-open {
-    transform: translateX(0);
-  }
-
-  .student-sidebar-close {
-    display: grid;
   }
 }
 
@@ -5454,70 +4528,6 @@ body,
   }
 }
 
-/* Final sidebar placement cleanup */
-@media (min-width: 761px) {
-  .student-sidebar {
-    left: 0;
-    top: 0;
-    height: 100vh;
-    min-height: 100vh;
-    border-radius: 0 28px 28px 0;
-    border-left: 0;
-  }
-
-  .student-sidebar-brand img {
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-left: calc(var(--student-nav-width) + 28px);
-  }
-}
-
-@media (min-width: 1500px) {
-  .student-sidebar {
-    left: 0;
-  }
-
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-left: calc(var(--student-nav-width) + 28px);
-  }
-}
-
-@media (min-width: 761px) and (max-width: 1080px) {
-  .student-sidebar {
-    left: 0;
-  }
-
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-left: calc(var(--student-nav-width) + 18px);
-  }
-}
-
-/* ============================================================================
-   Screenshot-inspired student library shell
-   ============================================================================ */
-.student-shell,
-.student-shell--nav-collapsed {
-  min-height: 100vh;
-  display: block;
-  padding: 0 0 48px;
-  background:
-    radial-gradient(circle at 76% 12%, rgba(124, 58, 237, 0.08), transparent 26%),
-    linear-gradient(180deg, #ffffff 0%, #f8f7ff 44%, #ffffff 100%);
-}
-
-.student-main {
-  width: min(1480px, calc(100% - 64px));
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 34px 0 56px;
-}
-
 .student-topbar {
   position: sticky;
   top: 0;
@@ -5658,7 +4668,7 @@ body,
   display: grid;
   place-items: center;
   border-radius: 999px;
-  color: #747b9f;
+  color: #5d6489;
 }
 
 .student-topbar-logout:hover {
@@ -5933,7 +4943,7 @@ body,
   padding: 0 14px;
   border: 1px solid rgba(92, 95, 130, 0.14);
   border-radius: 999px;
-  color: #7d83a3;
+  color: #5d6489;
 }
 
 .student-library-search input {
@@ -6150,7 +5160,7 @@ body,
 
 .student-module-card.status-locked {
   background: #f3f4f8;
-  color: #777d96;
+  color: #5d6489;
 }
 
 .student-module-card.status-in-progress {
@@ -6203,7 +5213,7 @@ body,
 
 .student-module-card.status-locked h4,
 .student-module-card.status-locked p {
-  color: #777d96;
+  color: #5d6489;
 }
 
 .student-module-open-button {
@@ -6219,7 +5229,7 @@ body,
 
 .student-module-open-button:disabled {
   background: #e2e5ee;
-  color: #7b8294;
+  color: #5d6489;
   cursor: not-allowed;
 }
 
@@ -6569,27 +5579,6 @@ body,
   font-weight: 950;
 }
 
-@media (min-width: 761px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-left: 0;
-  }
-}
-
-@media (min-width: 1500px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-left: 0;
-  }
-}
-
-@media (min-width: 761px) and (max-width: 1080px) {
-  .student-shell,
-  .student-shell--nav-collapsed {
-    padding-left: 0;
-  }
-}
-
 @media (max-width: 1180px) {
   .student-topbar {
     grid-template-columns: 1fr;
@@ -6622,10 +5611,6 @@ body,
 }
 
 @media (max-width: 820px) {
-  .student-main {
-    width: min(100% - 28px, 1480px);
-    padding-top: 22px;
-  }
 
   .student-library-toolbar,
   .student-library-section-title,

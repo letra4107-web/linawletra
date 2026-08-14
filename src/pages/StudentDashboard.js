@@ -148,11 +148,9 @@ const SECTION_ROUTES = {
   home: '/student',
   content: '/student/modules',
   practice: '/student/practice',
-  word: '/student/word-of-the-day',
   progress: '/student/progress',
   badges: '/student/badges',
   activities: '/student/activities',
-  calendar: '/student/calendar',
   notifications: '/student/notifications',
   profile: '/student/profile',
   settings: '/student/settings',
@@ -162,11 +160,9 @@ const sectionFromPath = (path = '') => {
   if (path === '/student-dashboard' || path === '/student') return 'home';
   if (path.startsWith('/student/learn') || path.startsWith('/student/modules')) return 'content';
   if (path.startsWith('/student/practice')) return 'practice';
-  if (path.startsWith('/student/word-of-the-day')) return 'word';
   if (path.startsWith('/student/progress')) return 'progress';
   if (path.startsWith('/student/badges')) return 'badges';
-  if (path.startsWith('/student/activities') || path.startsWith('/student/assignments')) return 'activities';
-  if (path.startsWith('/student/calendar') || path.startsWith('/student/schedule')) return 'calendar';
+  if (path.startsWith('/student/activities') || path.startsWith('/student/assignments') || path.startsWith('/student/calendar') || path.startsWith('/student/schedule')) return 'activities';
   if (path.startsWith('/student/notifications')) return 'notifications';
   if (path.startsWith('/student/profile')) return 'profile';
   if (path.startsWith('/student/settings')) return 'settings';
@@ -2005,17 +2001,23 @@ const StudentDashboard = () => {
             >
               <FiX aria-hidden="true" />
             </button>
+            <button
+              type="button"
+              className="student-sidebar-toggle student-sidebar-collapse-toggle"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              aria-label={isSidebarCollapsed ? 'Expand navigation menu' : 'Collapse navigation menu'}
+              aria-expanded={!isSidebarCollapsed}
+            >
+              <FiMenu aria-hidden="true" />
+            </button>
           </div>
           <nav className="student-sidebar-nav" aria-label="Student dashboard">
             {[
               { key: 'home', label: 'Dashboard', icon: <FiHome aria-hidden="true" /> },
               { key: 'content', label: 'Learn', icon: <FiBookOpen aria-hidden="true" /> },
               { key: 'practice', label: 'Practice', icon: <FiMic aria-hidden="true" /> },
-              { key: 'word', label: 'Word', icon: <FiStar aria-hidden="true" /> },
               { key: 'progress', label: 'Progress', icon: <FiTrendingUp aria-hidden="true" /> },
               { key: 'activities', label: 'Activities', icon: <FiTarget aria-hidden="true" /> },
-              { key: 'calendar', label: 'Calendar', icon: <FiCalendar aria-hidden="true" /> },
-              { key: 'notifications', label: `Alerts${unreadNotifications.length ? ` (${unreadNotifications.length})` : ''}`, icon: <FiBell aria-hidden="true" /> },
               { key: 'profile', label: 'Profile', icon: <FiUser aria-hidden="true" /> },
             ].map((item) => (
               <button
@@ -2031,9 +2033,6 @@ const StudentDashboard = () => {
           </nav>
         </div>
         <div className="student-sidebar-bottom">
-          <button type="button" className="student-topbar-streak student-sidebar-streak" onClick={() => handleNav('progress')}>
-            {streakDays} araw na sunod-sunod! <FiZap aria-hidden="true" />
-          </button>
           <button type="button" className="student-sidebar-link student-sidebar-profile-link" onClick={() => handleNav('profile')}>
             <span className="student-sidebar-link-icon student-sidebar-avatar" aria-hidden="true">
               {firstName.charAt(0)}
@@ -2042,11 +2041,8 @@ const StudentDashboard = () => {
             <span className="student-sidebar-link-label">
               <strong>{firstName}</strong>
               <small>Student</small>
+              <small className="student-sidebar-tier">{tier}</small>
             </span>
-          </button>
-          <button type="button" className="student-sidebar-link" onClick={() => handleNav('settings')}>
-            <span className="student-sidebar-link-icon"><FiSettings aria-hidden="true" /></span>
-            <span className="student-sidebar-link-label">Settings</span>
           </button>
           <button type="button" className="student-sidebar-logout" onClick={handleLogout}>
             <FiLogOut aria-hidden="true" />
@@ -2159,8 +2155,9 @@ const StudentDashboard = () => {
               <img src="/logo.png" alt="" />
               <span>LinawLetra</span>
             </div>
-            <button type="button" className="student-mobile-hero-bell" onClick={() => handleNav('settings')} aria-label="Open settings">
+            <button type="button" className="student-mobile-hero-bell" onClick={() => handleNav('notifications')} aria-label="Open notifications">
               <FiBell aria-hidden="true" />
+              {unreadNotifications.length > 0 && <span className="student-notif-badge">{unreadNotifications.length}</span>}
             </button>
           </div>
           <h1>{activeHero.title.split('\n').map((line, index) => (
@@ -2171,7 +2168,7 @@ const StudentDashboard = () => {
           ))}</h1>
           <p>{activeHero.subtitle}</p>
           <div className="student-mobile-hero-art" aria-hidden="true">
-            {activeSection === 'practice' ? <FiMic /> : activeSection === 'progress' ? <FiTrendingUp /> : activeSection === 'badges' ? <FiAward /> : activeSection === 'settings' ? <FiSettings /> : activeSection === 'calendar' ? <FiCalendar /> : activeSection === 'notifications' ? <FiBell /> : <FiBookOpen />}
+            {activeSection === 'practice' ? <FiMic /> : activeSection === 'progress' ? <FiTrendingUp /> : activeSection === 'badges' ? <FiAward /> : activeSection === 'settings' ? <FiSettings /> : activeSection === 'notifications' ? <FiBell /> : <FiBookOpen />}
           </div>
         </section>
         )}
@@ -2184,8 +2181,9 @@ const StudentDashboard = () => {
                 <p>Ready to practice reading today?</p>
               </div>
               <div className="student-home-header-actions">
-                <button type="button" className="student-home-icon-button" onClick={() => handleNav('settings')} aria-label="Open settings">
+                <button type="button" className="student-home-icon-button" onClick={() => handleNav('notifications')} aria-label="Open notifications">
                   <FiBell aria-hidden="true" />
+                  {unreadNotifications.length > 0 && <span className="student-notif-badge">{unreadNotifications.length}</span>}
                 </button>
                 <span className="student-home-avatar" aria-hidden="true">{firstName.charAt(0)}</span>
                 <span className="student-home-date"><FiCalendar aria-hidden="true" /> {formattedDate}</span>
@@ -3030,40 +3028,44 @@ const StudentDashboard = () => {
         {activeSection === 'progress' && (
           <section id="progress-section" className="detail-block">
             <div className="detail-block-title">Progress summary</div>
-            <div className="progress-metrics">
-              <div className="metric-card">
-                <strong>{activitiesCompleted}</strong>
-                <span>Lessons completed</span>
+            {!hasLoadedProgress ? (
+              <p className="student-home-muted">Loading your progress...</p>
+            ) : (
+              <div className="progress-metrics">
+                <div className="metric-card">
+                  <strong>{activitiesCompleted}</strong>
+                  <span>Lessons completed</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{streakDays}</strong>
+                  <span>Daily streak</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{progressXp}</strong>
+                  <span>Total XP</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{allTimeAccuracy}%</strong>
+                  <span>All-time accuracy</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{totalAttempts}</strong>
+                  <span>Practice sessions</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{longestStreak}</strong>
+                  <span>Longest streak</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{todayGoalDone}/{DAILY_GOAL}</strong>
+                  <span>Today's reading goal</span>
+                </div>
+                <div className="metric-card">
+                  <strong>{weeklyPracticeDays}</strong>
+                  <span>Practice days this week</span>
+                </div>
               </div>
-              <div className="metric-card">
-                <strong>{streakDays}</strong>
-                <span>Daily streak</span>
-              </div>
-              <div className="metric-card">
-                <strong>{progressXp}</strong>
-                <span>Total XP</span>
-              </div>
-              <div className="metric-card">
-                <strong>{allTimeAccuracy}%</strong>
-                <span>All-time accuracy</span>
-              </div>
-              <div className="metric-card">
-                <strong>{totalAttempts}</strong>
-                <span>Practice sessions</span>
-              </div>
-              <div className="metric-card">
-                <strong>{longestStreak}</strong>
-                <span>Longest streak</span>
-              </div>
-              <div className="metric-card">
-                <strong>{todayGoalDone}/{DAILY_GOAL}</strong>
-                <span>Today's reading goal</span>
-              </div>
-              <div className="metric-card">
-                <strong>{weeklyPracticeDays}</strong>
-                <span>Practice days this week</span>
-              </div>
-            </div>
+            )}
             <div className="chart-card">
               <div className="detail-block-title">XP progress this week</div>
               <div className="progress-chart">
@@ -3147,34 +3149,6 @@ const StudentDashboard = () => {
             </div>
           </section>
         )}
-        {activeSection === 'word' && (
-          <section id="word-section" className="detail-block">
-            <div className="detail-block-title">Word of the Day</div>
-            {wordOfTheDay ? (
-              <div className="student-data-panel">
-                <div>
-                  <span className="student-library-kicker">Today's practice word</span>
-                  <h3>{wordOfTheDay.accentedSpelling || wordOfTheDay.word}</h3>
-                  <p>{wordOfTheDay.meaning || 'No definition is available for this word yet.'}</p>
-                  {wordOfTheDay.example && <p>{wordOfTheDay.example}</p>}
-                </div>
-                <div className="student-data-actions">
-                  <button type="button" className="button-large button-secondary" onClick={() => speakTagalog(wordOfTheDay.accentedSpelling || wordOfTheDay.word, { trackSyllables: true })}>
-                    <FiVolume2 aria-hidden="true" /> Listen
-                  </button>
-                  <button type="button" className="button-large button-primary" onClick={() => handleNav('practice')}>
-                    <FiMic aria-hidden="true" /> Practice
-                  </button>
-                </div>
-                <p className="student-home-muted">
-                  {hasPracticedWordOfTheDay ? 'Completed today from recorded practice.' : 'Not completed yet today.'}
-                </p>
-              </div>
-            ) : (
-              <p className="student-home-muted">No Word of the Day is available from the backend yet.</p>
-            )}
-          </section>
-        )}
         {activeSection === 'activities' && (
           <section id="activities-section" className="detail-block">
             <div className="detail-block-title">Assignments / Activities</div>
@@ -3202,9 +3176,9 @@ const StudentDashboard = () => {
             )}
           </section>
         )}
-        {activeSection === 'calendar' && (
+        {activeSection === 'activities' && (
           <section id="calendar-section" className="detail-block">
-            <div className="detail-block-title">Calendar / Schedule</div>
+            <div className="detail-block-title">Upcoming Schedule</div>
             {schedulesLoading ? (
               <p className="student-home-muted">Loading your schedule...</p>
             ) : schedulesError ? (
@@ -3363,42 +3337,49 @@ const StudentDashboard = () => {
                   {studentGrade}{studentRoom ? ` · ${studentRoom}` : ''}
                 </p>
               </div>
+              <button type="button" className="button-secondary button-small profile-settings-button" onClick={() => handleNav('settings')}>
+                <FiSettings aria-hidden="true" /> Settings
+              </button>
             </div>
             <div className="detail-block-title">Statistics</div>
-            <div className="home-summary-grid">
-              <article className="stat-card">
-                <p className="stat-title">Lessons completed</p>
-                <p className="stat-value">{activitiesCompleted}</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">Total XP</p>
-                <p className="stat-value">{xp}</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">Streak</p>
-                <p className="stat-value">{streakDays} days</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">Learning tier</p>
-                <p className="stat-value">{tier}</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">All-time accuracy</p>
-                <p className="stat-value">{allTimeAccuracy}%</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">Practice sessions</p>
-                <p className="stat-value">{totalAttempts}</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">Longest streak</p>
-                <p className="stat-value">{longestStreak} days</p>
-              </article>
-              <article className="stat-card">
-                <p className="stat-title">Today's reading goal</p>
-                <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
-              </article>
-            </div>
+            {!hasLoadedProgress ? (
+              <p className="student-home-muted">Loading your statistics...</p>
+            ) : (
+              <div className="home-summary-grid">
+                <article className="stat-card">
+                  <p className="stat-title">Lessons completed</p>
+                  <p className="stat-value">{activitiesCompleted}</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Total XP</p>
+                  <p className="stat-value">{xp}</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Streak</p>
+                  <p className="stat-value">{streakDays} days</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Learning tier</p>
+                  <p className="stat-value">{tier}</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">All-time accuracy</p>
+                  <p className="stat-value">{allTimeAccuracy}%</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Practice sessions</p>
+                  <p className="stat-value">{totalAttempts}</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Longest streak</p>
+                  <p className="stat-value">{longestStreak} days</p>
+                </article>
+                <article className="stat-card">
+                  <p className="stat-title">Today's reading goal</p>
+                  <p className="stat-value">{todayGoalDone}/{DAILY_GOAL}</p>
+                </article>
+              </div>
+            )}
             <div className="student-profile-modules">
               <div className="detail-block-title">My Completed Modules</div>
               {equippedModule && (
