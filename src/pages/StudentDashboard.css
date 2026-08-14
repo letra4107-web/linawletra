@@ -1790,8 +1790,9 @@ a {
 /* ============================================================================
    Student dashboard shell: sidebar + main content
    THIS IS THE ONLY LAYOUT DEFINITION FOR .student-shell / .student-sidebar /
-   .student-main / .student-mobile-menu-toggle / .student-sidebar-overlay in
-   this file. The page previously accumulated ~15 separate, unconditional
+   .student-main / .student-main-topbar / .student-nav-toggle /
+   .student-sidebar-overlay in this file. The page previously accumulated
+   ~15 separate, unconditional
    redefinitions of these same selectors from iterative redesigns, several of
    which directly contradicted each other (fixed + grid shell at once, a
    `padding-left` clearance for a fixed sidebar added in one block and zeroed
@@ -1822,12 +1823,53 @@ a {
   --student-nav-width: 84px;
 }
 
-.student-mobile-menu-toggle {
+.student-sidebar-overlay {
   display: none;
 }
 
-.student-sidebar-overlay {
-  display: none;
+/* Single nav toggle for the whole app: lives at the top of the main content
+   column (never inside the sidebar itself, so it can't crowd the logo), and
+   is sticky so it never scrolls out of view. Below the mobile breakpoint it
+   opens/closes the off-canvas drawer; above it, it collapses/expands the
+   fixed sidebar (see toggleSidebarNav in StudentDashboard.js). Its left edge
+   naturally follows `.student-main`'s own margin-left, so it always sits
+   flush beside the sidebar at its current width with no separate offset
+   math to keep in sync. */
+.student-main-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 500;
+  display: flex;
+  padding-top: 4px;
+  padding-bottom: 14px;
+  background: #f4f6f9;
+}
+
+.student-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+  color: var(--accent-strong);
+  font-size: 1.3rem;
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+
+.student-nav-toggle:hover {
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+}
+
+.student-nav-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .student-sidebar {
@@ -1898,24 +1940,6 @@ a {
 
 .student-sidebar-close {
   display: none;
-}
-
-.student-sidebar-collapse-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.student-sidebar-collapse-toggle:hover {
-  background: var(--accent-soft);
 }
 
 .student-sidebar-nav {
@@ -2120,19 +2144,6 @@ a {
 }
 
 @media (max-width: 760px) {
-  .student-mobile-menu-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin: 14px 16px 0;
-    padding: 8px 14px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: #ffffff;
-    color: var(--text);
-    font-weight: 800;
-    cursor: pointer;
-  }
   .student-sidebar-overlay {
     display: block;
     position: fixed;
@@ -2160,9 +2171,6 @@ a {
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-  }
-  .student-sidebar-collapse-toggle {
-    display: none;
   }
   .student-sidebar-brand-name,
   .student-sidebar-link-label,
@@ -3301,25 +3309,6 @@ body,
   }
 }
 
-.student-mobile-menu-toggle {
-  display: none;
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 180;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid rgba(95, 82, 176, 0.18);
-  border-radius: 999px;
-  background: #ffffff;
-  color: var(--mobile-lavender-dark);
-  font-weight: 900;
-  box-shadow: 0 10px 24px rgba(59, 50, 44, 0.14);
-  cursor: pointer;
-}
-
 .student-mobile-hero {
   min-height: 268px;
   background:
@@ -4099,13 +4088,6 @@ body,
     bottom: -70px;
     width: 620px;
     opacity: 0.24;
-  }
-}
-
-@media (max-width: 760px) {
-
-  .student-mobile-menu-toggle {
-    display: inline-flex;
   }
 }
 

@@ -585,6 +585,22 @@ const StudentDashboard = () => {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+  // Single sidebar toggle for both layouts: below the mobile breakpoint it
+  // opens/closes the off-canvas drawer, above it it collapses/expands the
+  // fixed sidebar -- checked at click time so one button/one position works
+  // for both without tracking viewport width in state.
+  const isMobileLayout = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
+  const toggleSidebarNav = () => {
+    if (isMobileLayout()) {
+      setIsMobileNavOpen((prev) => !prev);
+    } else {
+      setIsSidebarCollapsed((prev) => !prev);
+    }
+  };
+  // Only for the toggle button's aria-expanded/aria-label -- recomputed on
+  // every render (not reactive to a bare window resize with no click), which
+  // is close enough for an accessibility hint on this control.
+  const isSidebarNavOpen = isMobileLayout() ? isMobileNavOpen : !isSidebarCollapsed;
   const isParentUser = userRole === 'parent';
   const canEditPracticeLevel = isParentUser && !!currentStudentId;
   const handlePracticeLevelChange = async (event) => {
@@ -1967,17 +1983,6 @@ const StudentDashboard = () => {
       style={rootStyles}
     >
     <div className={`student-shell ${isSidebarCollapsed ? 'student-shell--nav-collapsed' : ''}`}>
-      <button
-        type="button"
-        className="student-mobile-menu-toggle"
-        onClick={() => setIsMobileNavOpen(true)}
-        aria-label="Open navigation menu"
-        aria-expanded={isMobileNavOpen}
-      >
-        <FiMenu aria-hidden="true" />
-        <span>Menu</span>
-      </button>
-
       {isMobileNavOpen && (
         <div
           className="student-sidebar-overlay"
@@ -2000,15 +2005,6 @@ const StudentDashboard = () => {
               aria-label="Close navigation menu"
             >
               <FiX aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="student-sidebar-toggle student-sidebar-collapse-toggle"
-              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-              aria-label={isSidebarCollapsed ? 'Expand navigation menu' : 'Collapse navigation menu'}
-              aria-expanded={!isSidebarCollapsed}
-            >
-              <FiMenu aria-hidden="true" />
             </button>
           </div>
           <nav className="student-sidebar-nav" aria-label="Student dashboard">
@@ -2051,6 +2047,17 @@ const StudentDashboard = () => {
         </div>
       </aside>
       <main className="student-main" id="main-content" style={{ position: 'relative' }}>
+        <div className="student-main-topbar">
+          <button
+            type="button"
+            className="student-nav-toggle"
+            onClick={toggleSidebarNav}
+            aria-label={isSidebarNavOpen ? 'Collapse navigation menu' : 'Expand navigation menu'}
+            aria-expanded={isSidebarNavOpen}
+          >
+            <FiMenu aria-hidden="true" />
+          </button>
+        </div>
         {newlyUnlockedAchievements.length > 0 && (
           <AchievementUnlockModal
             achievements={newlyUnlockedAchievements}
