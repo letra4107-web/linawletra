@@ -1991,22 +1991,24 @@ const StudentDashboard = () => {
         />
       )}
 
+      <div className="student-sidebar-header">
+        <button type="button" className="student-sidebar-brand-lockup" onClick={() => handleNav('home')} aria-label="Go to dashboard">
+          <img src="/logo.png" alt="LinawLetra logo" />
+          <span className="student-sidebar-brand-name">LinawLetra</span>
+        </button>
+        <button
+          type="button"
+          className="student-sidebar-toggle-btn"
+          onClick={toggleSidebarNav}
+          aria-label={isSidebarNavOpen ? 'Collapse navigation menu' : 'Expand navigation menu'}
+          aria-expanded={isSidebarNavOpen}
+        >
+          <FiMenu aria-hidden="true" />
+        </button>
+      </div>
+
       <aside className={`student-sidebar ${isMobileNavOpen ? 'is-open' : ''}`}>
         <div className="student-sidebar-top">
-          <div className="student-sidebar-brand">
-            <button type="button" className="student-sidebar-brand-lockup" onClick={() => handleNav('home')} aria-label="Go to dashboard">
-              <img src="/logo.png" alt="LinawLetra logo" />
-              <span className="student-sidebar-brand-name">LinawLetra</span>
-            </button>
-            <button
-              type="button"
-              className="student-sidebar-toggle student-sidebar-close"
-              onClick={() => setIsMobileNavOpen(false)}
-              aria-label="Close navigation menu"
-            >
-              <FiX aria-hidden="true" />
-            </button>
-          </div>
           <nav className="student-sidebar-nav" aria-label="Student dashboard">
             {[
               { key: 'home', label: 'Home', icon: <FiHome aria-hidden="true" /> },
@@ -2047,17 +2049,6 @@ const StudentDashboard = () => {
         </div>
       </aside>
       <main className="student-main" id="main-content" style={{ position: 'relative' }}>
-        <div className="student-main-topbar">
-          <button
-            type="button"
-            className="student-nav-toggle"
-            onClick={toggleSidebarNav}
-            aria-label={isSidebarNavOpen ? 'Collapse navigation menu' : 'Expand navigation menu'}
-            aria-expanded={isSidebarNavOpen}
-          >
-            <FiMenu aria-hidden="true" />
-          </button>
-        </div>
         {newlyUnlockedAchievements.length > 0 && (
           <AchievementUnlockModal
             achievements={newlyUnlockedAchievements}

@@ -1788,11 +1788,10 @@ a {
 }
 
 /* ============================================================================
-   Student dashboard shell: sidebar + main content
+   Student dashboard shell: sidebar header + sidebar panel + main content
    THIS IS THE ONLY LAYOUT DEFINITION FOR .student-shell / .student-sidebar /
-   .student-main / .student-main-topbar / .student-nav-toggle /
-   .student-sidebar-overlay in this file. The page previously accumulated
-   ~15 separate, unconditional
+   .student-sidebar-header / .student-main / .student-sidebar-overlay in this
+   file. The page previously accumulated ~15 separate, unconditional
    redefinitions of these same selectors from iterative redesigns, several of
    which directly contradicted each other (fixed + grid shell at once, a
    `padding-left` clearance for a fixed sidebar added in one block and zeroed
@@ -1811,9 +1810,20 @@ a {
    `transform`/`filter`/`will-change`/`contain`, any of which would create a
    new containing block and make `position: fixed` here relative to that
    ancestor instead of the viewport -- keep it that way.
+
+   The sidebar is split into two stacked fixed elements, not one: a
+   `.student-sidebar-header` (logo + the single nav toggle, top-right) that
+   NEVER moves or translates, and `.student-sidebar` panel (nav links +
+   profile/logout) below it that slides off-canvas on mobile. They share
+   `--student-nav-width` and `--student-header-height` and matching
+   background/border so they read as one continuous sidebar -- but keeping
+   the header un-translatable is what lets the toggle live inside the
+   sidebar (per design) while still being reachable to *open* the drawer on
+   mobile, where the rest of the sidebar is off-screen until opened.
    ============================================================================ */
 .student-shell {
   --student-nav-width: 264px;
+  --student-header-height: 78px;
   position: relative;
   min-height: 100vh;
   background: #f4f6f9;
@@ -1827,82 +1837,31 @@ a {
   display: none;
 }
 
-/* Single nav toggle for the whole app: lives at the top of the main content
-   column (never inside the sidebar itself, so it can't crowd the logo), and
-   is sticky so it never scrolls out of view. Below the mobile breakpoint it
-   opens/closes the off-canvas drawer; above it, it collapses/expands the
-   fixed sidebar (see toggleSidebarNav in StudentDashboard.js). Its left edge
-   naturally follows `.student-main`'s own margin-left, so it always sits
-   flush beside the sidebar at its current width with no separate offset
-   math to keep in sync. */
-.student-main-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 500;
-  display: flex;
-  padding-top: 4px;
-  padding-bottom: 14px;
-  background: #f4f6f9;
-}
-
-.student-nav-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 46px;
-  flex-shrink: 0;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: #ffffff;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
-  color: var(--accent-strong);
-  font-size: 1.3rem;
-  cursor: pointer;
-  transition: background 0.16s ease, transform 0.16s ease;
-}
-
-.student-nav-toggle:hover {
-  background: var(--accent-soft);
-  transform: translateY(-1px);
-}
-
-.student-nav-toggle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.student-sidebar {
+.student-sidebar-header {
   position: fixed;
   top: 0;
   left: 0;
   width: var(--student-nav-width);
-  height: 100vh;
-  z-index: 1000;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: rgba(255, 255, 255, 0.92);
-  border-right: 1px solid rgba(148, 163, 184, 0.28);
-  padding: 20px 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 18px;
-  backdrop-filter: blur(16px);
-  transition: width 0.18s ease;
-}
-
-.student-sidebar-top {
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-}
-
-.student-sidebar-brand {
+  height: var(--student-header-height);
+  z-index: 1001;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 0 6px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  backdrop-filter: blur(16px);
+  transition: width 0.18s ease, justify-content 0.18s ease;
+}
+
+.student-shell--nav-collapsed .student-sidebar-header {
+  justify-content: center;
+}
+
+.student-shell--nav-collapsed .student-sidebar-brand-lockup {
+  display: none;
 }
 
 .student-sidebar-brand-lockup {
@@ -1938,8 +1897,65 @@ a {
   display: none;
 }
 
-.student-sidebar-close {
-  display: none;
+/* The single sidebar toggle: opens/closes the mobile drawer below the
+   mobile breakpoint, collapses/expands the fixed sidebar above it (see
+   toggleSidebarNav in StudentDashboard.js). Purple to be unmistakably
+   visible against the light sidebar header -- never grey. */
+.student-sidebar-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 11px;
+  background: #6C4DDE;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(108, 77, 222, 0.35);
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+
+.student-sidebar-toggle-btn:hover {
+  background: #8168E8;
+}
+
+.student-sidebar-toggle-btn:active {
+  background: #5738C4;
+  transform: translateY(1px);
+}
+
+.student-sidebar-toggle-btn:focus-visible {
+  outline: 3px solid #8168E8;
+  outline-offset: 2px;
+}
+
+.student-sidebar {
+  position: fixed;
+  top: var(--student-header-height);
+  left: 0;
+  width: var(--student-nav-width);
+  height: calc(100vh - var(--student-header-height));
+  z-index: 1000;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(255, 255, 255, 0.92);
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  backdrop-filter: blur(16px);
+  transition: width 0.18s ease;
+}
+
+.student-sidebar-top {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
 }
 
 .student-sidebar-nav {
@@ -2151,6 +2167,17 @@ a {
     background: rgba(15, 23, 42, 0.45);
     z-index: 80;
   }
+  /* The header (logo + toggle) never translates -- it's how the toggle stays
+     reachable to *open* the drawer when the panel below is off-canvas -- but
+     it doesn't need to span a full sidebar width here, just wrap its two
+     children as a compact pill in the corner. */
+  .student-sidebar-header {
+    width: auto;
+    border-right: none;
+    border-bottom: none;
+    border-radius: 0 0 18px 0;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  }
   .student-sidebar {
     --student-nav-width: 280px;
     transform: translateX(-100%);
@@ -2160,28 +2187,18 @@ a {
   .student-sidebar.is-open {
     transform: translateX(0);
   }
-  .student-sidebar-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
   .student-sidebar-brand-name,
   .student-sidebar-link-label,
   .student-sidebar-tier {
     display: flex;
   }
   .student-main {
-    /* Sidebar is off-canvas by default below this width (see .student-sidebar
-       transform above), so main content no longer reserves space for it. */
+    /* Sidebar panel is off-canvas by default below this width (see
+       .student-sidebar transform above), so main content no longer reserves
+       horizontal space for it -- but the header stays fixed top-left, so
+       content still needs top clearance to not sit underneath it. */
     margin-left: 0;
-    padding: 16px 16px 48px;
+    padding: calc(var(--student-header-height) + 16px) 16px 48px;
   }
 }
 
@@ -2938,6 +2955,7 @@ body,
 }
 
 .dashboard-page.dark-mode .student-sidebar,
+.dashboard-page.dark-mode .student-sidebar-header,
 .dashboard-page.dark-mode .detail-block,
 .dashboard-page.dark-mode .student-panel-card,
 .dashboard-page.dark-mode .stat-card,
