@@ -1906,24 +1906,24 @@ a {
 
 .student-sidebar-nav {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .student-sidebar-link {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-secondary);
-  font-weight: 700;
-  font-size: 1rem;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 1.1rem;
   cursor: pointer;
   text-align: left;
   width: 100%;
-  min-height: 44px;
+  min-height: 56px;
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
@@ -1941,15 +1941,25 @@ a {
   background: var(--accent-soft);
   border-color: rgba(79, 70, 229, 0.35);
   color: var(--accent-strong);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .student-sidebar-link-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.15rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 1.3rem;
   flex-shrink: 0;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.student-sidebar-link.active .student-sidebar-link-icon {
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .student-sidebar-link-label {
